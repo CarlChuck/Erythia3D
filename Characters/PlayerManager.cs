@@ -18,6 +18,7 @@ public class PlayerManager : MonoBehaviour
     private ulong steamID = 1; //TODO set in Awake()
     private string familyName = "";
     [SerializeField] private CharacterModelManager characterModelManager;
+    [SerializeField] private ZoneManager currentZone;
     [SerializeField] private GameObject characterPrefab;
     [SerializeField] private GameObject mainCamera;
     [SerializeField] private UIManager uiManager;
@@ -301,139 +302,6 @@ public class PlayerManager : MonoBehaviour
         Debug.Log($"Finished processing character list. Final count: {playerCharacters.Count}. Selected: {selectedPlayerCharacter?.GetCharacterName() ?? "None"}");
     }
 
-    /*
-    public void SetCharactersList()
-    {
-        ClearPlayerListExceptSelected();
-        List<Dictionary<string, object>> characterList = CharactersManager.Instance.GetCharactersbyAccountID(accountID).GetAwaiter().GetResult();
-        foreach (Dictionary<string, object> character in characterList)
-        {
-            int newCharacterID = 0;
-            if (character.TryGetValue("CharID", out object newCharID))
-            {
-                newCharacterID = (int)newCharID;
-            }
-            if (newCharacterID == 0)
-            {
-                Debug.Log("No character found");
-                continue;
-            }
-            else if (selectedPlayerCharacter != null)
-            {
-                if (newCharacterID == selectedPlayerCharacter.GetCharacterID())
-                {
-                    Debug.Log("Character already exists");
-                }
-                continue;
-            }
-            foreach (PlayerCharacter characterCheck in playerCharacters)
-            {
-                if (characterCheck.GetCharacterID() == newCharacterID)
-                {
-                    Debug.Log("Character already exists");
-                    continue;
-                }
-            }
-
-            string newCharacterName = "";
-            string title = "";
-            int zoneID = 1;
-            int xLoc = 0;
-            int yLoc = 0;
-            int zLoc = 0;
-            int race = 1;
-            int face = 1;
-            int gender = 1;
-            int combatxp = 0;
-            int craftingxp = 0;
-            int arcaneexp = 0;
-            int spiritxp = 0;
-            int veilexp = 0;
-
-            if (familyName == "")
-            {
-                if (character.TryGetValue("Familyname", out object newFamName))
-                {
-                    familyName = newFamName.ToString();
-                }
-            }
-            if (character.TryGetValue("Name", out object newCharName))
-            {
-                newCharacterName = newCharName.ToString();
-            }
-            if (character.TryGetValue("Title", out object newTitle))
-            {
-                title = newTitle.ToString();
-            }
-            if (character.TryGetValue("ZoneID", out object newZoneID))
-            {
-                zoneID = (int)newZoneID;
-            }
-            if (character.TryGetValue("XLoc", out object newXLoc))
-            {
-                xLoc = (int)newXLoc;
-            }
-            if (character.TryGetValue("YLoc", out object newYLoc))
-            {
-                yLoc = (int)newYLoc;
-            }
-            if (character.TryGetValue("ZLoc", out object newZLoc))
-            {
-                zLoc = (int)newZLoc;
-            }
-            if (character.TryGetValue("Race", out object newRace))
-            {
-                race = (int)newRace;
-            }
-            if (character.TryGetValue("Face", out object newFace))
-            {
-                face = (int)newFace;
-            }
-            if (character.TryGetValue("Gender", out object newGender))
-            {
-                gender = (int)newGender;
-            }
-            if (character.TryGetValue("CombatExp", out object newCombatExp))
-            {
-                combatxp = (int)newCombatExp;
-            }
-            if (character.TryGetValue("CraftingExp", out object newCraftingExp))
-            {
-                craftingxp = (int)newCraftingExp;
-            }
-            if (character.TryGetValue("ArcaneExp", out object newArcaneExp))
-            {
-                arcaneexp = (int)newArcaneExp;
-            }
-            if (character.TryGetValue("SpiritExp", out object newSpiritExp))
-            {
-                spiritxp = (int)newSpiritExp;
-            }
-            if (character.TryGetValue("VeilExp", out object newVeilExp))
-            {
-                veilexp = (int)newVeilExp;
-            }
-            PlayerCharacter newCharacter = Instantiate(characterPrefab, charListParent.transform).GetComponent<PlayerCharacter>();
-            GameObject charGameObject = Instantiate(characterModelManager.GetCharacterModel(race, gender), newCharacter.transform);
-            newCharacter.AddModel(charGameObject);
-            playerCharacters.Add(newCharacter);
-            newCharacter.SetUpCharacter(newCharacterName, newCharacterID, title, zoneID, race, face, gender, combatxp, craftingxp, arcaneexp, spiritxp, veilexp);
-            if (selectedPlayerCharacter == null)
-            {
-                selectedPlayerCharacter = newCharacter;
-                SetSelectedCharacter();
-                selectedPlayerCharacter.ActivateModel(true);
-                selectedPlayerCharacter.transform.SetParent(playerArmature.transform);
-            }
-            if (selectedPlayerCharacter != null)
-            {
-                uiManager.SetupUI(selectedPlayerCharacter);
-            }
-        }
-        Debug.Log(familyName);
-    }
-    */
-
     private async Task<List<PlayerCharacter>> GetCharactersAsync()
     {
         // Ensure initialization is complete before returning list
@@ -628,10 +496,9 @@ public class PlayerManager : MonoBehaviour
 
     private void SetWaypoint()
     {
-        ZoneManager zoneManager = FindFirstObjectByType<ZoneManager>();
-        if (zoneManager != null)
+        if (currentZone != null)
         {
-            Transform waypoint = zoneManager.GetWaypoint();
+            Transform waypoint = currentZone.GetWaypoint();
             if (waypoint != null && playerArmature != null)
             {
                 playerArmature.transform.position = waypoint.position;
@@ -649,24 +516,20 @@ public class PlayerManager : MonoBehaviour
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // TODO: Check if this scene requires the player (e.g., not main menu)
-        SetWaypoint(); // Call SetWaypoint when a relevant game scene is loaded
-        if (uiManager != null)
+        ZoneManager zoneManager = FindFirstObjectByType<ZoneManager>();
+        SetWaypoint();
+
+        // If UIManager needs the selected character, ensure it's ready first
+        if (isInitialized && selectedPlayerCharacter != null)
         {
-            // uiManager.StartHUD(); // Consider if StartHUD needs specific timing or data
-            // If UIManager needs the selected character, ensure it's ready first
-            if (isInitialized && selectedPlayerCharacter != null)
-            {
-                uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
-                Debug.Log("UIManager re-setup on scene load.");
-            }
-            else if (!isInitialized)
-            {
-                Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
-                // UI setup will happen when initialization completes
-            }
+            uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
+            Debug.Log("UIManager re-setup on scene load.");
         }
-        else { Debug.LogError("UIManager reference missing in PlayerManager!"); }
+        else if (!isInitialized)
+        {
+            Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
+            // UI setup will happen when initialization completes
+        }
 
     }
     private void OnDestroy()

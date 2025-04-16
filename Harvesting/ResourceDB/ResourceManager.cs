@@ -31,7 +31,7 @@ public class ResourceManager : MonoBehaviour
     private List<Resource> spawnedResources = new List<Resource>();
     private Dictionary<int, ResourceTemplate> templatesById = new Dictionary<int, ResourceTemplate>();
 
-    private bool isInitialized = false;
+    public bool isInitialized = false;
     private Task initializationTask;
     public event Action OnDataLoaded;
 
