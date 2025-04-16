@@ -96,7 +96,6 @@ public class MenuManager : MonoBehaviour
     }
     public void OnEnterWorld()
     {
-        playerManager.SetCharactersListAsync().GetAwaiter().GetResult();
         menuCamera.SetActive(false);
         playerManager.PlayerManagerControlSetActive(true);
         SceneManager.LoadScene("IthoriaSouth"); //TODO change to the correct scene
@@ -109,7 +108,6 @@ public class MenuManager : MonoBehaviour
     {
         playerManager.OnSetFamilyName(familyName);
     }
-
     public void OnSelectRace(int raceNumber)
     {
         switch (raceNumber)
@@ -161,8 +159,6 @@ public class MenuManager : MonoBehaviour
     {
         characterCreator.SetGender(genderToSet);
     }
-
-
     public void SetCharCreationButton(bool isThereASelectedPlayerCharacter)
     {
         if (isThereASelectedPlayerCharacter)

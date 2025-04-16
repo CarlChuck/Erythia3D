@@ -16,8 +16,6 @@ public class CharactersManager : MonoBehaviour
     [SerializeField] private SpeciesTemplate raceQadian;
     [SerializeField] private SpeciesTemplate raceTkyan;
     [SerializeField] private SpeciesTemplate raceValahoran;
-    private Task tableInitializationTask;
-    public bool IsTableInitialized { get; private set; } = false;
 
     #region Singleton
     public static CharactersManager Instance;
@@ -29,43 +27,24 @@ public class CharactersManager : MonoBehaviour
         }
     }
     #endregion
-    private async void Start() // Changed to async void
+    private void Start() // Changed to async void
     {
         // Start and store the task
-        tableInitializationTask = InitializeCharacterDataTableIfNotExistsAsync();
-        // Await it here
-        await tableInitializationTask;
-        IsTableInitialized = true; // Mark as complete
-        Debug.Log("CharactersManager table initialization sequence complete.");
-    }
-    public async Task WaitForInitialization()
-    {
-        if (tableInitializationTask != null)
-        {
-            await tableInitializationTask;
-        }
+        InitializeCharacterDataTableIfNotExists();
     }
 
-    private async Task InitializeCharacterDataTableIfNotExistsAsync()
+    private void InitializeCharacterDataTableIfNotExists()
     {
         Dictionary<string, string> charColumns = GetCharacterTableDefinition();
-        try
+        if (!DatabaseManager.Instance.TableExists(CharacterDataTableName))
         {
-            Debug.Log($"Table '{CharacterDataTableName}' does not exist. Attempting to create async...");
-            bool tableCreated = await DatabaseManager.Instance.CreateTableIfNotExistsAsync(CharacterDataTableName, charColumns);
-            if (tableCreated)
-            {
-                Debug.Log("Character table created successfully async.");
-            }
-            else
-            {
-                throw new Exception($"Failed to create critical table: {CharacterDataTableName}");
-            }
-
+            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(CharacterDataTableName, charColumns);
+            Debug.Log($"{CharacterDataTableName} table creation attempt result: {tableCreated}");
+            if (!tableCreated) Debug.LogError($"Failed to create {CharacterDataTableName} table.");
         }
-        catch (Exception ex)
+        else
         {
-            Debug.LogError($"Error during Character table initialization: {ex.Message}. Character management may fail.");
+            //Debug.Log($"{CharacterDataTableName} table already exists.");
         }
     }
     private Dictionary<string, string> GetCharacterTableDefinition()

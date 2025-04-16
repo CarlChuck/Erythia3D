@@ -9,8 +9,6 @@ using UnityEngine;
 public class AccountManager : MonoBehaviour
 {
     private const string AccountsTableName = "Accounts";
-    private Task tableInitializationTask;
-    public bool IsTableInitialized { get; private set; } = false;
 
     #region Singleton
     public static AccountManager Instance;
@@ -23,7 +21,7 @@ public class AccountManager : MonoBehaviour
     }
     #endregion
 
-    private async void Start()
+    private void Start()
     {
         if (DatabaseManager.Instance == null)
         {
@@ -31,44 +29,20 @@ public class AccountManager : MonoBehaviour
             enabled = false; // Disable component if DB manager is missing
             return;
         }
-        tableInitializationTask = InitializeAccountsTableIfNotExistsAsync();
-        // Await it here (Start is allowed to be async void)
-        await tableInitializationTask;
+        InitializeAccountsTableIfNotExists();
     }
-    public async Task WaitForInitialization()
+    private void InitializeAccountsTableIfNotExists()
     {
-        // Wait for the task created in Start to complete
-        if (tableInitializationTask != null)
+        Dictionary<string, string> columns = GetAccountTableDefinition();
+        if (!DatabaseManager.Instance.TableExists(AccountsTableName))
         {
-            await tableInitializationTask;
+            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(AccountsTableName, columns);
+            Debug.Log($"{AccountsTableName} table creation attempt result: {tableCreated}");
+            if (!tableCreated) Debug.LogError($"Failed to create {AccountsTableName} table.");
         }
-        // Or, if Start hasn't run yet, wait until the flag is set (less ideal)
-        // while (!IsTableInitialized) { await Task.Yield(); }
-    }
-    private async Task InitializeAccountsTableIfNotExistsAsync()
-    {
-        Debug.Log("Checking and initializing Accounts data table...");
-        Dictionary<string, string> columns = GetAccountTableDefinition(); // Use helper
-
-        try
+        else
         {
-            Debug.Log($"Table '{AccountsTableName}' does not exist. Attempting to create async...");
-            bool tableCreated = await DatabaseManager.Instance.CreateTableIfNotExistsAsync(AccountsTableName, columns);
-            if (tableCreated)
-            {
-                Debug.Log("Accounts table created successfully async.");
-            }
-            else
-            {
-                // Throw an exception if critical table creation fails
-                throw new Exception($"Failed to create critical table: {AccountsTableName}");
-            }
-
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error during Accounts table initialization: {ex.Message}. Account management may fail.");
-            // Depending on your game's needs, you might want to disable functionality here
+            //Debug.Log($"{AccountsTableName} table already exists.");
         }
     }
     private Dictionary<string, string> GetAccountTableDefinition()

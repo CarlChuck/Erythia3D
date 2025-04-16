@@ -54,29 +54,7 @@ public class PlayerManager : MonoBehaviour
         Debug.Log("PlayerManager Initialization Started...");
         isInitialized = false;
 
-        // 1. Wait for Dependencies (AccountManager, CharactersManager, UIManager)
-        // Ensure instances exist
-        if (AccountManager.Instance == null || CharactersManager.Instance == null || uiManager == null)
-        {
-            Debug.LogError("PlayerManager dependencies missing! Waiting...");
-            // Wait until dependencies appear (simple yield loop)
-            while (AccountManager.Instance == null || CharactersManager.Instance == null || uiManager == null)
-            {
-                await Task.Yield(); // Wait a frame
-            }
-            Debug.Log("PlayerManager dependencies found.");
-        }
-
-        // Wait for managers to finish their own table initializations
-        Debug.Log("Waiting for AccountManager init...");
-        await AccountManager.Instance.WaitForInitialization();
-        Debug.Log("AccountManager initialized.");
-
-        Debug.Log("Waiting for CharactersManager init...");
-        await CharactersManager.Instance.WaitForInitialization();
-        Debug.Log("CharactersManager initialized.");
-
-        // 2. Perform Login Asynchronously
+        // 1. Perform Login Asynchronously
         Debug.Log("Performing login...");
         bool loginSuccess = await LoginAsync();
         if (!loginSuccess)
@@ -87,12 +65,12 @@ public class PlayerManager : MonoBehaviour
         }
         Debug.Log($"Login successful. AccountID: {accountID}, AccountName: {accountName}");
 
-        // 3. Load Character List Asynchronously
+        // 2. Load Character List Asynchronously
         Debug.Log("Loading character list...");
         await SetCharactersListAsync();
         Debug.Log($"Character list loaded. Found {playerCharacters.Count} characters.");
 
-        // 4. Final setup (e.g., initial UI setup)
+        // 3. Final setup (e.g., initial UI setup)
         if (selectedPlayerCharacter != null)
         {
             // Make sure UIManager setup is called AFTER character is selected/loaded
@@ -113,11 +91,11 @@ public class PlayerManager : MonoBehaviour
         {
             if (selectedPlayerCharacter != null)
             {
-                MenuManager.Instance.SetCharCreationButton(true); // Notify MenuManager if needed
+                MenuManager.Instance.SetCharCreationButton(false); // Notify MenuManager if needed
             }
             else
             {
-                MenuManager.Instance.SetCharCreationButton(false); // Notify MenuManager if needed
+                MenuManager.Instance.SetCharCreationButton(true); // Notify MenuManager if needed
             }
         }
     }
@@ -189,22 +167,6 @@ public class PlayerManager : MonoBehaviour
     }
     public async Task SetCharactersListAsync() // Changed to async Task
     {
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
-        {
-            Debug.LogWarning("SetCharactersListAsync called before initialization complete. Waiting...");
-            await initializationTask; // Ensure initialization is done before proceeding
-            if (!isInitialized)
-            { // Check again after waiting
-                Debug.LogError("Initialization failed, cannot set character list.");
-                return;
-            }
-        }
-        else if (!isInitialized)
-        {
-            Debug.LogError("SetCharactersListAsync called, but manager is not initialized and initialization hasn't started/completed.");
-            return; // Should not happen if called after Start completes initializationTask
-        }
-
 
         if (accountID <= 0)
         {

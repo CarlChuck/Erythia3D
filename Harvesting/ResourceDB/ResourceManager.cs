@@ -7,8 +7,7 @@ using UnityEngine;
 
 public class ResourceManager : MonoBehaviour
 {
-    // Singleton instance
-    public static ResourceManager Instance { get; private set; }
+
 
     #region RandomNameVariables
     private System.Random randomNumber = new System.Random();
@@ -17,8 +16,8 @@ public class ResourceManager : MonoBehaviour
     private List<string> thirdPartOfName = new List<string> { "ton", "lee", "nex", "rus", "kus", "tus", "vus", "lys", "rex", "dus", "kas", "los", "tus", "vas", "gos", "nus", "vos", "kes", "das", "tus", "bane", "fade", "gore", "holt", "kane", "lane", "lyth", "mose", "naan", "pike", "rath", "roth", "ryn", "sank", "slade", "snod", "spar", "stadt", "stoke", "torn", "void", "wake", "wynn", "wyn", "xan", "yeld", "zell", "zorn", "zorv" };
     #endregion
 
-    private Transform resourcesParent;
-    private Transform resourceTemplatesParent;
+    [SerializeField] private Transform resourcesParent;
+    [SerializeField] private Transform resourceTemplatesParent;
 
     private const string ResourceSpawnsTableName = "ResourceSpawns";
     private const string ResourceTemplateTableName = "ResourceTemplate";
@@ -36,11 +35,14 @@ public class ResourceManager : MonoBehaviour
     private Task initializationTask;
     public event Action OnDataLoaded;
 
+    #region Singleton
+    public static ResourceManager Instance { get; private set; }
     private void Awake()
     {
-        // Singleton implementation
         Instance = this;
     }
+    #endregion
+
     private void Start()
     {
         InitializeResourceDataTablesIfNotExists();
@@ -96,7 +98,7 @@ public class ResourceManager : MonoBehaviour
         // Prevent starting multiple initializations
         if (initializationTask == null || initializationTask.IsCompleted)
         {
-            Debug.Log("Starting ResourceDatabaseManager Initialization...");
+            Debug.Log("Starting ResourceManager Initialization...");
             isInitialized = false; // Ensure marked as not initialized until task completes fully
             initializationTask = InitializeAsync();
 
@@ -104,13 +106,13 @@ public class ResourceManager : MonoBehaviour
             {
                 if (t.IsFaulted)
                 {
-                    Debug.LogError($"ResourceDatabaseManager Initialization Failed: {t.Exception}");
+                    Debug.LogError($"ResourceManager Initialization Failed: {t.Exception}");
                 }
             }, TaskScheduler.FromCurrentSynchronizationContext()); // Use Unity's context for logging
         }
         else
         {
-            Debug.LogWarning("ResourceDatabaseManager initialization already in progress.");
+            Debug.LogWarning("ResourceManager initialization already in progress.");
         }
     }
     private void InitializeResourceDataTablesIfNotExists()
@@ -145,7 +147,7 @@ public class ResourceManager : MonoBehaviour
         }
         else
         {
-            Debug.Log($"{ResourceSpawnsTableName} table already exists.");
+            //Debug.Log($"{ResourceSpawnsTableName} table already exists.");
         }
 
         // Definition for ResourceTemplate Table
@@ -176,7 +178,7 @@ public class ResourceManager : MonoBehaviour
         }
         else
         {
-            Debug.Log($"{ResourceTemplateTableName} table already exists.");
+            //Debug.Log($"{ResourceTemplateTableName} table already exists.");
         }
     }
     private async Task InitializeAsync()
