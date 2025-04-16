@@ -156,6 +156,23 @@ public abstract class ResourceNode : Interactable
     {
         resourceSubType = sType;
     }
+
+    public Resource GetResource()
+    {
+        return resource;
+    }
+    public ResourceType GetResourceType()
+    {
+        return resourceType;
+    }
+    public ResourceSubType GetResourceSubType()
+    {
+        return resourceSubType;
+    }
+    public void SetResourceItemPrefab(ResourceItem resourceItem)
+    {
+        resourceItemPrefab = resourceItem;
+    }
 }
 public enum HarvestType
 {

@@ -9,6 +9,8 @@ using UnityEngine;
 public class AccountManager : MonoBehaviour
 {
     private const string AccountsTableName = "Accounts";
+    private Task tableInitializationTask;
+    public bool IsTableInitialized { get; private set; } = false;
 
     #region Singleton
     public static AccountManager Instance;
@@ -21,20 +23,57 @@ public class AccountManager : MonoBehaviour
     }
     #endregion
 
-    void Start()
+    private async void Start()
     {
         if (DatabaseManager.Instance == null)
         {
-            Debug.LogError("DatabaseManager instance is missing in the scene.");
+            Debug.LogError("DatabaseManager instance is missing. AccountManager cannot function.");
+            enabled = false; // Disable component if DB manager is missing
             return;
         }
-        InitializeAccountsTableIfNotExists();
-        // Use async method for startup logic
+        tableInitializationTask = InitializeAccountsTableIfNotExistsAsync();
+        // Await it here (Start is allowed to be async void)
+        await tableInitializationTask;
     }
-
-    private void InitializeAccountsTableIfNotExists()
+    public async Task WaitForInitialization()
     {
-        Dictionary<string, string> columns = new Dictionary<string, string>
+        // Wait for the task created in Start to complete
+        if (tableInitializationTask != null)
+        {
+            await tableInitializationTask;
+        }
+        // Or, if Start hasn't run yet, wait until the flag is set (less ideal)
+        // while (!IsTableInitialized) { await Task.Yield(); }
+    }
+    private async Task InitializeAccountsTableIfNotExistsAsync()
+    {
+        Debug.Log("Checking and initializing Accounts data table...");
+        Dictionary<string, string> columns = GetAccountTableDefinition(); // Use helper
+
+        try
+        {
+            Debug.Log($"Table '{AccountsTableName}' does not exist. Attempting to create async...");
+            bool tableCreated = await DatabaseManager.Instance.CreateTableIfNotExistsAsync(AccountsTableName, columns);
+            if (tableCreated)
+            {
+                Debug.Log("Accounts table created successfully async.");
+            }
+            else
+            {
+                // Throw an exception if critical table creation fails
+                throw new Exception($"Failed to create critical table: {AccountsTableName}");
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error during Accounts table initialization: {ex.Message}. Account management may fail.");
+            // Depending on your game's needs, you might want to disable functionality here
+        }
+    }
+    private Dictionary<string, string> GetAccountTableDefinition()
+    {
+        return new Dictionary<string, string> 
         {
             {"AccountID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"Username", "VARCHAR(255)"},
@@ -44,22 +83,9 @@ public class AccountManager : MonoBehaviour
             {"LastCharacterID", "INT"},
             {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
-
-        if (!DatabaseManager.Instance.TableExists(AccountsTableName))
-        {
-            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(AccountsTableName, columns);
-            if (tableCreated)
-            {
-                Debug.Log("Account table created successfully.");
-            }
-            else
-            {
-                Debug.LogWarning("Failed to create Account table.");
-            }
-        }
     }
 
-    // Hash the password using SHA-256 before storing it in the database
+    #region Hash Password
     private string HashPassword(string password)
     {
         using (SHA256 sha256 = SHA256.Create())
@@ -74,35 +100,49 @@ public class AccountManager : MonoBehaviour
             return sb.ToString();
         }
     }
+    #endregion
 
     // Create a new account with optional Steam integration
-    public bool CreateNewAccount(string username, string password, string email = null, ulong steamId = 0)
+    public async Task<bool> CreateNewAccountAsync(string username, string password, string email, ulong steamId)
     {
-        string hashedPassword = HashPassword(password);
-        Dictionary<string, object> values = new Dictionary<string, object>
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
         {
+            Debug.LogError("Username and password cannot be empty.");
+            return false;
+        }
+
+        string hashedPassword = HashPassword(password);
+        Dictionary<string, object> values = new Dictionary<string, object> {
             {"Username", username},
             {"PasswordHash", hashedPassword},
-            {"Email", email},
-            {"LastCharacterID", 0},
-            {"SteamID", steamId}
+            {"Email", string.IsNullOrWhiteSpace(email) ? (object)DBNull.Value : email },
+            {"SteamID", steamId == 0 ? (object)DBNull.Value : (long)steamId }, // Store as signed BIGINT potentially, ensure DB type matches
+            // LastCharacterID defaults to 0 in DB
         };
 
-        bool accountCreated = DatabaseManager.Instance.InsertData(AccountsTableName, values);
-        if (accountCreated)
+        try
         {
-            Debug.Log($"New account created with Username: {username}");
+            bool success = await DatabaseManager.Instance.InsertDataAsync(AccountsTableName, values);
+            if (!success)
+            {
+                Debug.LogWarning($"Failed to insert new account for Username: {username}. Possible duplicate Username, Email, or SteamID?");
+            }
+            return success;
         }
-        else
+        catch (Exception ex)
         {
-            Debug.LogWarning("Failed to create new account.");
+            Debug.LogError($"Exception during account creation for {username}: {ex.Message}\n{ex.StackTrace}");
+            return false;
         }
-        return accountCreated;
     }
 
     // Async method to get account by Steam ID
-    private async Task<Dictionary<string, object>> GetAccountBySteamIDAsync(ulong steamId)
+    public async Task<Dictionary<string, object>> GetAccountBySteamIDAsync(ulong steamId)
     {
+        if (steamId == 0) 
+        { 
+            return null; 
+        }
         string query = "SELECT * FROM Accounts WHERE SteamID = @SteamID";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@SteamID", steamId } };
 
@@ -128,8 +168,12 @@ public class AccountManager : MonoBehaviour
     }
 
     // Async method to get account by username
-    private async Task<Dictionary<string, object>> GetAccountByUsernameAsync(string username)
+    public async Task<Dictionary<string, object>> GetAccountByUsernameAsync(string username)
     {
+        if (string.IsNullOrWhiteSpace(username)) 
+        {
+            return null; 
+        }
         string query = "SELECT * FROM Accounts WHERE Username = @Username";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@Username", username } };
 
@@ -165,22 +209,48 @@ public class AccountManager : MonoBehaviour
         return Task.Run(() => GetAccountByUsernameAsync(username)).GetAwaiter().GetResult();
     }
 
-    public bool SetAccountLastPlayedCharacter(int accountId, int lastCharacterId)
+    public async Task<bool> SetAccountLastPlayedCharacterAsync(int accountId, int lastCharacterId)
     {
+        if (accountId <= 0) 
+        { 
+            Debug.LogError("Invalid AccountID provided."); 
+            return false; 
+        }
 
-        Dictionary<string, object> values = new Dictionary<string, object>
+        Dictionary<string, object> values = new Dictionary<string, object> 
         {
-            { "LastCharacterID", lastCharacterId }
+            { "LastCharacterID", lastCharacterId < 0 ? 0 : lastCharacterId } // Ensure non-negative ID
         };
-
         string whereCondition = "`AccountID` = @where_AccountID";
-
-        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        Dictionary<string, object> whereParams = new Dictionary<string, object> 
         {
             { "@where_AccountID", accountId }
         };
 
-        return DatabaseManager.Instance.UpdateData("accounts", values, whereCondition, whereParams);
+        try
+        {
+            // Use UpdateDataAsync
+            return await DatabaseManager.Instance.UpdateDataAsync(AccountsTableName, values, whereCondition, whereParams);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Exception setting last played character for AccountID {accountId}: {ex.Message}");
+            return false;
+        }
+    }
+    public bool SetAccountLastPlayedCharacter(int accountId, int lastCharacterId)
+    {
+        Debug.LogWarning($"Calling synchronous SetAccountLastPlayedCharacter for AccountID '{accountId}'. This will block the main thread!");
+        try
+        {
+            // Call the async helper and block for the result
+            return SetAccountLastPlayedCharacterAsync(accountId, lastCharacterId).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error in synchronous SetAccountLastPlayedCharacter wrapper: {ex.Message}");
+            return false;
+        }
     }
 
     public async Task<bool> VerifyPasswordAsync(string username, string password)
@@ -188,19 +258,29 @@ public class AccountManager : MonoBehaviour
         Dictionary<string, object> account = await GetAccountByUsernameAsync(username);
         if (account == null)
         {
-            Debug.LogWarning($"User not found: {username}");
-            return false;
+            Debug.Log($"Password verification failed: User not found ({username})");
+            return false; // User not found
         }
 
         string storedPasswordHash = account["PasswordHash"] as string;
+        if (string.IsNullOrEmpty(storedPasswordHash))
+        {
+            Debug.LogError($"Password verification error: Stored password hash is null or empty for user {username}.");
+            return false; // Data integrity issue
+        }
+
         string inputPasswordHash = HashPassword(password);
-        return storedPasswordHash == inputPasswordHash;
+        bool match = storedPasswordHash.Equals(inputPasswordHash, StringComparison.OrdinalIgnoreCase); // Case-insensitive compare for hex strings
+        if (!match) { Debug.Log($"Password verification failed for user {username}."); }
+        return match;
     }
 
     // Synchronous wrapper for VerifyPassword
     public bool VerifyPassword(string username, string password)
     {
-        return Task.Run(() => VerifyPasswordAsync(username, password)).GetAwaiter().GetResult();
+        Debug.LogWarning($"Calling synchronous VerifyPassword for '{username}'. This will block the main thread!");
+        try { return VerifyPasswordAsync(username, password).GetAwaiter().GetResult(); }
+        catch (Exception ex) { Debug.LogError($"Error in sync VerifyPassword wrapper: {ex.Message}"); return false; }
     }
 
     // Generate a random password for Steam-created accounts

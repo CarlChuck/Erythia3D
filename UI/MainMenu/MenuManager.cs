@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -38,7 +39,6 @@ public class MenuManager : MonoBehaviour
         OnMainMenu();
         menuCamera.SetActive(true);
         playerManager.PlayerManagerControlSetActive(false);
-        StartCoroutine(DelayedCharacterCheck());
     }
 
     #region Panes
@@ -96,7 +96,7 @@ public class MenuManager : MonoBehaviour
     }
     public void OnEnterWorld()
     {
-        playerManager.SetCharactersList();
+        playerManager.SetCharactersListAsync().GetAwaiter().GetResult();
         menuCamera.SetActive(false);
         playerManager.PlayerManagerControlSetActive(true);
         SceneManager.LoadScene("IthoriaSouth"); //TODO change to the correct scene
@@ -162,11 +162,10 @@ public class MenuManager : MonoBehaviour
         characterCreator.SetGender(genderToSet);
     }
 
-    private IEnumerator DelayedCharacterCheck()
-    {
-        yield return new WaitForSeconds(0.1f);
 
-        if (!IsCharacterSelected())
+    public void SetCharCreationButton(bool isThereASelectedPlayerCharacter)
+    {
+        if (isThereASelectedPlayerCharacter)
         {
             playButton.SetActive(true);
             createCharButton.SetActive(false);
@@ -175,19 +174,6 @@ public class MenuManager : MonoBehaviour
         {
             playButton.SetActive(false);
             createCharButton.SetActive(true);
-        }
-    }
-    private bool IsCharacterSelected()
-    {
-        if (playerManager.GetSelectedPlayerCharacter() != null)
-        {
-            Debug.Log("Character Selected");
-            return true;
-        }
-        else
-        {
-            Debug.Log("No Character Selected");
-            return false;
         }
     }
 }

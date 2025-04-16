@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using UnityEngine;
-using MySqlConnector;
+using MySqlConnector; // Ensure you are using this namespace
 using System.Linq;
 using System.Threading.Tasks;
-
+using System.Data.Common; // Required for DbDataReader
 
 public class DatabaseManager : MonoBehaviour
 {
@@ -19,8 +19,6 @@ public class DatabaseManager : MonoBehaviour
     [SerializeField] private bool logQueries = true;
 
     private string connectionString;
-    private MySqlConnection dbConnection;
-
 
     #region Singleton
     public static DatabaseManager Instance;
@@ -30,19 +28,23 @@ public class DatabaseManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
+            // DontDestroyOnLoad(gameObject); // Optional
         }
-        InitializeDatabase();
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate DatabaseManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
+        InitializeDatabaseConnectionString(); // Just prepare the string
     }
     #endregion
-    private void Start()
-    {
-    }
 
-    private void InitializeDatabase()
+    // Only prepares the connection string, doesn't create the shared connection object anymore
+    private void InitializeDatabaseConnectionString()
     {
         try
         {
-            // Build connection string
             MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
             {
                 Server = server,
@@ -51,491 +53,374 @@ public class DatabaseManager : MonoBehaviour
                 UserID = username,
                 Password = password,
                 SslMode = useSsl ? MySqlSslMode.Required : MySqlSslMode.None,
-                ConnectionTimeout = 30,                    
-                CharacterSet = "utf8mb4_general_ci", // Explicitly set character set
+                ConnectionTimeout = 30,
+                CharacterSet = "utf8mb4_general_ci",
                 AllowUserVariables = true,
                 AllowZeroDateTime = true,
                 ConvertZeroDateTime = true,
                 TreatTinyAsBoolean = true,
-                UseCompression = false
+                UseCompression = false,
+                // Important for async operations: Ensure pooling is enabled (default is true)
+                Pooling = true,
+                MinimumPoolSize = 0, // Adjust as needed
+                MaximumPoolSize = 100 // Adjust as needed
             };
-
             connectionString = builder.ConnectionString;
-            dbConnection = new MySqlConnection(connectionString);
-            Debug.Log($"MySQL database initialized with connection to {server}:{port}/{database}");
+            Debug.Log($"MySQL connection string configured for {server}:{port}/{database}");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Failed to initialize MySQL database: {ex.Message}");
-        }
-    }
-
-    public bool TestConnection()
-    {
-        try
-        {
-            if (OpenConnection())
-            {
-                CloseConnection();
-                return true;
-            }
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Connection test failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private bool OpenConnection()
-    {
-        try
-        {
-            if (dbConnection == null)
-            {
-                dbConnection = new MySqlConnection(connectionString);
-            }
-
-            if (dbConnection.State != ConnectionState.Open)
-            {
-                dbConnection.Open();
-                if (logQueries) 
-                { 
-                    Debug.Log("MySQL connection opened"); 
-                }
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error opening MySQL connection: {ex.Message}");
-            //Debug.LogError($"Stack trace: {ex.StackTrace}");
-            return false;
-        }
-    }
-
-    private void CloseConnection()
-    {
-        if (dbConnection != null && dbConnection.State == ConnectionState.Open)
-        {
-            dbConnection.Close();
-            if (logQueries) Debug.Log("MySQL connection closed");
+            Debug.LogError($"Failed to build MySQL connection string: {ex.Message}");
+            // Consider disabling the component or setting an error state
+            enabled = false;
         }
     }
 
 
-    // Executes a non-query SQL command (INSERT, UPDATE, DELETE, etc.)
-    // returns the number of rows affected
-    public int ExecuteNonQuery(string commandText, Dictionary<string, object> parameters = null)
+    #region Asynchronous Methods
+
+    // Executes a query asynchronously and returns the results as a list of dictionaries.
+    public async Task<List<Dictionary<string, object>>> ExecuteQueryAsync(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (logQueries) 
-        { 
-            Debug.Log($"Executing SQL: {commandText}"); 
-        }
-
-        if (!OpenConnection()) 
-        { 
-            return -1; 
-        }
-
-        try
+        if (string.IsNullOrEmpty(connectionString))
         {
-            using (MySqlCommand cmd = new MySqlCommand(commandText, dbConnection))
+            Debug.LogError("Database connection string is not initialized.");
+            return null; // Indicate failure
+        }
+
+        List<Dictionary<string, object>> results = new List<Dictionary<string, object>>();
+        if (logQueries) Debug.Log($"Executing async query: {commandText}");
+
+        // Create and dispose connection for each call, leveraging pooling
+        using (var connection = new MySqlConnection(connectionString))
+        {
+            try
             {
-                // Add parameters if provided
-                if (parameters != null)
+                await connection.OpenAsync(); // Use async open
+
+                using (var cmd = new MySqlCommand(commandText, connection))
                 {
-                    foreach (var param in parameters)
+                    if (parameters != null)
                     {
-                        MySqlParameter sqlParam = new MySqlParameter(param.Key, param.Value ?? DBNull.Value);
-                        cmd.Parameters.Add(sqlParam);
+                        foreach (var param in parameters)
+                        {
+                            cmd.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                        }
                     }
-                }
 
-                return cmd.ExecuteNonQuery();
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error executing command: {ex.Message}");
-            return -1;
-        }
-        finally
-        {
-            CloseConnection();
-        }
-    }
-
-    // Executes a query and returns the first column of the first row.
-    // returns The scalar result or null if no result
-    public object ExecuteScalar(string commandText, Dictionary<string, object> parameters = null)
-    {
-        if (logQueries) Debug.Log($"Executing scalar SQL: {commandText}");
-
-        if (!OpenConnection()) return null;
-
-        try
-        {
-            using (MySqlCommand cmd = new MySqlCommand(commandText, dbConnection))
-            {
-                // Add parameters if provided
-                if (parameters != null)
-                {
-                    foreach (var param in parameters)
+                    // Use DbDataReader for compatibility and async methods
+                    using (DbDataReader reader = await cmd.ExecuteReaderAsync()) // Use async execute
                     {
-                        MySqlParameter sqlParam = new MySqlParameter(param.Key, param.Value ?? DBNull.Value);
-                        cmd.Parameters.Add(sqlParam);
-                    }
-                }
-
-                return cmd.ExecuteScalar();
+                        while (await reader.ReadAsync()) // Use async read
+                        {
+                            var row = new Dictionary<string, object>();
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                row[reader.GetName(i)] = await reader.GetFieldValueAsync<object>(i); // Use async get
+                            }
+                            results.Add(row);
+                        }
+                    } // Reader disposed here
+                } // Command disposed here
             }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error executing async query: {commandText}\n{ex.Message}\n{ex.StackTrace}");
+                return null; // Indicate failure by returning null
+            }
+            // Connection disposed (and closed) automatically by 'using' block
         }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error executing scalar: {ex.Message}");
-            return null;
-        }
-        finally
-        {
-            CloseConnection();
-        }
+        return results;
     }
 
-    // Executes a query and returns a DataTable with the results.
-    // returns DataTable containing the query results
-    public DataTable ExecuteQuery(string commandText, Dictionary<string, object> parameters = null)
+    // Executes a non-query SQL command (INSERT, UPDATE, DELETE, etc.) asynchronously
+    // returns the number of rows affected or -1 on failure
+    public async Task<int> ExecuteNonQueryAsync(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (logQueries) Debug.Log($"Executing query SQL: {commandText}");
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
+        if (logQueries) Debug.Log($"Executing async non-query: {commandText}");
 
-        DataTable result = new DataTable();
-        if (!OpenConnection()) return result;
-
-        try
+        using (var connection = new MySqlConnection(connectionString))
         {
-            using (MySqlCommand cmd = new MySqlCommand(commandText, dbConnection))
+            try
             {
-                // Add parameters if provided
-                if (parameters != null)
+                await connection.OpenAsync();
+                using (var cmd = new MySqlCommand(commandText, connection))
                 {
-                    foreach (var param in parameters)
+                    if (parameters != null)
                     {
-                        MySqlParameter sqlParam = new MySqlParameter(param.Key, param.Value ?? DBNull.Value);
-                        cmd.Parameters.Add(sqlParam);
+                        foreach (var param in parameters)
+                        {
+                            cmd.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                        }
                     }
-                }
-
-                using (MySqlDataAdapter adapter = new MySqlDataAdapter(cmd))
-                {
-                    adapter.Fill(result);
-                    return result;
+                    return await cmd.ExecuteNonQueryAsync(); // Use async execute
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error executing query: {ex.Message}");
-            return result;
-        }
-        finally
-        {
-            CloseConnection();
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error executing async non-query: {commandText}\n{ex.Message}\n{ex.StackTrace}");
+                return -1; // Indicate failure
+            }
         }
     }
 
-    // Creates a table in the database if it doesn't exist.
-    // returns True if successful
-    public bool CreateTableIfNotExists(string tableName, Dictionary<string, string> columns)
+    // Executes a query asynchronously and returns the first column of the first row.
+    public async Task<object> ExecuteScalarAsync(string commandText, Dictionary<string, object> parameters = null)
+    {
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return null; }
+        if (logQueries) Debug.Log($"Executing async scalar: {commandText}");
+
+        using (var connection = new MySqlConnection(connectionString))
+        {
+            try
+            {
+                await connection.OpenAsync();
+                using (var cmd = new MySqlCommand(commandText, connection))
+                {
+                    if (parameters != null)
+                    {
+                        foreach (var param in parameters)
+                        {
+                            cmd.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                        }
+                    }
+                    return await cmd.ExecuteScalarAsync(); // Use async execute
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error executing async scalar: {commandText}\n{ex.Message}\n{ex.StackTrace}");
+                return null; // Indicate failure
+            }
+        }
+    }
+
+    // Gets the last inserted ID asynchronously.
+    public async Task<long> GetLastInsertIdAsync()
+    {
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
+
+        using (var connection = new MySqlConnection(connectionString))
+        {
+            try
+            {
+                await connection.OpenAsync();
+                using (var cmd = new MySqlCommand("SELECT LAST_INSERT_ID()", connection))
+                {
+                    // ExecuteScalarAsync returns object, needs conversion
+                    object result = await cmd.ExecuteScalarAsync();
+                    return Convert.ToInt64(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error getting last insert ID async: {ex.Message}\n{ex.StackTrace}");
+                return -1; // Indicate failure
+            }
+        }
+    }
+
+
+    // Asynchronous check if a table exists
+    public async Task<bool> TableExistsAsync(string tableName)
+    {
+        // Note: information_schema queries might be slower on some MySQL versions.
+        // An alternative is trying to select from the table and catching the specific error.
+        string query = $"SELECT 1 FROM information_schema.tables WHERE table_schema = @dbName AND table_name = @tableName LIMIT 1";
+        var parameters = new Dictionary<string, object> {
+            { "@dbName", database }, // Use parameter for database name
+            { "@tableName", tableName }
+        };
+        var result = await ExecuteScalarAsync(query, parameters);
+        return result != null && result != DBNull.Value;
+    }
+
+
+    // Asynchronous Table Creation
+    public async Task<bool> CreateTableIfNotExistsAsync(string tableName, Dictionary<string, string> columns)
     {
         try
         {
-            string columnsDefinition = "";
-            foreach (var column in columns)
+            string columnsDefinition = string.Join(", ", columns.Select(column => $"`{column.Key}` {column.Value}"));
+            string query = $"CREATE TABLE IF NOT EXISTS `{tableName}` ({columnsDefinition}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;"; // Specify engine and charset
+
+            int result = await ExecuteNonQueryAsync(query);
+            // ExecuteNonQuery returns rows affected; for CREATE TABLE it's often 0 on success.
+            // We need to check for >= 0 (success) rather than > 0.
+            // A more reliable check might be to call TableExistsAsync again afterwards.
+            if (result >= 0)
             {
-                if (columnsDefinition != "") 
-                { 
-                    columnsDefinition += ", "; 
-                }
-                columnsDefinition += $"`{column.Key}` {column.Value}";
+                return await TableExistsAsync(tableName); // Verify creation
             }
-
-            string query = $"CREATE TABLE IF NOT EXISTS `{tableName}` ({columnsDefinition})";
-
-            return ExecuteNonQuery(query) >= 0;
+            return false; // NonQuery failed (< 0)
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error creating table: {ex.Message}");
+            Debug.LogError($"Error creating table async: {tableName}\n{ex.Message}");
             return false;
         }
     }
 
-    // Checks if a table exists in the database.
-    // returns True if the table exists
-    public bool TableExists(string tableName)
-    {
-        string query = $"SELECT 1 FROM information_schema.tables WHERE table_schema = '{database}' AND table_name = '{tableName}' LIMIT 1";
-        var result = ExecuteScalar(query);
-        return result != null;
-    }
-
-    // Inserts data into a table. 
-    // returns True if successful
-    public bool InsertData(string tableName, Dictionary<string, object> values)
+    // Asynchronous Insert
+    public async Task<bool> InsertDataAsync(string tableName, Dictionary<string, object> values)
     {
         try
         {
             string columns = string.Join(", ", values.Keys.Select(k => $"`{k}`"));
             string parameters = string.Join(", ", values.Keys.Select(k => $"@{k}"));
-
             string query = $"INSERT INTO `{tableName}` ({columns}) VALUES ({parameters})";
 
-            Dictionary<string, object> queryParams = new Dictionary<string, object>();
-            foreach (var kvp in values)
-            {
-                queryParams.Add($"@{kvp.Key}", kvp.Value);
-            }
+            // Prepare parameters with @ prefix
+            Dictionary<string, object> queryParams = values.ToDictionary(kvp => $"@{kvp.Key}", kvp => kvp.Value);
 
-            return ExecuteNonQuery(query, queryParams) > 0;
+            int rowsAffected = await ExecuteNonQueryAsync(query, queryParams);
+            return rowsAffected > 0;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error inserting data: {ex.Message}");
+            Debug.LogError($"Error inserting data async: {ex.Message}");
             return false;
         }
     }
 
-    // Inserts multiple rows of data into a table in a single transaction.
-    // returns True if successful
-    public bool BulkInsertData(string tableName, List<Dictionary<string, object>> valuesList)
-    {
-        if (valuesList == null || valuesList.Count == 0) return false;
-
-        if (!OpenConnection()) return false;
-
-        MySqlTransaction transaction = null;
-        try
-        {
-            transaction = dbConnection.BeginTransaction();
-
-            // Get column names from the first dictionary
-            string columns = string.Join(", ", valuesList[0].Keys.Select(k => $"`{k}`"));
-            string paramPlaceholder = string.Join(", ", valuesList[0].Keys.Select(k => $"@{k}"));
-
-            string query = $"INSERT INTO `{tableName}` ({columns}) VALUES ({paramPlaceholder})";
-
-            using (MySqlCommand cmd = new MySqlCommand(query, dbConnection, transaction))
-            {
-                // Create parameters once
-                foreach (var key in valuesList[0].Keys)
-                {
-                    cmd.Parameters.Add(new MySqlParameter($"@{key}", DBNull.Value));
-                }
-
-                int rowsAffected = 0;
-                foreach (var values in valuesList)
-                {
-                    // Update parameter values for each row
-                    foreach (var kvp in values)
-                    {
-                        cmd.Parameters[$"@{kvp.Key}"].Value = kvp.Value ?? DBNull.Value;
-                    }
-
-                    rowsAffected += cmd.ExecuteNonQuery();
-                }
-
-                transaction.Commit();
-                return rowsAffected > 0;
-            }
-        }
-        catch (Exception ex)
-        {
-            transaction?.Rollback();
-            Debug.LogError($"Error in bulk insert: {ex.Message}");
-            return false;
-        }
-        finally
-        {
-            CloseConnection();
-        }
-    }
-
-    // Updates data in a table.
-    // returns True if successful
-    public bool UpdateData(string tableName, Dictionary<string, object> values, string whereCondition, Dictionary<string, object> whereParams)
+    // Asynchronous Update
+    public async Task<bool> UpdateDataAsync(string tableName, Dictionary<string, object> values, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
         {
             string setClause = string.Join(", ", values.Keys.Select(k => $"`{k}` = @set_{k}"));
-
             string query = $"UPDATE `{tableName}` SET {setClause} WHERE {whereCondition}";
 
             Dictionary<string, object> queryParams = new Dictionary<string, object>();
+            // Add SET parameters (prefixing keys to avoid collision with WHERE keys)
+            foreach (var kvp in values) { queryParams.Add($"@set_{kvp.Key}", kvp.Value); }
+            // Add WHERE parameters (using original keys)
+            foreach (var kvp in whereParams) { queryParams.Add(kvp.Key, kvp.Value); }
 
-            // Add SET parameters
-            foreach (var kvp in values)
-            {
-                queryParams.Add($"@set_{kvp.Key}", kvp.Value);
-            }
-
-            // Add WHERE parameters
-            foreach (var kvp in whereParams)
-            {
-                queryParams.Add(kvp.Key, kvp.Value);
-            }
-
-            return ExecuteNonQuery(query, queryParams) > 0;
+            int rowsAffected = await ExecuteNonQueryAsync(query, queryParams);
+            return rowsAffected > 0;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error updating data: {ex.Message}");
+            Debug.LogError($"Error updating data async: {ex.Message}");
             return false;
         }
     }
 
-    // Deletes data from a table.
-    // returns True if successful
-    public bool DeleteData(string tableName, string whereCondition, Dictionary<string, object> whereParams)
+    // Asynchronous Delete
+    public async Task<bool> DeleteDataAsync(string tableName, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
         {
             string query = $"DELETE FROM `{tableName}` WHERE {whereCondition}";
-
-            return ExecuteNonQuery(query, whereParams) > 0;
+            int rowsAffected = await ExecuteNonQueryAsync(query, whereParams);
+            return rowsAffected > 0;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error deleting data: {ex.Message}");
+            Debug.LogError($"Error deleting data async: {ex.Message}");
             return false;
         }
     }
 
-    // Executes a query asynchronously and returns the results as a list of dictionaries.
-    // returns Task containing List of Dictionaries with the query results
-    public async Task<List<Dictionary<string, object>>> ExecuteQueryAsync(string commandText, Dictionary<string, object> parameters = null)
+    #endregion
+
+    #region Synchronous Methods (Refactored for Scoped Connections) - Keep if needed, but prefer async
+
+    public int ExecuteNonQuery(string commandText, Dictionary<string, object> parameters = null)
     {
-        return await Task.Run(() => {
-            List<Dictionary<string, object>> results = new List<Dictionary<string, object>>();
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
+        if (logQueries) Debug.Log($"Executing sync non-query: {commandText}");
 
-            if (!OpenConnection())
-            {
-                Debug.LogError("Failed to open database connection");
-                return results;
-            }
-
+        using (var connection = new MySqlConnection(connectionString))
+        {
             try
             {
-                using (MySqlCommand cmd = new MySqlCommand(commandText, dbConnection))
+                connection.Open(); // Sync open
+                using (var cmd = new MySqlCommand(commandText, connection))
                 {
-                    // Add parameters if provided
-                    if (parameters != null)
-                    {
-                        foreach (var param in parameters)
-                        {
-                            MySqlParameter sqlParam = new MySqlParameter(param.Key, param.Value ?? DBNull.Value);
-                            cmd.Parameters.Add(sqlParam);
-                        }
-                    }
-
-                    using (MySqlDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            Dictionary<string, object> row = new Dictionary<string, object>();
-                            for (int i = 0; i < reader.FieldCount; i++)
-                            {
-                                row[reader.GetName(i)] = reader.GetValue(i);
-                            }
-                            results.Add(row);
-                        }
-                    }
+                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
+                    return cmd.ExecuteNonQuery(); // Sync execute
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Error executing async query: {ex.Message}");
-            }
-            finally
-            {
-                CloseConnection();
-            }
-
-            return results;
-        });
+            catch (Exception ex) { Debug.LogError($"Error in ExecuteNonQuery: {ex.Message}"); return -1; }
+        } // Connection disposed/closed
     }
 
-    // Gets the last inserted ID for auto-increment columns.
-    // returns The last inserted ID
-    public long GetLastInsertId()
+    public object ExecuteScalar(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (!OpenConnection()) return -1;
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return null; }
+        if (logQueries) Debug.Log($"Executing sync scalar: {commandText}");
 
-        try
+        using (var connection = new MySqlConnection(connectionString))
         {
-            using (MySqlCommand cmd = new MySqlCommand("SELECT LAST_INSERT_ID()", dbConnection))
+            try
             {
-                return Convert.ToInt64(cmd.ExecuteScalar());
+                connection.Open();
+                using (var cmd = new MySqlCommand(commandText, connection))
+                {
+                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
+                    return cmd.ExecuteScalar(); // Sync execute
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error getting last insert ID: {ex.Message}");
-            return -1;
-        }
-        finally
-        {
-            CloseConnection();
+            catch (Exception ex) { Debug.LogError($"Error in ExecuteScalar: {ex.Message}"); return null; }
         }
     }
 
-    // Executes a stored procedure.
-    // returns DataTable with results if procedure returns a resultset
-    public DataTable ExecuteStoredProcedure(string procedureName, Dictionary<string, object> parameters = null)
+    public DataTable ExecuteQuery(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (logQueries) Debug.Log($"Executing stored procedure: {procedureName}");
+        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return new DataTable(); }
+        if (logQueries) Debug.Log($"Executing sync query: {commandText}");
 
         DataTable result = new DataTable();
-        if (!OpenConnection()) return result;
-
-        try
+        using (var connection = new MySqlConnection(connectionString))
         {
-            using (MySqlCommand cmd = new MySqlCommand(procedureName, dbConnection))
+            try
             {
-                cmd.CommandType = CommandType.StoredProcedure;
-
-                // Add parameters if provided
-                if (parameters != null)
+                connection.Open();
+                using (var cmd = new MySqlCommand(commandText, connection))
                 {
-                    foreach (var param in parameters)
+                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
+                    using (var adapter = new MySqlDataAdapter(cmd))
                     {
-                        MySqlParameter sqlParam = new MySqlParameter(param.Key, param.Value ?? DBNull.Value);
-                        cmd.Parameters.Add(sqlParam);
+                        adapter.Fill(result);
                     }
                 }
-
-                using (MySqlDataAdapter adapter = new MySqlDataAdapter(cmd))
-                {
-                    adapter.Fill(result);
-                    return result;
-                }
             }
+            catch (Exception ex) { Debug.LogError($"Error in ExecuteQuery: {ex.Message}"); }
         }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error executing stored procedure: {ex.Message}");
-            return result;
-        }
-        finally
-        {
-            CloseConnection();
-        }
+        return result;
     }
 
-    private void OnDestroy()
+    // You would refactor InsertData, UpdateData, DeleteData, TableExists, CreateTableIfNotExists
+    // similarly if you need synchronous versions, always using the scoped 'using (var connection = ...)' pattern.
+    // Example:
+    public bool TableExists(string tableName)
     {
-        CloseConnection();
+        string query = $"SELECT 1 FROM information_schema.tables WHERE table_schema = @dbName AND table_name = @tableName LIMIT 1";
+        var parameters = new Dictionary<string, object> {
+            { "@dbName", database },
+            { "@tableName", tableName }
+        };
+        var result = ExecuteScalar(query, parameters);
+        return result != null && result != DBNull.Value;
     }
 
+    public bool CreateTableIfNotExists(string tableName, Dictionary<string, string> columns)
+    {
+        try
+        {
+            string columnsDefinition = string.Join(", ", columns.Select(column => $"`{column.Key}` {column.Value}"));
+            string query = $"CREATE TABLE IF NOT EXISTS `{tableName}` ({columnsDefinition}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
+            int result = ExecuteNonQuery(query);
+            if (result >= 0) return TableExists(tableName); // Verify
+            return false;
+        }
+        catch (Exception ex) { Debug.LogError($"Error creating table sync: {tableName}\n{ex.Message}"); return false; }
+    }
+
+    //... Add synchronous versions of Insert, Update, Delete, GetLastInsertId using the scoped connection pattern if absolutely necessary ...
+
+    #endregion
 }
