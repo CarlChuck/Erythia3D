@@ -423,4 +423,8 @@ public class DatabaseManager : MonoBehaviour
     //... Add synchronous versions of Insert, Update, Delete, GetLastInsertId using the scoped connection pattern if absolutely necessary ...
 
     #endregion
+    public string GetConnectionString()
+    {
+        return connectionString;
+    }
 }

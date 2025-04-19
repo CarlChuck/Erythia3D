@@ -5,7 +5,7 @@ using System.Threading; // For CancellationToken
 using System.Threading.Tasks;
 using UnityEngine;
 
-public class ItemManager : MonoBehaviour
+public class ItemManager : BaseManager
 {
     // --- Table Names ---
     private const string ItemTemplatesTableName = "ItemTemplates"; // Adjust if different
@@ -25,28 +25,14 @@ public class ItemManager : MonoBehaviour
     private Dictionary<int, ItemTemplate> templatesById = new Dictionary<int, ItemTemplate>();
     private Dictionary<int, Item> itemsById = new Dictionary<int, Item>(); // Lookup for instances
 
-    // --- Initialization State ---
-    public bool isInitialized { get; private set; } = false;
-    private Task initializationTask;
-    public event Action OnDataLoaded; // Event when initialization is complete
-
     #region Singleton
-    public static ItemManager Instance { get; private set; }
-    private void Awake()
+    public static ItemManager Instance => GetInstance<ItemManager>();
+
+    protected override void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else if (Instance != this)
-        {
-            Debug.LogWarning("Duplicate ItemManager instance detected. Destroying self.");
-            Destroy(gameObject);
-            return;
-        }
+        base.Awake();
     }
     #endregion
-
 
     private void Start()
     {
@@ -55,59 +41,37 @@ public class ItemManager : MonoBehaviour
         // Subscribe to completion event for post-load actions if needed
         OnDataLoaded += PerformPostLoadActions;
     }
-    private void OnDestroy()
+
+    protected override void OnDestroy()
     {
-        // Unsubscribe
         OnDataLoaded -= PerformPostLoadActions;
-        if (Instance == this) { Instance = null; }
+        base.OnDestroy();
     }
+
     private void PerformPostLoadActions()
     {
-        Debug.Log("ItemManager Post-Load Actions Started...");
-        // Parent instantiated objects if desired
-        ParentInstantiatedObjects(loadedTemplates.Select(t => t?.gameObject), itemTemplatesParent);
-        ParentInstantiatedObjects(loadedItemInstances.Select(i => i?.gameObject), itemInstancesParent);
-        Debug.Log("ItemManager Post-Load Actions Complete.");
-    }
-    private void ParentInstantiatedObjects(IEnumerable<GameObject> objectsToParent, Transform parent)
-    {
-        if (parent == null)
+        LogInfo("Performing post-load actions (parenting objects)...");
+        foreach (Item item in loadedItemInstances)
         {
-            Debug.LogWarning("Cannot parent objects, parent transform is null.");
-            return;
-        }
-        foreach (var obj in objectsToParent)
-        {
-            if (obj != null)
+            if (item != null && item.gameObject != null && itemInstancesParent != null)
             {
-                obj.transform.SetParent(parent, false);
+                item.gameObject.transform.SetParent(itemInstancesParent, false);
             }
+            else { LogWarning("Skipping parenting for null/destroyed item or missing parent."); }
         }
-    }
-
-
-    // --- Public Initialization Trigger ---
-    public void StartInitialization()
-    {
-        if (initializationTask == null || initializationTask.IsCompleted)
+        foreach (ItemTemplate template in loadedTemplates)
         {
-            Debug.Log("Starting ItemManager Initialization...");
-            isInitialized = false;
-            initializationTask = InitializeAsync();
-
-            initializationTask.ContinueWith(t => {
-                if (t.IsFaulted)
-                {
-                    Debug.LogError($"ItemManager Initialization Failed: {t.Exception}");
-                    isInitialized = false;
-                }
-            }, TaskScheduler.FromCurrentSynchronizationContext());
+            if (template != null && template.gameObject != null && itemTemplatesParent != null)
+            {
+                template.gameObject.transform.SetParent(itemTemplatesParent, false);
+            }
+            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
         }
-        else { Debug.LogWarning("ItemManager initialization already in progress."); }
+        LogInfo("Post-load actions complete.");
     }
 
     // --- Core Async Initialization ---
-    private async Task InitializeAsync()
+    protected override async Task InitializeAsync()
     {
         loadedTemplates.Clear();
         loadedItemInstances.Clear();
@@ -120,38 +84,38 @@ public class ItemManager : MonoBehaviour
             await EnsureItemTablesExistAsync();
 
             // 2. Load Templates
-            Debug.Log("Loading Item Templates...");
+            LogInfo("Loading Item Templates...");
             List<ItemTemplate> templates = await LoadAllItemTemplatesAsync();
             if (templates == null) throw new Exception("Failed to load Item Templates.");
             loadedTemplates = templates;
             templatesById = loadedTemplates.ToDictionary(t => t.ItemTemplateID, t => t);
-            Debug.Log($"Loaded and indexed {loadedTemplates.Count} item templates.");
+            LogInfo($"Loaded and indexed {loadedTemplates.Count} item templates.");
             // TODO: Optionally load sprites/models for templates here
 
             // 3. Load Instances
-            Debug.Log("Loading Item Instances...");
+            LogInfo("Loading Item Instances...");
             List<Item> instances = await LoadAllItemInstancesAsync();
             if (instances == null) throw new Exception("Failed to load Item Instances.");
             loadedItemInstances = instances;
             itemsById = loadedItemInstances.ToDictionary(i => i.ItemID, i => i); // Assumes ItemID is unique instance ID
-            Debug.Log($"Loaded {loadedItemInstances.Count} item instances.");
+            LogInfo($"Loaded {loadedItemInstances.Count} item instances.");
 
             // 4. Link Instances to Templates
             LinkInstancesToTemplates();
-            Debug.Log("Linked item instances to templates.");
+            LogInfo("Linked item instances to templates.");
 
             // 5. Mark as Initialized and Notify (on main thread)
             await Task.Factory.StartNew(() => {
                 isInitialized = true;
-                Debug.Log("ItemManager Initialization Complete. Invoking OnDataLoaded.");
-                OnDataLoaded?.Invoke();
+                LogInfo("ItemManager Initialization Complete. Invoking OnDataLoaded.");
+                NotifyDataLoaded(); // Use the protected method from BaseManager
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
 
         }
         catch (Exception ex)
         {
             await Task.Factory.StartNew(() => {
-                Debug.LogError($"ItemManager Initialization Async Error: {ex.Message}\n{ex.StackTrace}");
+                LogError("ItemManager Initialization Async Error", ex);
                 isInitialized = false;
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -168,7 +132,7 @@ public class ItemManager : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning($"Item instance ID {itemInstance.ItemID} has missing template reference (TemplateID: {itemInstance.ItemTemplateID}).");
+                LogWarning($"Item instance ID {itemInstance.ItemID} has missing template reference (TemplateID: {itemInstance.ItemTemplateID}).");
             }
         }
     }
@@ -176,7 +140,7 @@ public class ItemManager : MonoBehaviour
     // --- Table Initialization ---
     private async Task EnsureItemTablesExistAsync()
     {
-        Debug.Log("Checking and initializing item data tables async...");
+        LogInfo("Checking and initializing item data tables async...");
         bool templateTableOK = await EnsureTableExistsAsync(ItemTemplatesTableName, GetItemTemplateTableDefinition());
         bool instanceTableOK = await EnsureTableExistsAsync(ItemInstancesTableName, GetItemTableDefinition());
 
@@ -184,25 +148,7 @@ public class ItemManager : MonoBehaviour
         {
             throw new Exception("Failed to initialize required item database tables async.");
         }
-        Debug.Log("Item data tables checked/initialized async.");
-    }
-
-    private async Task<bool> EnsureTableExistsAsync(string tableName, Dictionary<string, string> columns)
-    {
-        // Re-use logic from ResourceManager or implement similarly using DatabaseManager async methods
-        try
-        {
-            bool exists = await DatabaseManager.Instance.TableExistsAsync(tableName);
-            if (!exists)
-            {
-                Debug.Log($"Table '{tableName}' does not exist. Attempting to create async...");
-                bool created = await DatabaseManager.Instance.CreateTableIfNotExistsAsync(tableName, columns);
-                if (created) { Debug.Log($"Successfully created table '{tableName}' async."); return true; }
-                else { Debug.LogError($"Failed to create table '{tableName}' async."); return false; }
-            }
-            else { Debug.Log($"Table '{tableName}' already exists."); return true; }
-        }
-        catch (Exception ex) { Debug.LogError($"Error checking/creating table async '{tableName}': {ex.Message}"); return false; }
+        LogInfo("Item data tables checked/initialized async.");
     }
 
     // --- Table Definitions ---
@@ -271,53 +217,53 @@ public class ItemManager : MonoBehaviour
     public async Task<List<ItemTemplate>> LoadAllItemTemplatesAsync()
     {
         List<ItemTemplate> templates = new List<ItemTemplate>();
-        if (itemTemplatePrefab == null) { Debug.LogError("ItemTemplate Prefab is not assigned!"); return null; }
+        if (itemTemplatePrefab == null) { LogError("ItemTemplate Prefab is not assigned!"); return null; }
 
         string query = $"SELECT * FROM `{ItemTemplatesTableName}`";
-        Debug.Log($"ItemManager executing query: {query}");
+        LogInfo($"ItemManager executing query: {query}");
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { Debug.LogError($"Query failed for '{ItemTemplatesTableName}'."); return null; }
-            if (results.Count == 0) { Debug.LogWarning($"No results for '{ItemTemplatesTableName}'."); return templates; }
+            if (results == null) { LogError($"Query failed for '{ItemTemplatesTableName}'."); return null; }
+            if (results.Count == 0) { LogWarning($"No results for '{ItemTemplatesTableName}'."); return templates; }
 
             foreach (var rowData in results)
             {
                 ItemTemplate template = Instantiate(itemTemplatePrefab.gameObject).GetComponent<ItemTemplate>();
-                if (template == null) { Debug.LogError("Failed to get ItemTemplate component."); continue; }
+                if (template == null) { LogError("Failed to get ItemTemplate component."); continue; }
                 MapDictionaryToItemTemplate(template, rowData);
                 templates.Add(template);
             }
-            Debug.Log($"Loaded {templates.Count} item template data rows.");
+            LogInfo($"Loaded {templates.Count} item template data rows.");
             return templates;
         }
-        catch (Exception ex) { Debug.LogError($"Error loading item templates: {ex.Message}"); return null; }
+        catch (Exception ex) { LogError($"Error loading item templates: {ex.Message}"); return null; }
     }
 
     public async Task<List<Item>> LoadAllItemInstancesAsync()
     {
         List<Item> instances = new List<Item>();
-        if (itemPrefab == null) { Debug.LogError("Item Prefab is not assigned!"); return null; }
+        if (itemPrefab == null) { LogError("Item Prefab is not assigned!"); return null; }
 
         string query = $"SELECT * FROM `{ItemInstancesTableName}`"; // Query the instances table
-        Debug.Log($"ItemManager executing query: {query}");
+        LogInfo($"ItemManager executing query: {query}");
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { Debug.LogError($"Query failed for '{ItemInstancesTableName}'."); return null; }
-            if (results.Count == 0) { Debug.LogWarning($"No results for '{ItemInstancesTableName}'."); return instances; }
+            if (results == null) { LogError($"Query failed for '{ItemInstancesTableName}'."); return null; }
+            if (results.Count == 0) { LogWarning($"No results for '{ItemInstancesTableName}'."); return instances; }
 
             foreach (var rowData in results)
             {
                 Item instance = Instantiate(itemPrefab.gameObject).GetComponent<Item>();
-                if (instance == null) { Debug.LogError("Failed to get Item component."); continue; }
+                if (instance == null) { LogError("Failed to get Item component."); continue; }
                 MapDictionaryToItemInstance(instance, rowData); // Use instance mapping function
                 instances.Add(instance);
             }
-            Debug.Log($"Loaded {instances.Count} item instance data rows.");
+            LogInfo($"Loaded {instances.Count} item instance data rows.");
             return instances;
         }
-        catch (Exception ex) { Debug.LogError($"Error loading item instances: {ex.Message}"); return null; }
+        catch (Exception ex) { LogError($"Error loading item instances: {ex.Message}"); return null; }
     }
 
     // --- Mapping Helpers ---
@@ -354,7 +300,7 @@ public class ItemManager : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error mapping dictionary to ItemTemplate (ID: {data.GetValueOrDefault("ID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+            LogError($"Error mapping dictionary to ItemTemplate (ID: {data.GetValueOrDefault("ID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
         }
     }
 
@@ -392,7 +338,7 @@ public class ItemManager : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error mapping dictionary to Item Instance (ID: {data.GetValueOrDefault("ItemID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+            LogError($"Error mapping dictionary to Item Instance (ID: {data.GetValueOrDefault("ItemID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
         }
     }
 
@@ -404,7 +350,7 @@ public class ItemManager : MonoBehaviour
     {
         if (!isInitialized)
         { 
-            Debug.LogWarning("ItemManager accessed before initialization!"); 
+            LogWarning("ItemManager accessed before initialization!"); 
         }
         return loadedTemplates;
     }
@@ -412,7 +358,7 @@ public class ItemManager : MonoBehaviour
     {
         if (!isInitialized)
         { 
-            Debug.LogWarning("ItemManager accessed before initialization!"); 
+            LogWarning("ItemManager accessed before initialization!"); 
         }
         return loadedItemInstances;
     }
@@ -420,7 +366,7 @@ public class ItemManager : MonoBehaviour
     {
         if (!isInitialized) 
         { 
-            Debug.LogWarning("ItemManager accessed before initialization!"); 
+            LogWarning("ItemManager accessed before initialization!"); 
         }
         templatesById.TryGetValue(templateId, out ItemTemplate template);
         return template;
@@ -429,38 +375,69 @@ public class ItemManager : MonoBehaviour
     {
         if (!isInitialized) 
         { 
-            Debug.LogWarning("ItemManager accessed before initialization!"); 
+            LogWarning("ItemManager accessed before initialization!"); 
         }
         itemsById.TryGetValue(instanceId, out Item item);
         return item;
     }
 
-    // --- Saving / Updating / Deleting (Example Signatures - Implement using DatabaseManager async methods) ---
-    /*
+    // --- Saving / Updating / Deleting ---
     public async Task<long> SaveNewItemInstanceAsync(Item itemInstance)
     {
         if (itemInstance == null || itemInstance.Template == null)
         {
-            Debug.LogError("Cannot save null item instance or item without a template.");
+            LogError("Cannot save null item instance or item without a template.");
             return -1;
         }
-        Debug.Log($"Attempting to save new Item Instance: {itemInstance.GetItemName()} (TemplateID: {itemInstance.ItemTemplateID})");
+        LogInfo($"Attempting to save new Item Instance: {itemInstance.ItemName} (TemplateID: {itemInstance.ItemTemplateID})");
 
         // Prepare dictionary based on ItemInstances table columns
         Dictionary<string, object> values = new Dictionary<string, object> {
-             {"ItemTemplateID", itemInstance.ItemTemplateID},
-             {"InstanceName", (object)itemInstance.InstanceName ?? DBNull.Value}, // Use DBNull for optional fields
-             {"Durability", itemInstance.CurrentDurability},
-             // Add optional instance-specific overrides if they exist on the Item object
-             // {"Quality", itemInstance.InstanceQuality ?? (object)DBNull.Value }, // Example
-             {"OwnerID", itemInstance.OwnerID > 0 ? (object)itemInstance.OwnerID : DBNull.Value},
-             {"ContainerID", itemInstance.ContainerID > 0 ? (object)itemInstance.ContainerID : DBNull.Value},
-             {"SlotIndex", itemInstance.SlotIndex >= 0 ? (object)itemInstance.SlotIndex : DBNull.Value }
-         };
+            {"ItemTemplateID", itemInstance.ItemTemplateID},
+            {"ItemName", (object)itemInstance.ItemName ?? DBNull.Value},
+            {"ItemType", itemInstance.Type},
+            {"Durability", itemInstance.Durability},
+            {"MaxDurability", itemInstance.MaxDurability},
+            {"Damage", itemInstance.Damage},
+            {"Speed", itemInstance.Speed},
+            {"DamageType", itemInstance.DamageType},
+            {"SlotType", itemInstance.Slot},
+            {"SlashResist", itemInstance.SlashResist},
+            {"ThrustResist", itemInstance.ThrustResist},
+            {"CrushResist", itemInstance.CrushResist},
+            {"HeatResist", itemInstance.HeatResist},
+            {"ShockResist", itemInstance.ShockResist},
+            {"ColdResist", itemInstance.ColdResist},
+            {"MindResist", itemInstance.MindResist},
+            {"CorruptResist", itemInstance.CorruptResist},
+            {"Icon", itemInstance.Icon},
+            {"Colour", itemInstance.ColourHex},
+            {"Weight", itemInstance.Weight},
+            {"Model", itemInstance.Model},
+            {"Bonus1", itemInstance.Bonus1},
+            {"Bonus2", itemInstance.Bonus2},
+            {"Bonus3", itemInstance.Bonus3},
+            {"Bonus4", itemInstance.Bonus4},
+            {"Bonus5", itemInstance.Bonus5},
+            {"Bonus6", itemInstance.Bonus6},
+            {"Bonus7", itemInstance.Bonus7},
+            {"Bonus8", itemInstance.Bonus8},
+            {"Bonus1Type", itemInstance.Bonus1Type},
+            {"Bonus2Type", itemInstance.Bonus2Type},
+            {"Bonus3Type", itemInstance.Bonus3Type},
+            {"Bonus4Type", itemInstance.Bonus4Type},
+            {"Bonus5Type", itemInstance.Bonus5Type},
+            {"Bonus6Type", itemInstance.Bonus6Type},
+            {"Bonus7Type", itemInstance.Bonus7Type},
+            {"Bonus8Type", itemInstance.Bonus8Type},
+            {"Stackable", itemInstance.IsStackable},
+            {"StackSizeMax", itemInstance.StackSizeMax},
+            {"Price", itemInstance.Price}
+        };
 
         try
         {
-            bool success = await DatabaseManager.Instance.InsertDataAsync(ItemInstancesTableName, values);
+            bool success = await SaveDataAsync(ItemInstancesTableName, values);
             if (success)
             {
                 long newId = await DatabaseManager.Instance.GetLastInsertIdAsync();
@@ -469,25 +446,24 @@ public class ItemManager : MonoBehaviour
                     itemInstance.SetItemID((int)newId); // Update object with DB ID
                     loadedItemInstances.Add(itemInstance); // Add to runtime list
                     itemsById[itemInstance.ItemID] = itemInstance; // Add to lookup
-                    Debug.Log($"Saved new Item Instance ID: {newId}");
-                    // TODO: Consider invoking an OnInventoryChanged or similar event
+                    LogInfo($"Saved new Item Instance ID: {newId}");
                     return newId;
                 }
                 else
                 {
-                    Debug.LogError("Item Instance insert succeeded but failed to get last insert ID.");
+                    LogError("Item Instance insert succeeded but failed to get last insert ID.");
                     return -1;
                 }
             }
             else
             {
-                Debug.LogError("Failed to insert Item Instance into database.");
+                LogError("Failed to insert Item Instance into database.");
                 return -1;
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Exception saving Item Instance: {ex.Message}");
+            LogError($"Exception saving Item Instance", ex);
             return -1;
         }
     }
@@ -496,55 +472,100 @@ public class ItemManager : MonoBehaviour
     {
         if (itemInstance == null || itemInstance.ItemID <= 0)
         {
-            Debug.LogError("Cannot update item instance: Invalid item or ItemID.");
+            LogError("Cannot update item instance: Invalid item or ItemID.");
             return false;
         }
-        Debug.Log($"Attempting to update Item Instance ID: {itemInstance.ItemID}");
+        LogInfo($"Attempting to update Item Instance ID: {itemInstance.ItemID}");
 
         // Prepare dictionary with fields that can be updated
         Dictionary<string, object> values = new Dictionary<string, object> {
-             // Only include fields that are expected to change for an instance
-             {"InstanceName", (object)itemInstance.InstanceName ?? DBNull.Value},
-             {"Durability", itemInstance.CurrentDurability},
-             // {"Quality", itemInstance.InstanceQuality ?? (object)DBNull.Value }, // Example
-             {"OwnerID", itemInstance.OwnerID > 0 ? (object)itemInstance.OwnerID : DBNull.Value},
-             {"ContainerID", itemInstance.ContainerID > 0 ? (object)itemInstance.ContainerID : DBNull.Value},
-             {"SlotIndex", itemInstance.SlotIndex >= 0 ? (object)itemInstance.SlotIndex : DBNull.Value }
-         };
+            {"ItemName", (object)itemInstance.ItemName ?? DBNull.Value},
+            {"Durability", itemInstance.Durability},
+            {"MaxDurability", itemInstance.MaxDurability},
+            {"Damage", itemInstance.Damage},
+            {"Speed", itemInstance.Speed},
+            {"DamageType", itemInstance.DamageType},
+            {"SlotType", itemInstance.Slot},
+            {"SlashResist", itemInstance.SlashResist},
+            {"ThrustResist", itemInstance.ThrustResist},
+            {"CrushResist", itemInstance.CrushResist},
+            {"HeatResist", itemInstance.HeatResist},
+            {"ShockResist", itemInstance.ShockResist},
+            {"ColdResist", itemInstance.ColdResist},
+            {"MindResist", itemInstance.MindResist},
+            {"CorruptResist", itemInstance.CorruptResist},
+            {"Icon", itemInstance.Icon},
+            {"Colour", itemInstance.ColourHex},
+            {"Weight", itemInstance.Weight},
+            {"Model", itemInstance.Model},
+            {"Bonus1", itemInstance.Bonus1},
+            {"Bonus2", itemInstance.Bonus2},
+            {"Bonus3", itemInstance.Bonus3},
+            {"Bonus4", itemInstance.Bonus4},
+            {"Bonus5", itemInstance.Bonus5},
+            {"Bonus6", itemInstance.Bonus6},
+            {"Bonus7", itemInstance.Bonus7},
+            {"Bonus8", itemInstance.Bonus8},
+            {"Bonus1Type", itemInstance.Bonus1Type},
+            {"Bonus2Type", itemInstance.Bonus2Type},
+            {"Bonus3Type", itemInstance.Bonus3Type},
+            {"Bonus4Type", itemInstance.Bonus4Type},
+            {"Bonus5Type", itemInstance.Bonus5Type},
+            {"Bonus6Type", itemInstance.Bonus6Type},
+            {"Bonus7Type", itemInstance.Bonus7Type},
+            {"Bonus8Type", itemInstance.Bonus8Type},
+            {"Stackable", itemInstance.IsStackable},
+            {"StackSizeMax", itemInstance.StackSizeMax},
+            {"Price", itemInstance.Price}
+        };
 
         string whereCondition = "`ItemID` = @where_ItemID";
         Dictionary<string, object> whereParams = new Dictionary<string, object> {
-             { "@where_ItemID", itemInstance.ItemID }
-         };
+            { "@where_ItemID", itemInstance.ItemID }
+        };
 
         try
         {
-            bool success = await DatabaseManager.Instance.UpdateDataAsync(ItemInstancesTableName, values, whereCondition, whereParams);
-            if (success) Debug.Log($"Updated Item Instance ID: {itemInstance.ItemID}");
-            else Debug.LogWarning($"Failed to update Item Instance ID: {itemInstance.ItemID} (may not exist or no changes made).");
-            // TODO: Consider invoking an OnInventoryChanged or similar event
+            bool success = await UpdateDataAsync(ItemInstancesTableName, values, whereCondition, whereParams);
+            if (success) 
+            {
+                LogInfo($"Updated Item Instance ID: {itemInstance.ItemID}");
+                // Update the runtime data
+                if (itemsById.ContainsKey(itemInstance.ItemID))
+                {
+                    itemsById[itemInstance.ItemID] = itemInstance;
+                }
+            }
+            else 
+            {
+                LogWarning($"Failed to update Item Instance ID: {itemInstance.ItemID} (may not exist or no changes made).");
+            }
             return success;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Exception updating Item Instance ID {itemInstance.ItemID}: {ex.Message}");
+            LogError($"Exception updating Item Instance ID {itemInstance.ItemID}", ex);
             return false;
         }
     }
 
     public async Task<bool> DeleteItemInstanceAsync(int itemInstanceId)
     {
-        if (itemInstanceId <= 0) return false;
-        Debug.Log($"Attempting to delete Item Instance ID: {itemInstanceId}");
+        if (itemInstanceId <= 0) 
+        {
+            LogError("Invalid ItemID provided for deletion.");
+            return false;
+        }
+        LogInfo($"Attempting to delete Item Instance ID: {itemInstanceId}");
 
         string whereCondition = "`ItemID` = @where_ItemID";
         Dictionary<string, object> whereParams = new Dictionary<string, object> {
-             { "@where_ItemID", itemInstanceId }
-         };
+            { "@where_ItemID", itemInstanceId }
+        };
 
         try
         {
-            bool success = await DatabaseManager.Instance.DeleteDataAsync(ItemInstancesTableName, whereCondition, whereParams);
+            bool success = await DeleteDataAsync(ItemInstancesTableName, whereCondition, whereParams);
             if (success)
             {
                 // Remove from runtime lists
@@ -552,47 +573,27 @@ public class ItemManager : MonoBehaviour
                 {
                     itemsById.Remove(itemInstanceId);
                     loadedItemInstances.Remove(itemToRemove);
-                    Debug.Log($"Deleted Item Instance ID: {itemInstanceId}");
-                    // Destroy GameObject if it exists? Handle carefully.
+                    LogInfo($"Deleted Item Instance ID: {itemInstanceId}");
+                    // Destroy GameObject if it exists
                     if (itemToRemove != null && itemToRemove.gameObject != null)
                     {
-                        // Destroy(itemToRemove.gameObject); // uncomment if appropriate
+                        Destroy(itemToRemove.gameObject);
                     }
                 }
-                // TODO: Consider invoking an OnInventoryChanged or similar event
             }
             else
             {
-                Debug.LogWarning($"Failed to delete Item Instance ID: {itemInstanceId} (may not exist).");
+                LogWarning($"Failed to delete Item Instance ID: {itemInstanceId} (may not exist).");
             }
             return success;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Exception deleting Item Instance ID {itemInstanceId}: {ex.Message}");
+            LogError($"Exception deleting Item Instance ID {itemInstanceId}", ex);
             return false;
         }
     }
-    */
 
-    // --- Utility for safe dictionary conversion ---
-    public static class SafeConvert
-    {
-        public static int ToInt32(Dictionary<string, object> data, string key, int defaultValue = 0) =>
-            data.TryGetValue(key, out object value) && value != DBNull.Value && value != null ? Convert.ToInt32(value) : defaultValue;
-
-        public static float ToSingle(Dictionary<string, object> data, string key, float defaultValue = 0f) =>
-            data.TryGetValue(key, out object value) && value != DBNull.Value && value != null ? Convert.ToSingle(value) : defaultValue;
-
-        public static string ToString(Dictionary<string, object> data, string key, string defaultValue = "") =>
-            data.TryGetValue(key, out object value) && value != DBNull.Value && value != null ? Convert.ToString(value) : defaultValue;
-
-        public static bool ToBoolean(Dictionary<string, object> data, string key, bool defaultValue = false) =>
-             data.TryGetValue(key, out object value) && value != DBNull.Value && value != null ? Convert.ToBoolean(value) : defaultValue;
-
-        public static DateTime ToDateTime(Dictionary<string, object> data, string key, DateTime defaultValue = default) =>
-            data.TryGetValue(key, out object value) && value != DBNull.Value && value != null ? Convert.ToDateTime(value) : defaultValue;
-    }
     // Helper for Debugging Dictionaries
     private string DictToString(Dictionary<string, object> dict)
     {

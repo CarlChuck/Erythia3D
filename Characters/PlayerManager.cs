@@ -401,13 +401,7 @@ public class PlayerManager : MonoBehaviour
             Debug.LogError("Failed to update last played character in database.");
         }
     }
-    public void SetSelectedCharacter()
-    {
-        if (selectedPlayerCharacter == null || accountID <= 0) { return; }
-        // Call the blocking version from AccountManager
-        bool success = AccountManager.Instance.SetAccountLastPlayedCharacter(accountID, selectedPlayerCharacter.GetCharacterID());
-        if (!success) { Debug.LogError("Failed to update last played character (sync)."); }
-    }
+
     public async Task<PlayerCharacter> GetSelectedPlayerCharacterAsync() // Make async
     {
         if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)

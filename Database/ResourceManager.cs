@@ -4,11 +4,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using MySql.Data.MySqlClient;
 
-public class ResourceManager : MonoBehaviour
+public class ResourceManager : BaseManager
 {
-
-
     #region RandomNameVariables
     private System.Random randomNumber = new System.Random();
     private List<string> firstPartOfName = new List<string> { "Zor", "Vox", "Kel", "Thor", "Nix", "Jax", "Kael", "Valt", "Ron", "Pax", "Tek", "Mars", "Loki", "Zek", "Vor", "Rax", "Gorth", "Krom", "Vex", "Borg", "Kage", "Riven", "Soren", "Thane", "Onyx", "Zeal", "Kyro", "Valk", "Rune", "Slade", "Kane", "Thrak", "Voro", "Gorthok", "Kaid", "Zarek", "Vexx", "Ryk", "Kyel", "Thren", "Syg", "Rive", "Vrik", "Krag", "Throk", "Zekt", "Val", "Rag", "Kyr", "Valt" };
@@ -16,110 +15,211 @@ public class ResourceManager : MonoBehaviour
     private List<string> thirdPartOfName = new List<string> { "ton", "lee", "nex", "rus", "kus", "tus", "vus", "lys", "rex", "dus", "kas", "los", "tus", "vas", "gos", "nus", "vos", "kes", "das", "tus", "bane", "fade", "gore", "holt", "kane", "lane", "lyth", "mose", "naan", "pike", "rath", "roth", "ryn", "sank", "slade", "snod", "spar", "stadt", "stoke", "torn", "void", "wake", "wynn", "wyn", "xan", "yeld", "zell", "zorn", "zorv" };
     #endregion
 
-    [SerializeField] private Transform resourcesParent;
-    [SerializeField] private Transform resourceTemplatesParent;
-
-    private const string ResourceSpawnsTableName = "ResourceSpawns";
-    private const string ResourceTemplateTableName = "ResourceTemplate";
+    // --- Table Names ---
+    private const string ResourceTemplatesTableName = "ResourceTemplates";
+    private const string ResourceInstancesTableName = "Resources";
 
     [Header("Prefabs")]
     [SerializeField] private Resource resourcePrefab;
     [SerializeField] private ResourceTemplate resourceTemplatePrefab;
 
-    [Header("Runtime Data (Loaded)")]
-    private List<ResourceTemplate> resourceTemplates = new List<ResourceTemplate>();
-    private List<Resource> spawnedResources = new List<Resource>();
-    private Dictionary<int, ResourceTemplate> templatesById = new Dictionary<int, ResourceTemplate>();
+    [Header("Parent Transforms (Optional)")]
+    [SerializeField] private Transform resourceInstancesParent;
+    [SerializeField] private Transform resourceTemplatesParent;
 
-    public bool isInitialized = false;
-    private Task initializationTask;
-    public event Action OnDataLoaded;
+    [Header("Runtime Data (Loaded)")]
+    private List<ResourceTemplate> loadedTemplates = new List<ResourceTemplate>();
+    private List<Resource> loadedResourceInstances = new List<Resource>();
+    private Dictionary<int, ResourceTemplate> templatesById = new Dictionary<int, ResourceTemplate>();
+    private Dictionary<int, Resource> resourcesById = new Dictionary<int, Resource>();
+
 
     #region Singleton
-    public static ResourceManager Instance { get; private set; }
-    private void Awake()
+    public static ResourceManager Instance => GetInstance<ResourceManager>();
+
+    protected override void Awake()
     {
-        Instance = this;
+        base.Awake();
     }
     #endregion
 
     private void Start()
     {
-        InitializeResourceDataTablesIfNotExists();
         StartInitialization();
         OnDataLoaded += PerformPostLoadActions;
-        //SetResourceTemplateIDs();
-        /*
-        foreach (Resource resource in spawnedResources)
-        {
-            resource.gameObject.transform.SetParent(resourcesParent);
-        }
-        foreach (ResourceTemplate template in resourceTemplates)
-        {
-            template.gameObject.transform.SetParent(resourceTemplatesParent);
-        }
-        */
     }
-    private void OnDestroy()
-    {
-        // Unsubscribe from events
-        OnDataLoaded -= PerformPostLoadActions;
 
-        if (Instance == this)
-        {
-            Instance = null; // Clear singleton instance if this is the one being destroyed
-        }
+    protected override void OnDestroy()
+    {
+        OnDataLoaded -= PerformPostLoadActions;
+        base.OnDestroy();
     }
+
     private void PerformPostLoadActions()
     {
-        Debug.Log("Performing post-load actions (parenting objects)...");
-        // Now it's safe to access the lists
-        foreach (Resource resource in spawnedResources)
+        LogInfo("Performing post-load actions (parenting objects)...");
+        foreach (Resource resource in loadedResourceInstances)
         {
-            if (resource != null && resource.gameObject != null && resourcesParent != null)
+            if (resource != null && resource.gameObject != null && resourceInstancesParent != null)
             {
-                resource.gameObject.transform.SetParent(resourcesParent, false); // Use worldPositionStays = false
+                resource.gameObject.transform.SetParent(resourceInstancesParent, false);
             }
-            else { Debug.LogWarning("Skipping parenting for null/destroyed resource or missing parent."); }
+            else { LogWarning("Skipping parenting for null/destroyed resource or missing parent."); }
         }
-        foreach (ResourceTemplate template in resourceTemplates)
+        foreach (ResourceTemplate template in loadedTemplates)
         {
             if (template != null && template.gameObject != null && resourceTemplatesParent != null)
             {
-                template.gameObject.transform.SetParent(resourceTemplatesParent, false); // Use worldPositionStays = false
+                template.gameObject.transform.SetParent(resourceTemplatesParent, false);
             }
-            else { Debug.LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
+            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
         }
-        Debug.Log("Post-load actions complete.");
+        LogInfo("Post-load actions complete.");
     }
 
-    public void StartInitialization()
+    protected override async Task InitializeAsync()
     {
-        // Prevent starting multiple initializations
-        if (initializationTask == null || initializationTask.IsCompleted)
-        {
-            Debug.Log("Starting ResourceManager Initialization...");
-            isInitialized = false; // Ensure marked as not initialized until task completes fully
-            initializationTask = InitializeAsync();
+        loadedTemplates.Clear();
+        loadedResourceInstances.Clear();
+        templatesById.Clear();
+        resourcesById.Clear();
 
-            initializationTask.ContinueWith(t =>
+        try
+        {
+            // 1. Ensure Tables Exist
+            await EnsureResourceTablesExistAsync();
+
+            // 2. Load Templates
+            LogInfo("Loading Resource Templates...");
+            List<ResourceTemplate> templates = await LoadAllResourceTemplatesAsync();
+            if (templates == null) throw new Exception("Failed to load Resource Templates.");
+            loadedTemplates = templates;
+            templatesById = loadedTemplates.ToDictionary(t => t.ResourceTemplateID, t => t);
+            LogInfo($"Loaded and indexed {loadedTemplates.Count} resource templates.");
+
+            // 3. Load Instances
+            LogInfo("Loading Resource Instances...");
+            List<Resource> instances = await LoadAllResourceInstancesAsync();
+            if (instances == null) throw new Exception("Failed to load Resource Instances.");
+            loadedResourceInstances = instances;
+            resourcesById = loadedResourceInstances.ToDictionary(i => i.ResourceSpawnID, i => i);
+            LogInfo($"Loaded {loadedResourceInstances.Count} resource instances.");
+
+            // 4. Link Instances to Templates
+            LinkInstancesToTemplates();
+            LogInfo("Linked resource instances to templates.");
+
+            // 5. Mark as Initialized and Notify
+            await Task.Factory.StartNew(() => {
+                isInitialized = true;
+                LogInfo("Initialization Complete. Invoking OnDataLoaded.");
+                NotifyDataLoaded();
+            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        catch (Exception ex)
+        {
+            await Task.Factory.StartNew(() => {
+                LogError("Initialization Async Error", ex);
+                isInitialized = false;
+            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+    }
+
+    private async Task EnsureResourceTablesExistAsync()
+    {
+        LogInfo("Checking and initializing resource data tables async...");
+        bool templateTableOK = await EnsureTableExistsAsync(ResourceTemplatesTableName, GetResourceTemplateTableDefinition());
+        bool instanceTableOK = await EnsureTableExistsAsync(ResourceInstancesTableName, GetResourceTableDefinition());
+
+        if (!templateTableOK || !instanceTableOK)
+        {
+            throw new Exception("Failed to initialize required resource database tables async.");
+        }
+        LogInfo("Resource data tables checked/initialized async.");
+    }
+
+    public async Task<List<Resource>> LoadAllResourceInstancesAsync()
+    {
+        List<Resource> resources = new List<Resource>();
+        string query = $"SELECT * FROM `{ResourceInstancesTableName}`";
+        Debug.Log($"Executing query: {query}");
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query);
+            if (results == null)
             {
-                if (t.IsFaulted)
+                Debug.LogError($"Query failed for '{ResourceInstancesTableName}'.");
+                return null;
+            }
+            if (results.Count > 0)
+            {
+                foreach (var rowData in results)
                 {
-                    Debug.LogError($"ResourceManager Initialization Failed: {t.Exception}");
+                    Resource resource = Instantiate(resourcePrefab.gameObject).GetComponent<Resource>();
+                    if (resource == null)
+                    {
+                        Debug.LogError("Failed to get Resource component.");
+                        Destroy(resource.gameObject);
+                        continue;
+                    }
+                    MapDictionaryToResource(resource, rowData);
+                    resources.Add(resource);
                 }
-            }, TaskScheduler.FromCurrentSynchronizationContext()); // Use Unity's context for logging
+                Debug.Log($"Loaded {resources.Count} resource instances data rows.");
+            }
+            else
+            {
+                Debug.LogWarning($"No results for '{ResourceInstancesTableName}'.");
+            }
+            return resources;
         }
-        else
+        catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); return null; }
+    }
+
+    public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
+    {
+        List<ResourceTemplate> templates = new List<ResourceTemplate>();
+        string query = $"SELECT * FROM `{ResourceTemplatesTableName}`";
+        Debug.Log($"Executing query: {query}");
+        try
         {
-            Debug.LogWarning("ResourceManager initialization already in progress.");
+            List<Dictionary<string, object>> results = await QueryDataAsync(query);
+            if (results == null)
+            {
+                Debug.LogError($"Query execution failed for table '{ResourceTemplatesTableName}'.");
+                return null;
+            }
+            if (results.Count == 0)
+            {
+                Debug.LogWarning($"Query returned no results for table '{ResourceTemplatesTableName}'.");
+                return templates;
+            }
+
+            foreach (var rowData in results)
+            {
+                ResourceTemplate template = Instantiate(resourceTemplatePrefab).GetComponent<ResourceTemplate>();
+                if (template == null)
+                {
+                    Debug.LogError("Failed to get ResourceTemplate component from instantiated prefab.");
+                    Destroy(template.gameObject); // Clean up failed instance
+                    continue;
+                }
+                MapDictionaryToResourceTemplate(template, rowData);
+                templates.Add(template);
+            }
+            Debug.Log($"Loaded {templates.Count} resource templates data rows.");
+            return templates;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error loading all resource templates from '{ResourceTemplatesTableName}': {ex.Message}");
+            return null; // Indicate failure
         }
     }
-    private void InitializeResourceDataTablesIfNotExists()
+
+    private Dictionary<string, string> GetResourceTableDefinition()
     {
-        // Definition for ResourceSpawns Table
-        Dictionary<string, string> spawnColumns = new Dictionary<string, string>
-        {
+        return new Dictionary<string, string> {
             {"ResourceSpawnID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"ResourceName", "VARCHAR(255)"},
             {"ResourceTemplateID", "INT"},
@@ -138,21 +238,11 @@ public class ResourceManager : MonoBehaviour
             {"StartDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
             {"EndDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
+    }
 
-        if (!DatabaseManager.Instance.TableExists(ResourceSpawnsTableName))
-        {
-            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(ResourceSpawnsTableName, spawnColumns);
-            Debug.Log($"{ResourceSpawnsTableName} table creation attempt result: {tableCreated}");
-            if (!tableCreated) Debug.LogError($"Failed to create {ResourceSpawnsTableName} table.");
-        }
-        else
-        {
-            //Debug.Log($"{ResourceSpawnsTableName} table already exists.");
-        }
-
-        // Definition for ResourceTemplate Table
-        Dictionary<string, string> templateColumns = new Dictionary<string, string>
-        {
+    private Dictionary<string, string> GetResourceTemplateTableDefinition()
+    {
+        return new Dictionary<string, string> {
             {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"Order", "INT"},
             {"Family", "INT"},
@@ -169,426 +259,8 @@ public class ResourceManager : MonoBehaviour
             {"StackSizeMax", "INT DEFAULT 100"},
             {"Weight", "INT"}
         };
-
-        if (!DatabaseManager.Instance.TableExists(ResourceTemplateTableName))
-        {
-            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(ResourceTemplateTableName, templateColumns);
-            Debug.Log($"{ResourceTemplateTableName} table creation attempt result: {tableCreated}");
-            if (!tableCreated) Debug.LogError($"Failed to create {ResourceTemplateTableName} table.");
-        }
-        else
-        {
-            //Debug.Log($"{ResourceTemplateTableName} table already exists.");
-        }
-    }
-    private async Task InitializeAsync()
-    {
-        resourceTemplates.Clear();
-        spawnedResources.Clear();
-        templatesById.Clear();
-
-        try
-        {
-            // 1. Ensure Database Tables Exist (Now Async)
-            await InitializeResourceDataTablesIfNotExistsAsync(); // Wait for tables
-
-            // 2. Load Templates Asynchronously
-            Debug.Log("Loading Resource Templates...");
-            List<ResourceTemplate> templates = await LoadAllResourceTemplatesAsync();
-            if (templates == null) throw new Exception("Failed to load Resource Templates.");
-            resourceTemplates = templates;
-            templatesById = resourceTemplates.ToDictionary(t => t.ResourceTemplateID, t => t);
-            Debug.Log($"Successfully loaded and indexed {resourceTemplates.Count} templates.");
-
-
-
-            // 3. Load Spawned Resources Asynchronously
-            Debug.Log("Loading Spawned Resources...");
-            List<Resource> spawns = await LoadAllSpawnedResourcesAsync();
-            if (spawns == null) // Check if loading failed
-            {
-                throw new Exception("Failed to load Spawned Resources.");
-            }
-            spawnedResources = spawns;
-
-            // 4. Link Spawned Resources to Templates
-            LinkSpawnedResourcesToTemplates(); // Moved to helper
-            Debug.Log($"Successfully loaded and linked {spawnedResources.Count} spawned resources.");
-
-            // 5. Mark as Initialized and Notify Listeners (on main thread)
-            // Use TaskScheduler.FromCurrentSynchronizationContext() to ensure the final steps
-            // run on the Unity main thread, which is safer for invoking events that might
-            // trigger Unity API calls in subscribers (like the parenting logic).
-            await Task.Factory.StartNew(() =>
-            {
-                isInitialized = true;
-                Debug.Log("ResourceManager Initialization Complete. Invoking OnDataLoaded.");
-                OnDataLoaded?.Invoke(); // Signal that data is ready
-            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
-
-        }
-        catch (Exception ex)
-        {
-            // Logging should happen on main thread for safety if possible
-            await Task.Factory.StartNew(() =>
-            {
-                Debug.LogError($"ResourceManager Initialization Async Error: {ex.Message}\n{ex.StackTrace}");
-                isInitialized = false;
-            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
-
-        }
     }
 
-    public async Task<List<Resource>> LoadAllSpawnedResourcesAsync()
-    { 
-        List<Resource> resources = new List<Resource>();
-        string query = $"SELECT * FROM `{ResourceSpawnsTableName}`";
-        Debug.Log($"Executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) 
-            { 
-                Debug.LogError($"Query failed for '{ResourceSpawnsTableName}'."); 
-                return null; 
-            }
-            if (results.Count > 0)
-            {
-                foreach (var rowData in results)
-                {
-                    Resource resource = Instantiate(resourcePrefab.gameObject).GetComponent<Resource>();
-                    if (resource == null) 
-                    { 
-                        Debug.LogError("Failed to get Resource component.");
-                        Destroy(resource.gameObject);
-                        continue; 
-                    }
-                    MapDictionaryToResource(resource, rowData);
-                    resources.Add(resource);
-                }
-                Debug.Log($"Loaded {resources.Count} spawned resources data rows.");
-            }
-            else 
-            { 
-                Debug.LogWarning($"No results for '{ResourceSpawnsTableName}'."); 
-            }
-            return resources;
-        }
-        catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceSpawnsTableName}': {ex.Message}"); return null; }
-    }
-    public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
-    {
-        List<ResourceTemplate> templates = new List<ResourceTemplate>();
-        string query = $"SELECT * FROM `{ResourceTemplateTableName}`";
-        Debug.Log($"Executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null)
-            {
-                Debug.LogError($"Query execution failed for table '{ResourceTemplateTableName}'.");
-                return null;
-            }
-            if (results.Count == 0)
-            {
-                Debug.LogWarning($"Query returned no results for table '{ResourceTemplateTableName}'.");
-                return templates;
-            }
-
-            foreach (var rowData in results)
-            {             
-                ResourceTemplate template = Instantiate(resourceTemplatePrefab).GetComponent<ResourceTemplate>();
-                if (template == null)
-                {
-                    Debug.LogError("Failed to get ResourceTemplate component from instantiated prefab.");
-                    Destroy(template.gameObject); // Clean up failed instance
-                    continue;
-                }
-                MapDictionaryToResourceTemplate(template, rowData);
-                templates.Add(template);
-            }
-            Debug.Log($"Loaded {templates.Count} resource templates data rows.");
-            return templates;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error loading all resource templates from '{ResourceTemplateTableName}': {ex.Message}");
-            return null; // Indicate failure
-        }
-    }
-
-    private async Task InitializeResourceDataTablesIfNotExistsAsync()
-    {
-        Debug.Log("Checking and initializing resource data tables async...");
-        bool spawnTableOK = await EnsureTableExistsAsync(ResourceSpawnsTableName, GetSpawnTableDefinition());
-        bool templateTableOK = await EnsureTableExistsAsync(ResourceTemplateTableName, GetTemplateTableDefinition());
-
-        if (!spawnTableOK || !templateTableOK)
-        {
-            throw new Exception("Failed to initialize required resource database tables async.");
-        }
-        Debug.Log("Resource data tables checked/initialized async.");
-    }
-    private Dictionary<string, string> GetSpawnTableDefinition()
-    { 
-        return new Dictionary<string, string> {
-            {"ResourceSpawnID", "INT AUTO_INCREMENT PRIMARY KEY"}, {"ResourceName", "VARCHAR(255)"},
-            {"ResourceTemplateID", "INT"}, {"Type", "INT"}, {"SubType", "INT"}, {"Quality", "INT"},
-            {"Toughness", "INT"}, {"Strength", "INT"}, {"Density", "INT"}, {"Aura", "INT"},
-            {"Energy", "INT"}, {"Protein", "INT"}, {"Carbohydrate", "INT"}, {"Flavour", "INT"},
-            {"Weight", "INT"}, {"StartDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}, {"EndDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
-        };
-    }
-    private Dictionary<string, string> GetTemplateTableDefinition()
-    { 
-        return new Dictionary<string, string> {
-            {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"}, {"Order", "INT"}, {"Family", "INT"},
-            {"Type", "INT"}, {"Quality", "INT"}, {"Toughness", "INT"}, {"Strength", "INT"},
-            {"Density", "INT"}, {"Aura", "INT"}, {"Energy", "INT"}, {"Protein", "INT"},
-            {"Carbohydrate", "INT"}, {"Flavour", "INT"}, {"StackSizeMax", "INT DEFAULT 100"}, {"Weight", "INT"}
-         };
-    }
-    private async Task<bool> EnsureTableExistsAsync(string tableName, Dictionary<string, string> columns)
-    {
-        try
-        {
-            bool exists = await DatabaseManager.Instance.TableExistsAsync(tableName);
-            if (!exists)
-            {
-                Debug.Log($"Table '{tableName}' does not exist. Attempting to create async...");
-                bool created = await DatabaseManager.Instance.CreateTableIfNotExistsAsync(tableName, columns);
-                if (created)
-                {
-                    Debug.Log($"Successfully created table '{tableName}' async.");
-                    return true;
-                }
-                else
-                {
-                    Debug.LogError($"Failed to create table '{tableName}' async.");
-                    return false;
-                }
-            }
-            else
-            {
-                Debug.Log($"Table '{tableName}' already exists.");
-                return true; // Table exists
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error checking/creating table async '{tableName}': {ex.Message}");
-            return false;
-        }
-    }
-
-    #region Saving
-    public async Task<long> SaveSpawnedResourceAsync(Resource resource)
-    {
-        long newResourceId = -1; 
-        if (resource == null) 
-        { 
-            Debug.LogError("Cannot save null resource."); 
-            return -1; 
-        }
-        if (resource.ResourceTemplate == null) 
-        { 
-            Debug.LogError($"Resource '{resource.ResourceName}' has no associated template. Cannot save."); 
-            return -1; 
-        }
-
-        Dictionary<string, object> values = new Dictionary<string, object>
-        {
-            { "ResourceName", resource.ResourceName },
-            { "ResourceTemplateID", resource.ResourceTemplate.ResourceTemplateID },
-            { "Type", (int)resource.Type},
-            { "SubType", (int)resource.Subtype},
-            { "Quality", resource.Quality },
-            { "Toughness", resource.Toughness },
-            { "Strength", resource.Strength },
-            { "Density", resource.Density },
-            { "Aura", resource.Aura },
-            { "Energy", resource.Energy },
-            { "Protein", resource.Protein },
-            { "Carbohydrate", resource.Carbohydrate },
-            { "Flavour", resource.Flavour },
-            { "Weight", resource.Weight },
-            { "StartDate", resource.StartDate },
-            { "EndDate", resource.EndDate }
-        };
-
-        try
-        {
-            // Use InsertDataAsync directly
-            bool success = await DatabaseManager.Instance.InsertDataAsync(ResourceSpawnsTableName, values);
-
-            if (success)
-            {
-                // Use GetLastInsertIdAsync directly
-                newResourceId = await DatabaseManager.Instance.GetLastInsertIdAsync();
-                if (newResourceId > 0) // Check if ID is valid
-                {
-                    resource.ResourceSpawnID = (int)newResourceId;
-                    Debug.Log($"Successfully saved resource '{resource.ResourceName}' with SpawnID: {newResourceId}");
-                }
-                else
-                {
-                    Debug.LogError($"Insert succeeded but failed to get last insert ID for resource '{resource.ResourceName}'.");
-                    success = false; // Mark as failed if ID retrieval fails
-                }
-            }
-            else
-            {
-                Debug.LogError($"Failed to insert resource into '{ResourceSpawnsTableName}'.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Exception saving resource to '{ResourceSpawnsTableName}': {ex.Message}");
-            newResourceId = -1;
-        }
-        return newResourceId; // Returns the ResourceSpawnID
-    }
-    #endregion
-
-    #region Spawn New Resource
-    public async Task<Resource> SpawnResourceFromTemplateAsync(int templateId, ResourceSubType subType)
-    {
-        ResourceTemplate template = resourceTemplates.Find(t => t.ResourceTemplateID == templateId);
-        if (template == null)
-        {
-            Debug.LogError($"Cannot spawn resource: Template ID {templateId} not found in resourceTemplates list.");
-            return null;
-        }
-        Debug.Log($"Found template: {template.ResourceTemplateID}");
-        return await SpawnResourceFromTemplateAsync(template, subType);
-    }
-    public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType resType, ResourceSubType subType)
-    {
-        ResourceTemplate template = resourceTemplates.Find(t => t.Type == resType);
-        if (template == null)
-        {
-            Debug.LogError($"Cannot spawn resource: Template type {resType} not found in resourceTemplates list.");
-            return null;
-        }
-        Debug.Log($"Found template: {template.ResourceTemplateID}");
-        return await SpawnResourceFromTemplateAsync(template, subType);
-    }
-    public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceTemplate template, ResourceSubType subType)
-    {
-        // 2. Create new Resource object
-        Resource newResource = Instantiate(GetResourcePrefab(), resourcesParent).GetComponent<Resource>();
-
-        // 3. Assign template
-        newResource.ResourceTemplate = template;
-
-        // 4. Generate Random Name
-        newResource.ResourceName = GenerateRandomResourceName();
-
-        // 5. Randomize Stats (+/- 50 from template, ensuring minimum of 1 and maximum of 1000)
-        newResource.Quality = ClampNumber(template.Quality + randomNumber.Next(-100, 101));
-        newResource.Toughness = ClampNumber(template.Toughness + randomNumber.Next(-50, 51));
-        newResource.Strength = ClampNumber(template.Strength + randomNumber.Next(-50, 51));
-        newResource.Density = ClampNumber(template.Density + randomNumber.Next(-50, 51));
-        newResource.Aura = ClampNumber(template.Aura + randomNumber.Next(-50, 51));
-        newResource.Energy = ClampNumber(template.Energy + randomNumber.Next(-50, 51));
-        newResource.Protein = ClampNumber(template.Protein + randomNumber.Next(-50, 51));
-        newResource.Carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-50, 51));
-        newResource.Flavour = ClampNumber(template.Flavour + randomNumber.Next(-50, 51));
-
-        // 6. Set immutable stats
-        newResource.Type = template.Type;
-        newResource.Subtype = subType;
-        newResource.Weight = template.Weight;
-        newResource.StartDate = DateTime.UtcNow;
-        newResource.EndDate = DateTime.UtcNow.AddHours(randomNumber.Next(120,216));
-
-        // 7. Save the new resource instance to the ResourceSpawns table
-        Debug.Log($"Saving newly generated resource: {newResource.ResourceName} with stats based on template {newResource.ResourceTemplate.ResourceTemplateID}");
-        long newSpawnId = await SaveSpawnedResourceAsync(newResource);
-
-        if (newSpawnId > 0)
-        {
-            Debug.Log($"Successfully saved spawned resource {newResource.ResourceName} with ResourceSpawnID: {newSpawnId}");
-            newResource.ResourceSpawnID = (int)newSpawnId; // Set the ResourceSpawnID to the new ID from DB
-            spawnedResources.Add(newResource);
-            return newResource; // newResource object now contains the ResourceSpawnID in its ResourceID property
-        }
-        else
-        {
-            Debug.LogError($"Failed to save spawned resource based on template {newResource.ResourceTemplate.ResourceTemplateID}.");
-            return null;
-        }
-    }
-    #endregion
-
-    #region Getters
-    public Resource GetResourcePrefab()
-    {
-        return resourcePrefab;
-    }
-    public ResourceTemplate GetResourceTemplatePrefab()
-    {
-        return resourceTemplatePrefab;
-    }
-    public List<Resource> GetAllSpawnedResources()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Attempted to access spawned resources before ResourceManager is initialized.");
-            return new List<Resource>(); // Return empty list
-        }
-        return spawnedResources; // Or return a copy
-    }
-    public List<ResourceTemplate> GetAllTemplates()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Attempted to access templates before ResourceManager is initialized.");
-            return new List<ResourceTemplate>(); // Return empty list
-        }
-        return resourceTemplates; // Or return a copy: new List<ResourceTemplate>(loadedTemplates)
-    }
-    public Resource GetSpawnedResourceById(int spawnId)
-    {
-        if (!isInitialized) return null;
-        // Use Linq Find (or create a dictionary if frequent lookups needed)
-        return spawnedResources.Find(r => r.ResourceSpawnID == spawnId);
-    }
-    public ResourceTemplate GetTemplateById(int templateId)
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Attempted to access template by ID before ResourceManager is initialized.");
-            return null;
-        }
-        templatesById.TryGetValue(templateId, out ResourceTemplate template);
-        return template; // Returns null if not found
-    }
-
-    #endregion
-
-    #region Helpers
-    private string GenerateRandomResourceName()
-    {
-        string firstPart = firstPartOfName[randomNumber.Next(firstPartOfName.Count)];
-        string secondPart = secondPartOfName[randomNumber.Next(secondPartOfName.Count)];
-        string thirdPart = thirdPartOfName[randomNumber.Next(secondPartOfName.Count)];
-        string assembledName = $"{firstPart}{secondPart}{thirdPart}";
-        foreach (Resource resource in spawnedResources)
-        {
-            if (resource.ResourceName == assembledName)
-            {
-                Debug.Log($"Duplicate name found: {assembledName}. Generating a new one.");
-                return GenerateRandomResourceName(); // Recursively generate a new name
-            }
-        }
-
-        return assembledName;
-    }
-    private int ClampNumber(int value, int min = 1, int max = 1000)
-    {
-        return Math.Max(min, Math.Min(max, value));
-    }    
     private void MapDictionaryToResourceTemplate(ResourceTemplate resourceTemplate, Dictionary<string, object> data)
     {
         try
@@ -607,98 +279,299 @@ public class ResourceManager : MonoBehaviour
                 data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
                 data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
                 data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 1,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 1
+                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0
             );
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+            LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
         }
     }
+
     private void MapDictionaryToResource(Resource resource, Dictionary<string, object> data)
     {
-        int resourceSpawnId = -1;
-        string resourceName = null;
-        int templateId = -1;
-        int type = -1;
-        int subType = -1;
-        int quality = 0;
-        int toughness = 0;
-        int strength = 0;
-        int density = 0;
-        int aura = 0;
-        int energy = 0;
-        int protein = 0;
-        int carbohydrate = 0;
-        int flavour = 0;
-        int weight = 0;
-        DateTime startDate = DateTime.MinValue;
-        DateTime endDate = DateTime.MinValue;
         try
         {
-            resourceSpawnId = data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1;
-            resourceName = data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : null;
-            templateId = data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1;
-            type = data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : -1;
-            subType = data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : -1;
-            quality = data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0;
-            toughness = data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0;
-            strength = data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0;
-            density = data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0;
-            aura = data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0;
-            energy = data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0;
-            protein = data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0;
-            carbohydrate = data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0;
-            flavour = data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0;
-            weight = data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0;
-            startDate = data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue;
-            endDate = data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue;
+            resource.SetResource(
+                data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
+                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : null,
+                data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
+                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
+                data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
+                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
+                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
+                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
+                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
+                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
+                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
+                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
+                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
+                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
+                data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
+            );
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+            LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
         }
-        resource.SetResource(
-            resourceSpawnId,
-            resourceName,
-            templateId,
-            type,
-            subType,
-            quality,
-            toughness,
-            strength,
-            density,
-            aura,
-            energy,
-            protein,
-            carbohydrate,
-            flavour,
-            weight,
-            startDate,
-            endDate
-        );
     }
-    private void LinkSpawnedResourcesToTemplates()
+
+    private void LinkInstancesToTemplates()
     {
-        foreach (var resource in spawnedResources)
+        foreach (var resource in loadedResourceInstances)
         {
-            // Ensure GetResourceTemplateID() exists on Resource class
             if (templatesById.TryGetValue(resource.GetResourceTemplateID(), out ResourceTemplate template))
             {
                 resource.ResourceTemplate = template;
             }
             else
             {
-                Debug.LogWarning($"Spawned resource '{resource.ResourceName}' (SpawnID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
+                LogWarning($"Resource instance '{resource.ResourceName}' (ID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
             }
         }
     }
-    #endregion
 
+    public Resource GetResourcePrefab()
+    {
+        return resourcePrefab;
+    }
+
+    public ResourceTemplate GetResourceTemplatePrefab()
+    {
+        return resourceTemplatePrefab;
+    }
+
+    public List<Resource> GetAllResourceInstances()
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access resource instances before ResourceManager is initialized.");
+            return new List<Resource>(); // Return empty list
+        }
+        return loadedResourceInstances; // Or return a copy
+    }
+
+    public List<ResourceTemplate> GetAllResourceTemplates()
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access templates before ResourceManager is initialized.");
+            return new List<ResourceTemplate>(); // Return empty list
+        }
+        return loadedTemplates; // Or return a copy: new List<ResourceTemplate>(loadedTemplates)
+    }
+
+    public Resource GetResourceInstanceById(int resourceID)
+    {
+        if (!isInitialized) return null;
+        resourcesById.TryGetValue(resourceID, out Resource resource);
+        return resource; // Returns null if not found
+    }
+
+    public ResourceTemplate GetResourceTemplateById(int templateID)
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access template by ID before ResourceManager is initialized.");
+            return null;
+        }
+        templatesById.TryGetValue(templateID, out ResourceTemplate template);
+        return template; // Returns null if not found
+    }
+
+    public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType type, ResourceSubType regionType)
+    {
+        if (!isInitialized)
+        {
+            LogError("ResourceManager not initialized. Cannot spawn resource.");
+            return null;
+        }
+
+        // 1. Find Template
+        ResourceTemplate template = loadedTemplates.FirstOrDefault(t => t.Type == type);
+
+        if (template == null)
+        {
+            LogError($"No ResourceTemplate found for type '{type}'. Cannot spawn resource.");
+            return null;
+        }
+
+        if (resourcePrefab == null)
+        {
+            LogError("Resource Prefab is not assigned! Cannot spawn resource.");
+            return null;
+        }
+
+        // 2. Instantiate Prefab
+        GameObject resourceGO = Instantiate(resourcePrefab.gameObject);
+        Resource newResource = resourceGO.GetComponent<Resource>();
+        if (newResource == null)
+        {
+            LogError("Failed to get Resource component from instantiated prefab. Destroying object.");
+            Destroy(resourceGO);
+            return null;
+        }
+
+        // 3. Parenting
+        if (resourceInstancesParent != null)
+        {
+            resourceGO.transform.SetParent(resourceInstancesParent, false);
+        }
+        else
+        {
+            LogWarning("resourceInstancesParent is not set. Spawned resource will be at root.");
+        }
+
+        // 4. Generate Name and Set Initial Values
+        string randomName = GenerateRandomResourceName();
+        
+        // 5. Add Random Variation (+- 50, clamped)
+        int quality = ClampNumber(template.Quality + randomNumber.Next(-50, 51));
+        int toughness = ClampNumber(template.Toughness + randomNumber.Next(-50, 51));
+        int strength = ClampNumber(template.Strength + randomNumber.Next(-50, 51));
+        int density = ClampNumber(template.Density + randomNumber.Next(-50, 51));
+        int aura = ClampNumber(template.Aura + randomNumber.Next(-50, 51));
+        int energy = ClampNumber(template.Energy + randomNumber.Next(-50, 51));
+        int protein = ClampNumber(template.Protein + randomNumber.Next(-50, 51));
+        int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-50, 51));
+        int flavour = ClampNumber(template.Flavour + randomNumber.Next(-50, 51));
+        int weight = ClampNumber(template.Weight + randomNumber.Next(-50, 51));
+
+        // 6. Set Dates
+        DateTime startDate = DateTime.UtcNow;
+        int randomHours = randomNumber.Next(120, 217);
+        DateTime endDate = startDate.AddHours(randomHours);
+
+        // 7. Save to Database using a transaction
+        try
+        {
+            using (var connection = new MySqlConnection(DatabaseManager.Instance.GetConnectionString()))
+            {
+                await connection.OpenAsync();
+                using (var transaction = await connection.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        // Prepare the insert command
+                        Dictionary<string, object> valuesToSave = new Dictionary<string, object>
+                        {
+                            { "ResourceName", randomName },
+                            { "ResourceTemplateID", template.ResourceTemplateID },
+                            { "Type", (int)template.Type },
+                            { "SubType", (int)regionType },
+                            { "Quality", quality },
+                            { "Toughness", toughness },
+                            { "Strength", strength },
+                            { "Density", density },
+                            { "Aura", aura },
+                            { "Energy", energy },
+                            { "Protein", protein },
+                            { "Carbohydrate", carbohydrate },
+                            { "Flavour", flavour },
+                            { "Weight", weight },
+                            { "StartDate", startDate },
+                            { "EndDate", endDate }
+                        };
+
+                        string columns = string.Join(", ", valuesToSave.Keys.Select(k => $"`{k}`"));
+                        string parameters = string.Join(", ", valuesToSave.Keys.Select(k => $"@{k}"));
+                        string query = $"INSERT INTO `{ResourceInstancesTableName}` ({columns}) VALUES ({parameters}); SELECT LAST_INSERT_ID();";
+
+                        using (var cmd = new MySqlCommand(query, connection, transaction))
+                        {
+                            foreach (var kvp in valuesToSave)
+                            {
+                                cmd.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? DBNull.Value);
+                            }
+
+                            // Execute the command and get the ID
+                            object result = await cmd.ExecuteScalarAsync();
+                            if (result != null && result != DBNull.Value)
+                            {
+                                long newId = Convert.ToInt64(result);
+                                if (newId > 0)
+                                {
+                                    // Commit the transaction
+                                    await transaction.CommitAsync();
+
+                                    // Set the resource data
+                                    newResource.SetResource(
+                                        (int)newId,
+                                        randomName,
+                                        template.ResourceTemplateID,
+                                        (int)template.Type,
+                                        (int)regionType,
+                                        quality,
+                                        toughness,
+                                        strength,
+                                        density,
+                                        aura,
+                                        energy,
+                                        protein,
+                                        carbohydrate,
+                                        flavour,
+                                        weight,
+                                        startDate,
+                                        endDate
+                                    );
+                                    
+                                    loadedResourceInstances.Add(newResource);
+                                    resourcesById[newResource.ResourceSpawnID] = newResource;
+                                    LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
+                                    return newResource;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            LogError("Failed to get last insert ID after successful insert.");
+            Destroy(resourceGO);
+            return null;
+        }
+        catch (Exception ex)
+        {   
+            LogError("Exception during resource saving process. Destroying spawned object.", ex);
+            Destroy(resourceGO);
+            return null;
+        }
+    }
+
+    private string GenerateRandomResourceName()
+    {
+        string firstPart = firstPartOfName[randomNumber.Next(firstPartOfName.Count)];
+        string secondPart = secondPartOfName[randomNumber.Next(secondPartOfName.Count)];
+        string thirdPart = thirdPartOfName[randomNumber.Next(thirdPartOfName.Count)];
+        string assembledName = $"{firstPart}{secondPart}{thirdPart}";
+        foreach (Resource resource in loadedResourceInstances)
+        {
+            if (resource.ResourceName == assembledName)
+            {
+                LogWarning($"Duplicate name found: {assembledName}. Generating a new one.");
+                return GenerateRandomResourceName(); // Recursively generate a new name
+            }
+        }
+
+        return assembledName;
+    }
+
+    private int ClampNumber(int value, int min = 1, int max = 1000)
+    {
+        return Math.Max(min, Math.Min(max, value));
+    }
 }
+
 public enum ResourceType
-{ 
+{
     //Liquid
     SeaWater,
     RiverWater,
@@ -806,7 +679,8 @@ public enum ResourceType
 
     //Magical?
 }
-public enum ResourceSubType 
+
+public enum ResourceSubType
 {
     //Region
     Ithoria,
@@ -845,6 +719,7 @@ public enum ResourceSubType
     Wurm,
     Shark
 }
+
 public enum ResourceOrder
 {
     Liquid,
@@ -852,6 +727,7 @@ public enum ResourceOrder
     Animal,
     Plant,
 }
+
 public enum ResourceFamily
 {
     Water,

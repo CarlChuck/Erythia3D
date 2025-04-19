@@ -4,9 +4,11 @@ using System.Threading.Tasks;
 using System;
 using System.Threading;
 
-public class CharactersManager : MonoBehaviour
+public class CharactersManager : BaseManager
 {
     private const string CharacterDataTableName = "CharacterData";
+
+    [Header("Species Templates")]
     [SerializeField] private SpeciesTemplate raceAelystian;
     [SerializeField] private SpeciesTemplate raceAnurian;
     [SerializeField] private SpeciesTemplate raceGetaii;
@@ -18,48 +20,68 @@ public class CharactersManager : MonoBehaviour
     [SerializeField] private SpeciesTemplate raceValahoran;
 
     #region Singleton
-    public static CharactersManager Instance;
-    private void Awake()
+    public static CharactersManager Instance => GetInstance<CharactersManager>();
+
+    protected override void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
+        base.Awake();
     }
     #endregion
-    private void Start() // Changed to async void
+
+    private void Start()
     {
-        // Start and store the task
-        InitializeCharacterDataTableIfNotExists();
+        StartInitialization();
     }
 
-    private void InitializeCharacterDataTableIfNotExists()
+    protected override void OnDestroy()
     {
-        Dictionary<string, string> charColumns = GetCharacterTableDefinition();
-        if (!DatabaseManager.Instance.TableExists(CharacterDataTableName))
+        base.OnDestroy();
+    }
+
+    protected override async Task InitializeAsync()
+    {
+        try
         {
-            bool tableCreated = DatabaseManager.Instance.CreateTableIfNotExists(CharacterDataTableName, charColumns);
-            Debug.Log($"{CharacterDataTableName} table creation attempt result: {tableCreated}");
-            if (!tableCreated) Debug.LogError($"Failed to create {CharacterDataTableName} table.");
+            // 1. Ensure Table Exists
+            await EnsureCharacterTableExistsAsync();
+
+            // 2. Mark as Initialized
+            isInitialized = true;
+            LogInfo("CharactersManager Initialization Complete.");
+            NotifyDataLoaded();
         }
-        else
+        catch (Exception ex)
         {
-            //Debug.Log($"{CharacterDataTableName} table already exists.");
+            LogError("CharactersManager Initialization Failed", ex);
+            isInitialized = false;
         }
     }
+
+    private async Task EnsureCharacterTableExistsAsync()
+    {
+        LogInfo("Checking and initializing character data table async...");
+        bool tableOK = await EnsureTableExistsAsync(CharacterDataTableName, GetCharacterTableDefinition());
+
+        if (!tableOK)
+        {
+            throw new Exception("Failed to initialize character database table async.");
+        }
+        LogInfo("Character data table checked/initialized async.");
+    }
+
     private Dictionary<string, string> GetCharacterTableDefinition()
     {
         return new Dictionary<string, string> 
         {
             {"CharID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"AccountID", "INT"},
-            {"Familyname", "VARCHAR(255) UNIQUE"},
+            {"FamilyName", "VARCHAR(255) UNIQUE"},
             {"Name", "VARCHAR(255)"},
             {"Title", "VARCHAR(255)"},
             {"ZoneID", "INT"},
-            {"Xloc", "INT"},
-            {"Yloc", "INT"},
-            {"Zloc", "INT"},
+            {"XLoc", "INT"},
+            {"YLoc", "INT"},
+            {"ZLoc", "INT"},
             {"Race", "INT"},
             {"Gender", "INT"},
             {"Face", "INT"},
@@ -71,6 +93,7 @@ public class CharactersManager : MonoBehaviour
             {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
     }
+
     public async Task<bool> CreateNewCharacterAsync(int accountID, string familyName, string characterName, string title = null, int startingArea = 1, int race = 1, int gender = 1, int face = 1)
     {
         int xLoc = 0; // TODO: Get actual starting location based on startingArea
@@ -80,13 +103,13 @@ public class CharactersManager : MonoBehaviour
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"AccountID", accountID},
-            {"Familyname", familyName},
+            {"FamilyName", familyName},
             {"Name", characterName},
             {"Title", title},
             {"ZoneID", startingArea},
-            {"Xloc", xLoc},
-            {"Yloc", yLoc},
-            {"Zloc", zLoc},
+            {"XLoc", xLoc},
+            {"YLoc", yLoc},
+            {"ZLoc", zLoc},
             {"Race", race},
             {"Gender", gender},
             {"Face", face},
@@ -99,62 +122,50 @@ public class CharactersManager : MonoBehaviour
 
         try
         {
-            // Use the asynchronous InsertDataAsync method
-            bool characterAdded = await DatabaseManager.Instance.InsertDataAsync(CharacterDataTableName, values);
+            bool characterAdded = await SaveDataAsync(CharacterDataTableName, values);
 
             if (characterAdded)
             {
-                Debug.Log($"New character '{characterName}' created successfully for Account ID {accountID}.");
+                LogInfo($"New character '{characterName}' created successfully for Account ID {accountID}.");
             }
             else
             {
-                Debug.LogWarning($"Failed to create new character '{characterName}'. Check DatabaseManager logs or constraints (e.g., duplicate Familyname?).");
+                LogWarning($"Failed to create new character '{characterName}'. Check DatabaseManager logs or constraints (e.g., duplicate Familyname?).");
             }
             return characterAdded;
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Exception during character creation for '{characterName}': {ex.Message}\n{ex.StackTrace}");
+            LogError($"Exception during character creation for '{characterName}'", ex);
             return false;
         }
     }
+
     public async Task<List<Dictionary<string, object>>> GetCharactersbyAccountIDAsync(int accountId)
     {
-        string query = $"SELECT * FROM `{CharacterDataTableName}` WHERE AccountID = @AccountID"; // Use backticks
+        string query = $"SELECT * FROM `{CharacterDataTableName}` WHERE AccountID = @AccountID";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@AccountID", accountId } };
         try
         {
-            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query, parameters);
-
-            // Check for null result which indicates a query execution error
-            if (results == null)
-            {
-                Debug.LogError($"Error retrieving characters for Account ID: {accountId}. Query execution failed.");
-                return new List<Dictionary<string, object>>(); // Return empty list on error
-            }
+            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
 
             if (results.Count > 0)
             {
-                Debug.Log($"Found {results.Count} character(s) for Account ID: {accountId}");
+                LogInfo($"Found {results.Count} character(s) for Account ID: {accountId}");
             }
             else
             {
-                Debug.Log($"No characters found for Account ID: {accountId}");
+                LogInfo($"No characters found for Account ID: {accountId}");
             }
-            return results; // Return results (could be empty list if none found)
+            return results;
         }
-        catch (Exception ex) // Catch unexpected exceptions during processing
+        catch (Exception ex)
         {
-            Debug.LogError($"Exception retrieving characters by Account ID {accountId}: {ex.Message}\n{ex.StackTrace}");
-            return new List<Dictionary<string, object>>(); // Return empty list on error
+            LogError($"Exception retrieving characters by Account ID {accountId}", ex);
+            return new List<Dictionary<string, object>>();
         }
     }
 
-    // Update the synchronous wrapper method accordingly
-    public async Task<List<Dictionary<string, object>>> GetCharactersbyAccountID(int accountId)
-    {
-        return await GetCharactersbyAccountIDAsync(accountId);
-    }
     public SpeciesTemplate GetSpeciesByID(int id)
     {
         return id switch

@@ -12,7 +12,7 @@ public class ZoneManager : MonoBehaviour
     [SerializeField] private List<Resource> regionResources = new List<Resource>(); // List of resources for this region
     [SerializeField] private ResourceItem resourceItemPrefab;
 
-    private bool isInitialized = false; // Add initialization flag
+    private bool isInitialized = false; 
 
     private async void Start()
     {
@@ -20,7 +20,7 @@ public class ZoneManager : MonoBehaviour
         Debug.Log("ZoneManager Start: Waiting for ResourceManager initialization...");
 
         // 1. Wait for ResourceManager to be ready
-        while (!ResourceManager.Instance.isInitialized)
+        while (!ResourceManager.Instance.GetIsInitialized())
         {
             Debug.LogWarning("ZoneManager waiting for ResourceManager data to load...");
             await Task.Yield(); // Wait a frame
@@ -58,7 +58,7 @@ public class ZoneManager : MonoBehaviour
         // Use try-catch in case ResourceManager.Instance becomes null unexpectedly
         try
         {
-            List<Resource> allSpawned = ResourceManager.Instance.GetAllSpawnedResources();
+            List<Resource> allSpawned = ResourceManager.Instance.GetAllResourceInstances();
             if (allSpawned != null)
             {
                 // Use LINQ for cleaner filtering
@@ -115,41 +115,37 @@ public class ZoneManager : MonoBehaviour
     {
         Debug.Log("Assigning resources to nodes...");
 
-        foreach (ResourceNode node in activeNodes)
+        // First, group nodes by their resource type
+        var nodesByType = activeNodes.GroupBy(node => node.GetResourceType());
+
+        foreach (var nodeGroup in nodesByType)
         {
+            ResourceType type = nodeGroup.Key;
+            Debug.Log($"Processing {nodeGroup.Count()} nodes of type {type}...");
 
-            Resource currentResource = node.GetResource(); 
-
-            if (currentResource == null || !regionResources.Contains(currentResource)) // Check if node needs a resource or if its current one isn't in the valid list
+            // Find existing resource of this type in our region
+            Resource existingResource = regionResources.FirstOrDefault(r => r.Type == type);
+            
+            // If no existing resource, create one
+            if (existingResource == null)
             {
-                Debug.Log($"Node '{node.gameObject.name}' needs a resource assignment (Type: {node.GetResourceType()}). Searching...");
-                Resource assignedResource = null;
-
-
-                // If no suitable existing resource found, create a new one
-                if (assignedResource == null)
+                Debug.Log($"No existing resource found for type {type}. Creating new one...");
+                existingResource = await CreateNewResourceAsync(type);
+                if (existingResource == null)
                 {
-                    Debug.Log($"No existing suitable resource found for node '{node.gameObject.name}'. Creating new one...");
-                    assignedResource = await CreateNewResourceAsync(node.GetResourceType());
-                }
-
-                // Assign the found or created resource to the node
-                if (assignedResource != null)
-                {
-                    Debug.Log($"Assigning resource '{assignedResource.ResourceName}' (ID: {assignedResource.ResourceSpawnID}) to node '{node.gameObject.name}'.");
-                    node.SetResource(assignedResource);
-                }
-                else
-                {
-                    Debug.LogError($"Failed to find or create a resource for node '{node.gameObject.name}' (Type: {node.GetResourceType()}). Node will remain empty.");
-                    node.SetResource(null); // Ensure it's explicitly set to null if assignment fails
+                    Debug.LogError($"Failed to create resource for type {type}. Skipping {nodeGroup.Count()} nodes.");
+                    continue;
                 }
             }
-            else
+
+            // Assign the resource to all nodes in this group
+            foreach (ResourceNode node in nodeGroup)
             {
-                Debug.Log($"Node '{node.gameObject.name}' already has a valid resource assigned: {currentResource.ResourceName}");
+                Debug.Log($"Assigning resource '{existingResource.ResourceName}' (ID: {existingResource.ResourceSpawnID}) to node '{node.gameObject.name}'.");
+                node.SetResource(existingResource);
             }
         }
+
         Debug.Log("Finished assigning resources to nodes.");
     }
     public void RegisterNode(ResourceNode node)
@@ -181,6 +177,11 @@ public class ZoneManager : MonoBehaviour
     public List<Resource> GetRegionResources()
     {
         return regionResources;
+    }
+
+    public bool GetIsInitialized()
+    {
+        return isInitialized;
     }
     #endregion
 }

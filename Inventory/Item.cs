@@ -12,7 +12,7 @@ public class Item : MonoBehaviour
     public int MaxDurability { get; private set; } = 100;
     public float Damage { get; private set; } = 0f;
     public float Speed { get; private set; } = 1.0f;
-    public ItemDamageType DmgType { get; private set; } = ItemDamageType.Blunt;
+    public ItemDamageType DamageType { get; private set; } = ItemDamageType.Blunt;
     public ItemSlotType Slot { get; private set; } = ItemSlotType.None;
     public float SlashResist { get; private set; } = 0f;
     public float ThrustResist { get; private set; } = 0f;
@@ -27,7 +27,7 @@ public class Item : MonoBehaviour
     public string ColourHex { get; private set; } = "#FFFFFF";
     [NonSerialized] public Color ItemColor = Color.white;
     public float Weight { get; private set; } = 1.0f;
-    public int ModelPath { get; private set; } = 0;
+    public int Model { get; private set; } = 0;
     public int Bonus1 { get; private set; } = 0;
     public int Bonus2 { get; private set; } = 0;
     public int Bonus3 { get; private set; } = 0;
@@ -61,7 +61,7 @@ public class Item : MonoBehaviour
         MaxDurability = maxDurability;
         Damage = damage;
         Speed = speed;
-        DmgType = Enum.IsDefined(typeof(ItemDamageType), damageType) ? (ItemDamageType)damageType : ItemDamageType.Blunt;
+        DamageType = Enum.IsDefined(typeof(ItemDamageType), damageType) ? (ItemDamageType)damageType : ItemDamageType.Blunt;
         Slot = Enum.IsDefined(typeof(ItemSlotType), slotType) ? (ItemSlotType)slotType : ItemSlotType.None;
 
         SlashResist = slashRes;
@@ -79,7 +79,7 @@ public class Item : MonoBehaviour
         // TODO: Load Sprite from IconPath
 
         Weight = weight;
-        ModelPath = model;
+        Model = model;
         // TODO: Load Model from ModelPath
 
         Bonus1 = bonus1; Bonus2 = bonus2; Bonus3 = bonus3; Bonus4 = bonus4;
@@ -99,8 +99,6 @@ public class Item : MonoBehaviour
         Price = price;
     }
 
-
-    // SetItemID remains the same
     public void SetItemID(int id)
     {
         if (ItemID <= 0) { ItemID = id; }
