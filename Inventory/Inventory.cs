@@ -78,7 +78,7 @@ public class Inventory : MonoBehaviour
         {
             foreach (Item item in items)
             {
-                totalWeight += item.GetWeight();
+                totalWeight += (int)item.GetWeight();
             }
         }
         return totalWeight;

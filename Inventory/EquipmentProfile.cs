@@ -225,7 +225,7 @@ public class EquipmentProfile : MonoBehaviour
         {
             if (itemSlot.GetItemInSlot() != null)
             {
-                totalWeight += itemSlot.GetItemInSlot().GetWeight();
+                totalWeight += (int)itemSlot.GetItemInSlot().GetWeight();
             }
         }
         return totalWeight;

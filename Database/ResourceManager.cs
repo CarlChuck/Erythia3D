@@ -330,7 +330,7 @@ public class ResourceManager : MonoBehaviour
         Debug.Log("Resource data tables checked/initialized async.");
     }
     private Dictionary<string, string> GetSpawnTableDefinition()
-    { /* ... same as before ... */
+    { 
         return new Dictionary<string, string> {
             {"ResourceSpawnID", "INT AUTO_INCREMENT PRIMARY KEY"}, {"ResourceName", "VARCHAR(255)"},
             {"ResourceTemplateID", "INT"}, {"Type", "INT"}, {"SubType", "INT"}, {"Quality", "INT"},
@@ -340,7 +340,7 @@ public class ResourceManager : MonoBehaviour
         };
     }
     private Dictionary<string, string> GetTemplateTableDefinition()
-    { /* ... same as before ... */
+    { 
         return new Dictionary<string, string> {
             {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"}, {"Order", "INT"}, {"Family", "INT"},
             {"Type", "INT"}, {"Quality", "INT"}, {"Toughness", "INT"}, {"Strength", "INT"},
@@ -573,7 +573,7 @@ public class ResourceManager : MonoBehaviour
         string firstPart = firstPartOfName[randomNumber.Next(firstPartOfName.Count)];
         string secondPart = secondPartOfName[randomNumber.Next(secondPartOfName.Count)];
         string thirdPart = thirdPartOfName[randomNumber.Next(secondPartOfName.Count)];
-        string assembledName = $"{firstPart} {secondPart} {thirdPart}";
+        string assembledName = $"{firstPart}{secondPart}{thirdPart}";
         foreach (Resource resource in spawnedResources)
         {
             if (resource.ResourceName == assembledName)
