@@ -402,23 +402,35 @@ public class ItemManager : MonoBehaviour
 
     public List<ItemTemplate> GetAllItemTemplates()
     {
-        if (!isInitialized) Debug.LogWarning("ItemManager accessed before initialization!");
+        if (!isInitialized)
+        { 
+            Debug.LogWarning("ItemManager accessed before initialization!"); 
+        }
         return loadedTemplates;
     }
     public List<Item> GetAllItemInstances()
     {
-        if (!isInitialized) Debug.LogWarning("ItemManager accessed before initialization!");
+        if (!isInitialized)
+        { 
+            Debug.LogWarning("ItemManager accessed before initialization!"); 
+        }
         return loadedItemInstances;
     }
     public ItemTemplate GetTemplateById(int templateId)
     {
-        if (!isInitialized) Debug.LogWarning("ItemManager accessed before initialization!");
+        if (!isInitialized) 
+        { 
+            Debug.LogWarning("ItemManager accessed before initialization!"); 
+        }
         templatesById.TryGetValue(templateId, out ItemTemplate template);
         return template;
     }
     public Item GetItemInstanceById(int instanceId)
     {
-        if (!isInitialized) Debug.LogWarning("ItemManager accessed before initialization!");
+        if (!isInitialized) 
+        { 
+            Debug.LogWarning("ItemManager accessed before initialization!"); 
+        }
         itemsById.TryGetValue(instanceId, out Item item);
         return item;
     }

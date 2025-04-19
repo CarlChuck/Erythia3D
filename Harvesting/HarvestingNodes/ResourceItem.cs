@@ -20,6 +20,6 @@ public class ResourceItem : Item
         {
             currentStackSize = 0;
         }
-        SetWeight((currentStackSize * resource.Weight)/10);
+       // Weight = (currentStackSize * resource.Weight)/10;
     }
 }

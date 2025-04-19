@@ -60,7 +60,7 @@ public class UIDragDropManager : MonoBehaviour
         dragIconImage.gameObject.SetActive(true);
         UpdateDragIconPosition(Input.mousePosition); // Initial position
 
-        Debug.Log($"Started dragging: {item.GetItemName()} from {source.GetType().Name}");
+        Debug.Log($"Started dragging: {item.ItemName} from {source.GetType().Name}");
         return true;
     }
 
@@ -94,7 +94,7 @@ public class UIDragDropManager : MonoBehaviour
     {
         if (!isDragging) return;
 
-        Debug.Log($"Stopped dragging: {currentlyDraggedItem?.GetItemName()}. Success: {dropSuccessful}");
+        Debug.Log($"Stopped dragging: {currentlyDraggedItem?.ItemName}. Success: {dropSuccessful}");
 
         // If drop wasn't successful, the source slot needs to handle reverting its display
         if (!dropSuccessful && sourceSlot != null)

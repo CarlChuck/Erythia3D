@@ -22,7 +22,7 @@ public class Item : MonoBehaviour
     public float ColdResist { get; private set; } = 0f;
     public float MindResist { get; private set; } = 0f;
     public float CorruptResist { get; private set; } = 0f;
-    public int IconPath { get; private set; } = 0;
+    public int Icon { get; private set; } = 0;
     [NonSerialized] public Sprite IconSprite;
     public string ColourHex { get; private set; } = "#FFFFFF";
     [NonSerialized] public Color ItemColor = Color.white;
@@ -73,7 +73,7 @@ public class Item : MonoBehaviour
         MindResist = mindRes;
         CorruptResist = corruptRes;
 
-        IconPath = icon;
+        Icon = icon;
         ColourHex = colourHex ?? "#FFFFFF";
         ColorUtility.TryParseHtmlString(ColourHex, out ItemColor);
         // TODO: Load Sprite from IconPath

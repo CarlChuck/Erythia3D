@@ -29,7 +29,7 @@ public class UIEquipmentSlot : MonoBehaviour, IDropHandler // Only needs drop ha
 
         if (itemInSlot != null && itemIconImage != null)
         {
-            itemIconImage.sprite = itemInSlot.GetIcon();
+            itemIconImage.sprite = itemInSlot.IconSprite;
             itemIconImage.color = Color.white;
             itemIconImage.enabled = true;
         }
@@ -55,10 +55,10 @@ public class UIEquipmentSlot : MonoBehaviour, IDropHandler // Only needs drop ha
             // Check if the item came from an Inventory slot
             if (sourceSlotComp is UIInventorySlot sourceInventorySlot)
             {
-                Debug.Log($"Attempting to drop {draggedItem.GetItemName()} from Inventory onto {expectedSlotType} slot.");
+                Debug.Log($"Attempting to drop {draggedItem.ItemName} from Inventory onto {expectedSlotType} slot.");
 
                 // Check compatibility via EquipmentProfile method
-                if (parentProfile.IsItemCompatibleWithSlot(draggedItem.GetItemType(), expectedSlotType))
+                if (parentProfile.IsItemCompatibleWithSlot(draggedItem.Type, expectedSlotType))
                 {
                     // Attempt the equip via the backend profile method
                     // This handles removing from inventory, swapping, adding old to inventory
@@ -71,7 +71,7 @@ public class UIEquipmentSlot : MonoBehaviour, IDropHandler // Only needs drop ha
 
                     if (equipLikelySucceeded)
                     {
-                        Debug.Log($"Successfully dropped {draggedItem.GetItemName()} onto {expectedSlotType}. Swapped: {previouslyEquipped?.GetItemName() ?? "Nothing"}");
+                        Debug.Log($"Successfully dropped {draggedItem.ItemName} onto {expectedSlotType}. Swapped: {previouslyEquipped?.ItemName ?? "Nothing"}");
                         // Tell the source inventory slot to clear its display immediately
                         sourceInventorySlot.ClearDisplayAfterDrop();
                         // The EquipmentProfile and Inventory events will handle the final UI refresh.
@@ -79,13 +79,13 @@ public class UIEquipmentSlot : MonoBehaviour, IDropHandler // Only needs drop ha
                     }
                     else
                     {
-                        Debug.LogWarning($"Equip operation failed for {draggedItem.GetItemName()} onto {expectedSlotType} (likely inventory full on swap).");
+                        Debug.LogWarning($"Equip operation failed for {draggedItem.ItemName} onto {expectedSlotType} (likely inventory full on swap).");
                         // Drag will be cancelled by OnEndDrag seeing no success.
                     }
                 }
                 else
                 {
-                    Debug.Log($"Item {draggedItem.GetItemName()} ({draggedItem.GetItemType()}) is not compatible with slot {expectedSlotType}.");
+                    Debug.Log($"Item {draggedItem.ItemName} ({draggedItem.Type}) is not compatible with slot {expectedSlotType}.");
                     // Drag will be cancelled.
                 }
             }

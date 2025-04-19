@@ -106,9 +106,9 @@ public class EquipmentProfile : MonoBehaviour
             return null;
         }
 
-        if (!IsItemCompatibleWithSlot(itemToEquip.GetItemType(), targetSlot.GetSlotType()))
+        if (!IsItemCompatibleWithSlot(itemToEquip.Type, targetSlot.GetSlotType()))
         {
-            Debug.LogWarning($"Item {itemToEquip.GetItemName()} ({itemToEquip.GetItemType()}) cannot be equipped in slot type {targetSlot.GetSlotType()}");
+            Debug.LogWarning($"Item {itemToEquip.Type} ({itemToEquip.Type}) cannot be equipped in slot type {targetSlot.GetSlotType()}");
             return null; // Indicate failure without swapping
         }
 
@@ -116,7 +116,7 @@ public class EquipmentProfile : MonoBehaviour
         bool removedFromInventory = associatedInventory.RemoveItem(itemToEquip);
         if (!removedFromInventory)
         {
-            Debug.LogError($"EquipItemToSlot: Item {itemToEquip.GetItemName()} not found in associated inventory.");
+            Debug.LogError($"EquipItemToSlot: Item {itemToEquip.Type} not found in associated inventory.");
             // This case shouldn't happen if drag/drop logic is correct, but good failsafe
             return null;
         }
@@ -134,7 +134,7 @@ public class EquipmentProfile : MonoBehaviour
             if (!associatedInventory.AddItem(previouslyEquippedItem))
             {
                 // Inventory full! Revert the equip.
-                Debug.LogWarning($"Inventory full! Could not unequip {previouslyEquippedItem.GetItemName()}. Reverting equip.");
+                Debug.LogWarning($"Inventory full! Could not unequip {previouslyEquippedItem.ItemName}. Reverting equip.");
                 targetSlot.SetItem(previouslyEquippedItem); // Put old item back
                 associatedInventory.AddItem(itemToEquip); // Put new item back in inventory (should succeed)
                 OnEquipmentChanged?.Invoke(); // Trigger UI update for revert
@@ -177,7 +177,7 @@ public class EquipmentProfile : MonoBehaviour
     // Special handling for 2H weapons
     private void HandleTwoHandedWeapon(Item equippedItem, EquipmentSlot targetSlot)
     {
-        if (equippedItem.GetItemType() == ItemType.Weapon2h && targetSlot.GetSlotType() == ItemType.PrimaryHand)
+        if (equippedItem.Type == ItemType.Weapon2h && targetSlot.GetSlotType() == ItemType.PrimaryHand)
         {
             // Find the secondary hand slot (assuming only one for this logic)
             EquipmentSlot offHand = GetSlotForItemType(ItemType.SecondaryHand); // Get secondary slot
@@ -190,7 +190,7 @@ public class EquipmentProfile : MonoBehaviour
                 if (!associatedInventory.AddItem(offHandItem))
                 {
                     // Inventory full - drop it on the ground? Send to stash? Log error?
-                    Debug.LogError($"Inventory full! Could not return unequipped offhand item {offHandItem.GetItemName()} to inventory.");
+                    Debug.LogError($"Inventory full! Could not return unequipped offhand item {offHandItem.ItemName} to inventory.");
                     // Handle this edge case appropriately for your game.
                 }
             }
@@ -225,7 +225,7 @@ public class EquipmentProfile : MonoBehaviour
         {
             if (itemSlot.GetItemInSlot() != null)
             {
-                totalWeight += (int)itemSlot.GetItemInSlot().GetWeight();
+                totalWeight += (int)itemSlot.GetItemInSlot().Weight;
             }
         }
         return totalWeight;

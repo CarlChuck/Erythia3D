@@ -24,7 +24,7 @@ public class Inventory : MonoBehaviour
 
         if (items.Count >= bagspace)
         {
-            Debug.LogWarning("Inventory is full. Cannot add item: " + item.GetItemName());
+            Debug.LogWarning("Inventory is full. Cannot add item: " + item.ItemName);
             // Optionally, trigger a "Inventory Full" message in UI
             return false;
         }
@@ -63,7 +63,7 @@ public class Inventory : MonoBehaviour
     {
         foreach (Item item in items)
         {
-            if (item.GetItemName() == itemName)
+            if (item.ItemName == itemName)
             {
                 return item;
             }
@@ -78,7 +78,7 @@ public class Inventory : MonoBehaviour
         {
             foreach (Item item in items)
             {
-                totalWeight += (int)item.GetWeight();
+                totalWeight += (int)item.Weight;
             }
         }
         return totalWeight;

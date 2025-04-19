@@ -21,7 +21,7 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     {
         if (currentItem != null && itemIconImage != null)
         {
-            itemIconImage.sprite = currentItem.GetIcon();
+            itemIconImage.sprite = currentItem.IconSprite;
             itemIconImage.color = Color.white; // Make sure it's visible
             itemIconImage.enabled = true;
         }
@@ -40,7 +40,7 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         if (currentItem != null && UIDragDropManager.Instance != null)
         {
             // Try to start dragging via the manager
-            bool started = UIDragDropManager.Instance.StartDragging(currentItem, this, currentItem.GetIcon());
+            bool started = UIDragDropManager.Instance.StartDragging(currentItem, this, currentItem.IconSprite);
             if (started)
             {
                 // Make the item icon in *this* slot invisible during drag
@@ -110,7 +110,7 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             }
 
         }
-        Debug.Log($"Drag cancelled for slot with item: {currentItem?.GetItemName()}");
+        Debug.Log($"Drag cancelled for slot with item: {currentItem?.ItemName}");
     }
 
     // Required for OnDragCancelled to work if item is successfully dropped
