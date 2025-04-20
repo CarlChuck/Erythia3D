@@ -6,6 +6,7 @@ public class Inventory : MonoBehaviour
 {
     [SerializeField] private int bagspace;
     [SerializeField] private List<Item> items = new List<Item>();
+    [SerializeField] private List<ResourceItem> resourceItems = new List<ResourceItem>();
 
     public event Action OnInventoryChanged;
     public void SetupInventory()
@@ -16,6 +17,7 @@ public class Inventory : MonoBehaviour
     public void ClearInventory()
     {
         items.Clear();
+        resourceItems.Clear();
         OnInventoryChanged?.Invoke();
     }
     public bool AddItem(Item item)
@@ -31,7 +33,32 @@ public class Inventory : MonoBehaviour
         items.Add(item);
         OnInventoryChanged?.Invoke(); // Notify listeners
         return true;
-    }    
+    }
+
+    public bool AddResourceItem(ResourceItem resourceItem)
+    {
+        if (resourceItem == null) return false;
+
+        // Check if we already have this resource type
+        ResourceItem existingItem = resourceItems.Find(r => r.Resource == resourceItem.Resource);
+        if (existingItem != null)
+        {
+            // Update stack size of existing item
+            existingItem.UpdateStackSize(stackToAdd: resourceItem.CurrentStackSize);
+        }
+        else
+        {
+            if (resourceItems.Count >= bagspace)
+            {
+                Debug.LogWarning("Inventory is full. Cannot add resource item: " + resourceItem.Resource.ResourceName);
+                return false;
+            }
+            resourceItems.Add(resourceItem);
+        }
+        OnInventoryChanged?.Invoke(); // Notify listeners
+        return true;
+    }
+
     // Try removing a specific item instance
     public bool RemoveItem(Item item)
     {
@@ -45,10 +72,27 @@ public class Inventory : MonoBehaviour
         return removed;
     }
 
+    public bool RemoveResourceItem(ResourceItem resourceItem)
+    {
+        if (resourceItem == null) return false;
+
+        bool removed = resourceItems.Remove(resourceItem);
+        if (removed)
+        {
+            OnInventoryChanged?.Invoke(); // Notify listeners
+        }
+        return removed;
+    }
+
     // Get all items (useful for UI display)
     public List<Item> GetAllItems()
     {
         return items; // Return a copy if you want to prevent external modification: return new List<Item>(items);
+    }
+
+    public List<ResourceItem> GetAllResourceItems()
+    {
+        return resourceItems;
     }
 
     public Item GetItem(int index)
@@ -59,6 +103,16 @@ public class Inventory : MonoBehaviour
         }
         return null;
     }
+
+    public ResourceItem GetResourceItem(int index)
+    {
+        if (index >= 0 && index < resourceItems.Count)
+        {
+            return resourceItems[index];
+        }
+        return null;
+    }
+
     public Item GetItemByName(string itemName)
     {
         foreach (Item item in items)
@@ -71,6 +125,11 @@ public class Inventory : MonoBehaviour
         return null;
     }
 
+    public ResourceItem GetResourceItemByResource(Resource resource)
+    {
+        return resourceItems.Find(r => r.Resource == resource);
+    }
+
     public int GetTotalWeight()
     {
         int totalWeight = 0;
@@ -81,18 +140,28 @@ public class Inventory : MonoBehaviour
                 totalWeight += (int)item.Weight;
             }
         }
+        if (resourceItems.Count > 0)
+        {
+            foreach (ResourceItem resourceItem in resourceItems)
+            {
+                totalWeight += (int)resourceItem.Weight;
+            }
+        }
         return totalWeight;
     }
+
     public void SetBagSpace(int newBagSpace)
     {
         bagspace = newBagSpace;
     }
+
     public int GetBagSpace()
     {
         return bagspace;
     }
+
     public bool IsFull() 
     { 
-        return items.Count >= bagspace; 
+        return items.Count + resourceItems.Count >= bagspace; 
     }
 }

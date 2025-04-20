@@ -5,6 +5,6 @@ public class Interactable : MonoBehaviour
 
     public virtual void OnInteract(PlayerCharacter pCharacter)
     {
-        //Solved in the derived class
+        //Solved in the subclass
     }
 }

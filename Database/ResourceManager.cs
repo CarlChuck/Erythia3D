@@ -22,6 +22,7 @@ public class ResourceManager : BaseManager
     [Header("Prefabs")]
     [SerializeField] private Resource resourcePrefab;
     [SerializeField] private ResourceTemplate resourceTemplatePrefab;
+    [SerializeField] private ResourceItem resourceItemPrefab;
 
     [Header("Parent Transforms (Optional)")]
     [SerializeField] private Transform resourceInstancesParent;
@@ -344,6 +345,11 @@ public class ResourceManager : BaseManager
         return resourceTemplatePrefab;
     }
 
+    public ResourceItem GetResourceItemPrefab()
+    {
+        return resourceItemPrefab;
+    }
+
     public List<Resource> GetAllResourceInstances()
     {
         if (!isInitialized)
@@ -526,7 +532,7 @@ public class ResourceManager : BaseManager
                             }
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         await transaction.RollbackAsync();
                         throw;
