@@ -42,19 +42,29 @@ public class EquipmentProfile : MonoBehaviour
         equipmentSlotsByType = new Dictionary<ItemType, List<EquipmentSlot>>();
         allEquipmentSlots = new List<EquipmentSlot>();
     }
-    public void SetupEquipmentProfile(Inventory inventory) // Pass inventory reference
+
+    public void ClearEquipmentProfile()
     {
-        associatedInventory = inventory;
-        // Clear previous setup if any
-        foreach (var slot in allEquipmentSlots)
+        foreach (EquipmentSlot slot in allEquipmentSlots)
         {
-            if (slot != null && slot.gameObject != null) Destroy(slot.gameObject);
+            if (slot != null && slot.gameObject != null) 
+            { 
+                Destroy(slot.gameObject); 
+            }
         }
         equipmentSlotsByType.Clear();
         allEquipmentSlots.Clear();
+    }
+    public void SetupEquipmentProfile(Inventory inventory) 
+    {
+        associatedInventory = inventory;
+
+        // Clear previous setup if any
+        ClearEquipmentProfile();
 
         // Helper function to create and register slots
-        Action<ItemType, Action<EquipmentSlot>> CreateSlot = (type, assigner) => {
+        Action<ItemType, Action<EquipmentSlot>> CreateSlot = (type, assigner) => 
+        {
             EquipmentSlot newSlot = Instantiate(equipmentSlotPrefab.gameObject, transform).GetComponent<EquipmentSlot>();
             newSlot.gameObject.name = type.ToString() + " Slot";
             newSlot.SetSlot(type); // Set the type the backend slot expects
@@ -96,7 +106,16 @@ public class EquipmentProfile : MonoBehaviour
     }
     public void AutoEquipItem(Item newItem)
     {
-
+        ItemType itemType = newItem.Type;
+        EquipmentSlot targetSlot = GetSlotForItemType(itemType);
+        if (targetSlot != null)
+        {
+            targetSlot.SetItem(newItem);
+        }
+        else
+        {
+            Debug.LogWarning($"No suitable slot found for item type {itemType}. Item not equipped.");
+        }
     }
     public Item EquipItemToSlot(Item itemToEquip, EquipmentSlot targetSlot)
     {

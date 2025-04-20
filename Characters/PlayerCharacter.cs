@@ -54,10 +54,7 @@ public class PlayerCharacter : StatBlock
         encumberence = equipment.GetTotalWeight();
         encumberence += inventory.GetTotalWeight();
     }
-    public int GetCharacterID()
-    {
-        return characterID;
-    }
+
     #endregion
 
     public void InteractWithTarget()
@@ -106,8 +103,103 @@ public class PlayerCharacter : StatBlock
         //Fire the harvesting hit event
         //TODO Animation for Harvesting
     }
+
+
+    #region Getters
     public EquipmentProfile GetEquipmentProfile()
     {
         return equipment;
     }
+    public int GetCharacterID()
+    {
+        return characterID;
+    }
+    public int GetCurrentZone()
+    {
+        return currentZone;
+    }
+    public int GetEncumberence()
+    {
+        return encumberence;
+    }
+    public string GetFamilyName()
+    {
+        return characterTitle;
+    }
+    public Inventory GetInventory()
+    {
+        return inventory;
+    }
+    #endregion
+
+    #region Item Pickup
+    public void OnPickupItem(Item item)
+    {
+        if (item == null)
+        {
+            Debug.LogWarning("Attempted to pick up null item");
+            return;
+        }
+
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+
+        if (!inventory.AddItem(item))
+        {
+            Debug.LogWarning($"Failed to add item {item.ItemName} to inventory");
+        }
+    }
+
+    public void OnPickupResourceItem(ResourceItem resourceItem)
+    {
+        if (resourceItem == null)
+        {
+            Debug.LogWarning("Attempted to pick up null resource item");
+            return;
+        }
+
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+
+        // Check if we already have this resource type
+        ResourceItem existingItem = inventory.GetResourceItemByResource(resourceItem.Resource);
+        if (existingItem != null)
+        {
+            // Calculate how much we can add to the existing stack
+            int spaceAvailable = existingItem.StackSizeMax - existingItem.CurrentStackSize;
+            int amountToTransfer = Mathf.Min(spaceAvailable, resourceItem.CurrentStackSize);
+
+            if (amountToTransfer > 0)
+            {
+                // Update the existing stack
+                existingItem.UpdateStackSize(stackToAdd: amountToTransfer);
+                
+                // Update the new item's stack size
+                resourceItem.UpdateStackSize(stackToRemove: amountToTransfer);
+
+                // If the new item's stack is now empty, destroy it
+                if (resourceItem.CurrentStackSize <= 0)
+                {
+                    Destroy(resourceItem.gameObject);
+                    return;
+                }
+            }
+        }
+
+        // If we still have items to add (either no existing stack or existing stack is full)
+        if (resourceItem.CurrentStackSize > 0)
+        {
+            if (!inventory.AddResourceItem(resourceItem))
+            {
+                Debug.LogWarning($"Failed to add resource item {resourceItem.Resource.ResourceName} to inventory");
+            }
+        }
+    }
+    #endregion
 }

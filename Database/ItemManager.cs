@@ -42,35 +42,8 @@ public class ItemManager : BaseManager
         OnDataLoaded += PerformPostLoadActions;
     }
 
-    protected override void OnDestroy()
-    {
-        OnDataLoaded -= PerformPostLoadActions;
-        base.OnDestroy();
-    }
 
-    private void PerformPostLoadActions()
-    {
-        LogInfo("Performing post-load actions (parenting objects)...");
-        foreach (Item item in loadedItemInstances)
-        {
-            if (item != null && item.gameObject != null && itemInstancesParent != null)
-            {
-                item.gameObject.transform.SetParent(itemInstancesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed item or missing parent."); }
-        }
-        foreach (ItemTemplate template in loadedTemplates)
-        {
-            if (template != null && template.gameObject != null && itemTemplatesParent != null)
-            {
-                template.gameObject.transform.SetParent(itemTemplatesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
-        }
-        LogInfo("Post-load actions complete.");
-    }
-
-    // --- Core Async Initialization ---
+    #region InitializeLoading
     protected override async Task InitializeAsync()
     {
         loadedTemplates.Clear();
@@ -120,24 +93,6 @@ public class ItemManager : BaseManager
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
         }
     }
-
-    // --- Linking Helper ---
-    private void LinkInstancesToTemplates()
-    {
-        foreach (var itemInstance in loadedItemInstances)
-        {
-            if (templatesById.TryGetValue(itemInstance.ItemTemplateID, out ItemTemplate template))
-            {
-                itemInstance.Template = template;
-            }
-            else
-            {
-                LogWarning($"Item instance ID {itemInstance.ItemID} has missing template reference (TemplateID: {itemInstance.ItemTemplateID}).");
-            }
-        }
-    }
-
-    // --- Table Initialization ---
     private async Task EnsureItemTablesExistAsync()
     {
         LogInfo("Checking and initializing item data tables async...");
@@ -150,8 +105,81 @@ public class ItemManager : BaseManager
         }
         LogInfo("Item data tables checked/initialized async.");
     }
+    public async Task<List<ItemTemplate>> LoadAllItemTemplatesAsync()
+    {
+        List<ItemTemplate> templates = new List<ItemTemplate>();
+        if (itemTemplatePrefab == null) { LogError("ItemTemplate Prefab is not assigned!"); return null; }
 
-    // --- Table Definitions ---
+        string query = $"SELECT * FROM `{ItemTemplatesTableName}`";
+        LogInfo($"ItemManager executing query: {query}");
+        try
+        {
+            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
+            if (results == null) { LogError($"Query failed for '{ItemTemplatesTableName}'."); return null; }
+            if (results.Count == 0) { LogWarning($"No results for '{ItemTemplatesTableName}'."); return templates; }
+
+            foreach (var rowData in results)
+            {
+                ItemTemplate template = Instantiate(itemTemplatePrefab.gameObject).GetComponent<ItemTemplate>();
+                if (template == null) { LogError("Failed to get ItemTemplate component."); continue; }
+                MapDictionaryToItemTemplate(template, rowData);
+                templates.Add(template);
+            }
+            LogInfo($"Loaded {templates.Count} item template data rows.");
+            return templates;
+        }
+        catch (Exception ex) { LogError($"Error loading item templates: {ex.Message}"); return null; }
+    }
+    public async Task<List<Item>> LoadAllItemInstancesAsync()
+    {
+        List<Item> instances = new List<Item>();
+        if (itemPrefab == null) { LogError("Item Prefab is not assigned!"); return null; }
+
+        string query = $"SELECT * FROM `{ItemInstancesTableName}`"; // Query the instances table
+        LogInfo($"ItemManager executing query: {query}");
+        try
+        {
+            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
+            if (results == null) { LogError($"Query failed for '{ItemInstancesTableName}'."); return null; }
+            if (results.Count == 0) { LogWarning($"No results for '{ItemInstancesTableName}'."); return instances; }
+
+            foreach (var rowData in results)
+            {
+                Item instance = Instantiate(itemPrefab.gameObject).GetComponent<Item>();
+                if (instance == null) { LogError("Failed to get Item component."); continue; }
+                MapDictionaryToItemInstance(instance, rowData); // Use instance mapping function
+                instances.Add(instance);
+            }
+            LogInfo($"Loaded {instances.Count} item instance data rows.");
+            return instances;
+        }
+        catch (Exception ex) { LogError($"Error loading item instances: {ex.Message}"); return null; }
+    }
+    private void PerformPostLoadActions()
+    {
+        LogInfo("Performing post-load actions (parenting objects)...");
+        foreach (Item item in loadedItemInstances)
+        {
+            if (item != null && item.gameObject != null && itemInstancesParent != null)
+            {
+                item.gameObject.transform.SetParent(itemInstancesParent, false);
+            }
+            else { LogWarning("Skipping parenting for null/destroyed item or missing parent."); }
+        }
+        foreach (ItemTemplate template in loadedTemplates)
+        {
+            if (template != null && template.gameObject != null && itemTemplatesParent != null)
+            {
+                template.gameObject.transform.SetParent(itemTemplatesParent, false);
+            }
+            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
+        }
+        LogInfo("Post-load actions complete.");
+    }
+
+    #endregion
+
+    #region TableDefinitions
     private Dictionary<string, string> GetItemTemplateTableDefinition()
     {
         // Based on ItemType columns from image
@@ -181,7 +209,6 @@ public class ItemManager : BaseManager
              {"Price", "INT DEFAULT 0"}
         };
     }
-
     private Dictionary<string, string> GetItemTableDefinition()
     {
         // Based on Item columns from image + necessary additions
@@ -212,140 +239,17 @@ public class ItemManager : BaseManager
              {"Price", "INT DEFAULT 0"}
         };
     }
+    #endregion
 
-    // --- Data Loading ---
-    public async Task<List<ItemTemplate>> LoadAllItemTemplatesAsync()
-    {
-        List<ItemTemplate> templates = new List<ItemTemplate>();
-        if (itemTemplatePrefab == null) { LogError("ItemTemplate Prefab is not assigned!"); return null; }
-
-        string query = $"SELECT * FROM `{ItemTemplatesTableName}`";
-        LogInfo($"ItemManager executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { LogError($"Query failed for '{ItemTemplatesTableName}'."); return null; }
-            if (results.Count == 0) { LogWarning($"No results for '{ItemTemplatesTableName}'."); return templates; }
-
-            foreach (var rowData in results)
-            {
-                ItemTemplate template = Instantiate(itemTemplatePrefab.gameObject).GetComponent<ItemTemplate>();
-                if (template == null) { LogError("Failed to get ItemTemplate component."); continue; }
-                MapDictionaryToItemTemplate(template, rowData);
-                templates.Add(template);
-            }
-            LogInfo($"Loaded {templates.Count} item template data rows.");
-            return templates;
-        }
-        catch (Exception ex) { LogError($"Error loading item templates: {ex.Message}"); return null; }
+    #region Getters
+    public Item GetItemPrefab()
+    { 
+        return itemPrefab; 
     }
-
-    public async Task<List<Item>> LoadAllItemInstancesAsync()
-    {
-        List<Item> instances = new List<Item>();
-        if (itemPrefab == null) { LogError("Item Prefab is not assigned!"); return null; }
-
-        string query = $"SELECT * FROM `{ItemInstancesTableName}`"; // Query the instances table
-        LogInfo($"ItemManager executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { LogError($"Query failed for '{ItemInstancesTableName}'."); return null; }
-            if (results.Count == 0) { LogWarning($"No results for '{ItemInstancesTableName}'."); return instances; }
-
-            foreach (var rowData in results)
-            {
-                Item instance = Instantiate(itemPrefab.gameObject).GetComponent<Item>();
-                if (instance == null) { LogError("Failed to get Item component."); continue; }
-                MapDictionaryToItemInstance(instance, rowData); // Use instance mapping function
-                instances.Add(instance);
-            }
-            LogInfo($"Loaded {instances.Count} item instance data rows.");
-            return instances;
-        }
-        catch (Exception ex) { LogError($"Error loading item instances: {ex.Message}"); return null; }
+    public ItemTemplate GetItemTemplatePrefab()
+    { 
+        return itemTemplatePrefab; 
     }
-
-    // --- Mapping Helpers ---
-    private void MapDictionaryToItemTemplate(ItemTemplate template, Dictionary<string, object> data)
-    {
-        try
-        {
-            // Use SafeConvert helper
-            template.SetItemTemplate(
-                SafeConvert.ToInt32(data, "ItemTemplateID"), // Match definition ID column name
-                SafeConvert.ToString(data, "Name"),
-                SafeConvert.ToInt32(data, "ItemType"),
-                SafeConvert.ToString(data, "ExamineText"),
-                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
-                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
-                SafeConvert.ToSingle(data, "Speed", 1.0f),
-                SafeConvert.ToInt32(data, "DamageType"),
-                SafeConvert.ToInt32(data, "SlotType"),
-                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
-                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
-                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
-                SafeConvert.ToInt32(data, "Icon"),
-                SafeConvert.ToString(data, "Colour", "#FFFFFF"),
-                SafeConvert.ToInt32(data, "Weight"),
-                SafeConvert.ToInt32(data, "Model"),
-                SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
-                SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
-                SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
-                SafeConvert.ToInt32(data, "Bonus5Type"), SafeConvert.ToInt32(data, "Bonus6Type"), SafeConvert.ToInt32(data, "Bonus7Type"), SafeConvert.ToInt32(data, "Bonus8Type"),
-                SafeConvert.ToBoolean(data, "Stackable"), 
-                SafeConvert.ToInt32(data, "StackSizeMax", 1),
-                SafeConvert.ToInt32(data, "Price")
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to ItemTemplate (ID: {data.GetValueOrDefault("ID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
-        }
-    }
-
-    private void MapDictionaryToItemInstance(Item item, Dictionary<string, object> data)
-    {
-        try
-        {
-            // Use SafeConvert helper
-            item.SetItem(
-                SafeConvert.ToInt32(data, "ItemID"),
-                SafeConvert.ToInt32(data, "ItemTemplateID"),
-                SafeConvert.ToString(data, "ItemName"),
-                SafeConvert.ToInt32(data, "ItemType"),
-                SafeConvert.ToInt32(data, "Durability"),
-                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
-                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
-                SafeConvert.ToSingle(data, "Speed", 1.0f),
-                SafeConvert.ToInt32(data, "DamageType"),
-                SafeConvert.ToInt32(data, "SlotType"),
-                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
-                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
-                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
-                SafeConvert.ToInt32(data, "Icon"),
-                SafeConvert.ToString(data, "Colour", "#FFFFFF"),
-                SafeConvert.ToInt32(data, "Weight"),
-                SafeConvert.ToInt32(data, "Model"),
-                SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
-                SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
-                SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
-                SafeConvert.ToInt32(data, "Bonus5Type"), SafeConvert.ToInt32(data, "Bonus6Type"), SafeConvert.ToInt32(data, "Bonus7Type"), SafeConvert.ToInt32(data, "Bonus8Type"),
-                SafeConvert.ToBoolean(data, "Stackable"),
-                SafeConvert.ToInt32(data, "StackSizeMax", 1),
-                SafeConvert.ToInt32(data, "Price")
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to Item Instance (ID: {data.GetValueOrDefault("ItemID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
-        }
-    }
-
-    // --- Getters ---
-    public Item GetItemPrefab() => itemPrefab;
-    public ItemTemplate GetItemTemplatePrefab() => itemTemplatePrefab;
-
     public List<ItemTemplate> GetAllItemTemplates()
     {
         if (!isInitialized)
@@ -380,8 +284,9 @@ public class ItemManager : BaseManager
         itemsById.TryGetValue(instanceId, out Item item);
         return item;
     }
+    #endregion
 
-    // --- Saving / Updating / Deleting ---
+    #region SaveUpdateDelete
     public async Task<long> SaveNewItemInstanceAsync(Item itemInstance)
     {
         if (itemInstance == null || itemInstance.Template == null)
@@ -467,7 +372,6 @@ public class ItemManager : BaseManager
             return -1;
         }
     }
-
     public async Task<bool> UpdateItemInstanceAsync(Item itemInstance)
     {
         if (itemInstance == null || itemInstance.ItemID <= 0)
@@ -548,7 +452,6 @@ public class ItemManager : BaseManager
             return false;
         }
     }
-
     public async Task<bool> DeleteItemInstanceAsync(int itemInstanceId)
     {
         if (itemInstanceId <= 0) 
@@ -593,12 +496,105 @@ public class ItemManager : BaseManager
             return false;
         }
     }
+    #endregion
 
-    // Helper for Debugging Dictionaries
+    #region Helpers
     private string DictToString(Dictionary<string, object> dict)
     {
         if (dict == null) return "null";
         return "{" + string.Join(", ", dict.Select(kv => kv.Key + "=" + (kv.Value ?? "NULL"))) + "}";
     }
-
+    private void MapDictionaryToItemTemplate(ItemTemplate template, Dictionary<string, object> data)
+    {
+        try
+        {
+            // Use SafeConvert helper
+            template.SetItemTemplate(
+                SafeConvert.ToInt32(data, "ItemTemplateID"), // Match definition ID column name
+                SafeConvert.ToString(data, "Name"),
+                SafeConvert.ToInt32(data, "ItemType"),
+                SafeConvert.ToString(data, "ExamineText"),
+                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
+                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
+                SafeConvert.ToSingle(data, "Speed", 1.0f),
+                SafeConvert.ToInt32(data, "DamageType"),
+                SafeConvert.ToInt32(data, "SlotType"),
+                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
+                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
+                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
+                SafeConvert.ToInt32(data, "Icon"),
+                SafeConvert.ToString(data, "Colour", "#FFFFFF"),
+                SafeConvert.ToInt32(data, "Weight"),
+                SafeConvert.ToInt32(data, "Model"),
+                SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
+                SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
+                SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
+                SafeConvert.ToInt32(data, "Bonus5Type"), SafeConvert.ToInt32(data, "Bonus6Type"), SafeConvert.ToInt32(data, "Bonus7Type"), SafeConvert.ToInt32(data, "Bonus8Type"),
+                SafeConvert.ToBoolean(data, "Stackable"),
+                SafeConvert.ToInt32(data, "StackSizeMax", 1),
+                SafeConvert.ToInt32(data, "Price")
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to ItemTemplate (ID: {data.GetValueOrDefault("ID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+        }
+    }
+    private void MapDictionaryToItemInstance(Item item, Dictionary<string, object> data)
+    {
+        try
+        {
+            // Use SafeConvert helper
+            item.SetItem(
+                SafeConvert.ToInt32(data, "ItemID"),
+                SafeConvert.ToInt32(data, "ItemTemplateID"),
+                SafeConvert.ToString(data, "ItemName"),
+                SafeConvert.ToInt32(data, "ItemType"),
+                SafeConvert.ToInt32(data, "Durability"),
+                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
+                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
+                SafeConvert.ToSingle(data, "Speed", 1.0f),
+                SafeConvert.ToInt32(data, "DamageType"),
+                SafeConvert.ToInt32(data, "SlotType"),
+                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
+                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
+                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
+                SafeConvert.ToInt32(data, "Icon"),
+                SafeConvert.ToString(data, "Colour", "#FFFFFF"),
+                SafeConvert.ToInt32(data, "Weight"),
+                SafeConvert.ToInt32(data, "Model"),
+                SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
+                SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
+                SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
+                SafeConvert.ToInt32(data, "Bonus5Type"), SafeConvert.ToInt32(data, "Bonus6Type"), SafeConvert.ToInt32(data, "Bonus7Type"), SafeConvert.ToInt32(data, "Bonus8Type"),
+                SafeConvert.ToBoolean(data, "Stackable"),
+                SafeConvert.ToInt32(data, "StackSizeMax", 1),
+                SafeConvert.ToInt32(data, "Price")
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to Item Instance (ID: {data.GetValueOrDefault("ItemID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+        }
+    }
+    private void LinkInstancesToTemplates()
+    {
+        foreach (var itemInstance in loadedItemInstances)
+        {
+            if (templatesById.TryGetValue(itemInstance.ItemTemplateID, out ItemTemplate template))
+            {
+                itemInstance.Template = template;
+            }
+            else
+            {
+                LogWarning($"Item instance ID {itemInstance.ItemID} has missing template reference (TemplateID: {itemInstance.ItemTemplateID}).");
+            }
+        }
+    }
+    protected override void OnDestroy()
+    {
+        OnDataLoaded -= PerformPostLoadActions;
+        base.OnDestroy();
+    }
+    #endregion
 }

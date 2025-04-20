@@ -22,7 +22,10 @@ public class Inventory : MonoBehaviour
     }
     public bool AddItem(Item item)
     {
-        if (item == null) return false;
+        if (item == null) 
+        {
+            return false;
+        }
 
         if (items.Count >= bagspace)
         {
@@ -37,26 +40,18 @@ public class Inventory : MonoBehaviour
 
     public bool AddResourceItem(ResourceItem resourceItem)
     {
-        if (resourceItem == null) return false;
-
-        // Check if we already have this resource type
-        ResourceItem existingItem = resourceItems.Find(r => r.Resource == resourceItem.Resource);
-        if (existingItem != null)
+        if (resourceItem != null)
         {
-            // Update stack size of existing item
-            existingItem.UpdateStackSize(stackToAdd: resourceItem.CurrentStackSize);
+            resourceItem.transform.SetParent(transform);
+            resourceItems.Add(resourceItem);
+            OnInventoryChanged?.Invoke(); // Notify listeners
+            return true;
         }
         else
         {
-            if (resourceItems.Count >= bagspace)
-            {
-                Debug.LogWarning("Inventory is full. Cannot add resource item: " + resourceItem.Resource.ResourceName);
-                return false;
-            }
-            resourceItems.Add(resourceItem);
+            Debug.LogWarning("Resource item is null. Cannot add to inventory.");
+            return false;
         }
-        OnInventoryChanged?.Invoke(); // Notify listeners
-        return true;
     }
 
     // Try removing a specific item instance

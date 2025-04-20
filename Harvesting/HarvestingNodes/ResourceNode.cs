@@ -42,20 +42,25 @@ public abstract class ResourceNode : Interactable
             if (hType == HarvestType.Mining)
             {
                 equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.MiningTool) as ToolItem;
+                pCharacter.OnMiningHit();
             }
             else if (hType == HarvestType.Woodcutting)
             {
                 equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.WoodTool) as ToolItem;
+                pCharacter.OnWoodCuttingHit();
             }
             else if (hType == HarvestType.Harvesting)
             {
                 equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.HarvestingTool) as ToolItem;
+                pCharacter.OnHarvestHit();
             }
+            int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 0;
+            damagetoSend = Mathf.Max(0, damagetoSend - nodeResistence); // Ensure damage is not negative            
+            TakeDamage(damagetoSend);
+            ResourceItem resourceItem = GenerateResource(damagetoSend);
+            pCharacter.OnPickupResourceItem(resourceItem);
         }
-        int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 0;
-        damagetoSend = Mathf.Max(0, damagetoSend - nodeResistence); // Ensure damage is not negative
-        int resourcesToSend = damagetoSend;
-        TakeDamage(damagetoSend);
+
     }
 
     public virtual void TakeDamage(int damage)
@@ -87,7 +92,7 @@ public abstract class ResourceNode : Interactable
     {
         // Get resource drops
         ResourceItem resourceItem = Instantiate(resourceItemPrefab, transform.position, Quaternion.identity);
-        //resourceItem.CreateItem(resource);
+        resourceItem.Initialize(resource, amount);
 
         return resourceItem;
     }

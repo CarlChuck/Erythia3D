@@ -23,33 +23,34 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private GameObject mainCamera;
     [SerializeField] private UIManager uiManager;
 
-    private bool isInitialized = false; // Flag for PlayerManager state
-    private Task initializationTask; // Task for its own init
+    private bool isInitialized = false; 
+    private Task initializationTask; 
+
+    #region Singleton
     public static PlayerManager Instance { get; private set; }
     private void Awake()
     {        
-        // Singleton implementation
         if (Instance != null && Instance != this)
         {
-            Destroy(gameObject); // Destroy duplicate instance
+            Destroy(gameObject); 
             return;
         }
         Instance = this;
-        SceneManager.sceneLoaded += OnSceneLoaded; // Subscribe to the event
+        SceneManager.sceneLoaded += OnSceneLoaded; 
         //TODO Steam Set ID
     }
+    #endregion
 
+    #region Initialization
     private async void Start()
     {
         if (playerCharacters == null)
         {
             playerCharacters = new List<PlayerCharacter>();
         }
-        // Start own initialization process
         initializationTask = InitializePlayerManagerAsync();
-        await initializationTask; // Wait for own initialization to complete
+        await initializationTask; 
     }
-    // Core initialization sequence for PlayerManager
     private async Task InitializePlayerManagerAsync()
     {
         Debug.Log("PlayerManager Initialization Started...");
@@ -92,13 +93,14 @@ public class PlayerManager : MonoBehaviour
         {
             if (selectedPlayerCharacter != null)
             {
-                MenuManager.Instance.SetCharCreationButton(false); // Notify MenuManager if needed
+                MenuManager.Instance.SetCharCreationButton(false); 
             }
             else
             {
-                MenuManager.Instance.SetCharCreationButton(true); // Notify MenuManager if needed
+                MenuManager.Instance.SetCharCreationButton(true); 
             }
         }
+        OnCharactersLoaded();
     }
     private async Task<bool> LoginAsync()
     {
@@ -166,7 +168,7 @@ public class PlayerManager : MonoBehaviour
             return false;
         }
     }
-    public async Task SetCharactersListAsync() // Changed to async Task
+    public async Task SetCharactersListAsync()
     {
         if (accountID <= 0)
         {
@@ -301,241 +303,23 @@ public class PlayerManager : MonoBehaviour
         // Load inventory for all characters
         await LoadAllCharactersInventoryAsync();
     }
-
-    private async Task<List<PlayerCharacter>> GetCharactersAsync()
+    private async Task LoadAllCharactersInventoryAsync()
     {
-        // Ensure initialization is complete before returning list
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        if (playerCharacters == null || playerCharacters.Count == 0)
         {
-            Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
-            await initializationTask;
-        }
-        // If list is still somehow null after init, re-initialize (shouldn't happen)
-        if (playerCharacters == null)
-        {
-            playerCharacters = new List<PlayerCharacter>();
-            Debug.LogWarning("PlayerCharacters list was null after initialization check, re-initializing.");
-            // Re-running SetCharactersListAsync might be needed if initialization failed partially
-            // For now, just return the empty list. Consider more robust recovery if needed.
-            // await SetCharactersListAsync();
-        }
-        return playerCharacters;
-    }
-    public List<PlayerCharacter> GetCharacters()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
-            // Cannot easily await here. Return current state.
-            return playerCharacters ?? new List<PlayerCharacter>(); // Return empty list if null
-        }
-        return playerCharacters;
-    }
-    public void OnSetFamilyName(string newFamilyName)
-    {
-        if (GetCharacters().Count == 0)
-        {
-            familyName = newFamilyName;
-        }
-    }
-
-    public string GetFamilyName()
-    {
-        return familyName;
-    }
-
-    public void OnSetAccountName(string newAccountName)
-    {
-        accountName = newAccountName;
-    }
-
-    public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
-    {
-        if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
-        {
-            Debug.LogError("Character or Family Name cannot be empty");
-            // TODO: Show UI popup
+            Debug.LogWarning("No characters to load inventory for.");
             return;
         }
 
-        if (accountID <= 0)
+        foreach (var character in playerCharacters)
         {
-            Debug.LogError("Cannot create character: Invalid AccountID.");
-            return;
-        }
-
-        Debug.Log($"Attempting to create character: {characterName}");
-        // Use await with the async version
-        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(accountID, familyName, characterName, null, 1, charRace, charGender, charFace);
-
-        if (created)
-        {
-            Debug.Log("Character creation successful, reloading character list...");
-            // Reload the list asynchronously
-            await SetCharactersListAsync();
-            // Setup UI for the newly selected character (SetCharactersList should select the first one)
-            if (selectedPlayerCharacter != null && uiManager != null)
-            {
-                uiManager.SetupUI(selectedPlayerCharacter);
-            }
-        }
-        else
-        {
-            Debug.LogError($"Failed to create character: {characterName}");
-            // TODO: Show UI feedback for failure
+            await LoadCharacterInventoryAsync(character);
         }
     }
-
-    public async Task SetSelectedCharacterAsync() // Changed to async
+    private async void OnCharactersLoaded()
     {
-        if (selectedPlayerCharacter == null || accountID <= 0)
-        {
-            Debug.LogWarning("Cannot set selected character - no character selected or invalid account ID.");
-            return;
-        }
-        Debug.Log($"Setting last played character for Account {accountID} to CharID {selectedPlayerCharacter.GetCharacterID()}");
-        // Use the async helper version from AccountManager
-        bool success = await AccountManager.Instance.SetAccountLastPlayedCharacterAsync(accountID, selectedPlayerCharacter.GetCharacterID());
-        if (!success)
-        {
-            Debug.LogError("Failed to update last played character in database.");
-        }
+        await LoadAllCharactersInventoryAsync();
     }
-
-    public async Task<PlayerCharacter> GetSelectedPlayerCharacterAsync() // Make async
-    {
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
-        {
-            Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
-            await initializationTask;
-        }
-        if (selectedPlayerCharacter == null && isInitialized && playerCharacters != null && playerCharacters.Count > 0)
-        {
-            // If initialization finished but selection is null (e.g., no characters found initially),
-            // try setting the list again or selecting the first.
-            Debug.LogWarning("SelectedPlayerCharacter is null after init, attempting to select first.");
-            // Optionally re-run list loading if needed: await SetCharactersListAsync();
-            if (playerCharacters.Count > 0)
-            {
-                selectedPlayerCharacter = playerCharacters[0];
-                // SetSelectedCharacter(); // Defer DB update
-                selectedPlayerCharacter.ActivateModel(true);
-                if (playerArmature != null)
-                {
-                    selectedPlayerCharacter.transform.SetParent(playerArmature.transform, false);
-                }
-                else { Debug.LogError("PlayerArmature reference missing!"); }
-            }
-        }
-        return selectedPlayerCharacter;
-    }
-    public PlayerCharacter GetSelectedPlayerCharacter()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
-            // Cannot easily await. Return current state.
-        }
-        // Original logic had a call to SetCharactersList here - this caused the hang.
-        // We now rely on initialization in Start to populate the list.
-        return selectedPlayerCharacter;
-    }
-    private void ClearPlayerListExceptSelected()
-    {
-        if (playerCharacters == null) playerCharacters = new List<PlayerCharacter>();
-
-        // Use a temporary list to avoid issues while iterating and modifying
-        List<PlayerCharacter> toRemove = new List<PlayerCharacter>();
-        foreach (PlayerCharacter character in playerCharacters)
-        {
-            if (character == null) continue; // Skip null entries if any
-            if (selectedPlayerCharacter == null || character.GetInstanceID() != selectedPlayerCharacter.GetInstanceID())
-            {
-                toRemove.Add(character);
-            }
-        }
-
-        foreach (PlayerCharacter characterToRemove in toRemove)
-        {
-            playerCharacters.Remove(characterToRemove);
-            if (characterToRemove.gameObject != null)
-            {
-                Destroy(characterToRemove.gameObject);
-                Debug.Log($"Destroyed non-selected character object: {characterToRemove.GetCharacterName()}");
-            }
-
-        }
-        // Ensure the selected character is definitely in the list if it exists
-        if (selectedPlayerCharacter != null && !playerCharacters.Contains(selectedPlayerCharacter))
-        {
-            playerCharacters.Add(selectedPlayerCharacter);
-        }
-    }
-
-    public void PlayerManagerControlSetActive(bool isActive)
-    {
-        if (mainCamera != null)
-        {
-            mainCamera.SetActive(isActive);
-        }
-        if (playerArmature != null)
-        {
-            playerArmature.SetActive(isActive);
-        }
-        if (playerFollowCam != null)
-        {
-            playerFollowCam.SetActive(isActive);
-        }
-    }
-
-    private void SetWaypoint()
-    {
-        if (currentZone != null)
-        {
-            Transform waypoint = currentZone.GetWaypoint();
-            if (waypoint != null && playerArmature != null)
-            {
-                playerArmature.transform.position = waypoint.position;
-                playerArmature.transform.rotation = waypoint.rotation;
-            }
-            else
-            {
-                Debug.LogWarning("Waypoint or playerArmature is null.");
-            }
-        }
-        else
-        {
-            Debug.LogError("ZoneManager not found in the scene.");
-        }
-    }
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        ZoneManager zoneManager = FindFirstObjectByType<ZoneManager>();
-        SetWaypoint();
-
-        // If UIManager needs the selected character, ensure it's ready first
-        if (isInitialized && selectedPlayerCharacter != null)
-        {
-            uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
-            Debug.Log("UIManager re-setup on scene load.");
-        }
-        else if (!isInitialized)
-        {
-            Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
-            // UI setup will happen when initialization completes
-        }
-
-    }
-    private void OnDestroy()
-    {
-        SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
-    }
-
-    public UIManager GetUIManager()
-    {
-        return uiManager;
-    }
-
     private async Task LoadCharacterInventoryAsync(PlayerCharacter character)
     {
         if (character == null)
@@ -578,14 +362,17 @@ public class PlayerManager : MonoBehaviour
                         ItemType slotType = MapSlotIdToItemType(slotId);
                         if (slotType != ItemType.Other)
                         {
-                            EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType);
+                            // Get the specific slot index for this slotId
+                            int slotIndex = GetSlotIndexForType(slotId);
+                            EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
+                            
                             if (targetSlot != null)
                             {
                                 equipment.EquipItemToSlot(item, targetSlot);
                             }
                             else
                             {
-                                Debug.LogWarning($"No equipment slot found for type {slotType}");
+                                Debug.LogWarning($"No equipment slot found for type {slotType} at index {slotIndex}");
                             }
                         }
                         else
@@ -593,14 +380,25 @@ public class PlayerManager : MonoBehaviour
                             Debug.LogWarning($"Invalid slot ID {slotId} for item {item.ItemName}");
                         }
                     }
+                    else
+                    {
+                        Debug.LogWarning($"No equipment profile found for character {charId}");
+                    }
                 }
                 else
                 {
                     // Add to inventory
-                    Inventory inventory = character.GetComponent<Inventory>();
+                    Inventory inventory = character.GetInventory();
                     if (inventory != null)
                     {
-                        inventory.AddItem(item);
+                        if (!inventory.AddItem(item))
+                        {
+                            Debug.LogWarning($"Failed to add item {item.ItemName} to inventory for character {charId}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"No inventory component found for character {charId}");
                     }
                 }
             }
@@ -635,7 +433,14 @@ public class PlayerManager : MonoBehaviour
                 Inventory inventory = character.GetComponent<Inventory>();
                 if (inventory != null)
                 {
-                    inventory.AddResourceItem(resourceItem);
+                    if (!inventory.AddResourceItem(resourceItem))
+                    {
+                        Debug.LogWarning($"Failed to add resource item {resource.ResourceName} to inventory for character {charId}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"No inventory component found for character {charId}");
                 }
             }
         }
@@ -644,8 +449,173 @@ public class PlayerManager : MonoBehaviour
             Debug.LogError($"Error loading inventory for character {charId}: {ex.Message}");
         }
     }
+    #endregion
 
-    // Helper method to map slot IDs to ItemTypes
+    public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
+    {
+        if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
+        {
+            Debug.LogError("Character or Family Name cannot be empty");
+            // TODO: Show UI popup
+            return;
+        }
+
+        if (accountID <= 0)
+        {
+            Debug.LogError("Cannot create character: Invalid AccountID.");
+            return;
+        }
+
+        Debug.Log($"Attempting to create character: {characterName}");
+        // Use await with the async version
+        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(accountID, familyName, characterName, null, 1, charRace, charGender, charFace);
+
+        if (created)
+        {
+            Debug.Log("Character creation successful, reloading character list...");
+            // Reload the list asynchronously
+            await SetCharactersListAsync();
+            // Setup UI for the newly selected character (SetCharactersList should select the first one)
+            if (selectedPlayerCharacter != null && uiManager != null)
+            {
+                uiManager.SetupUI(selectedPlayerCharacter);
+            }
+        }
+        else
+        {
+            Debug.LogError($"Failed to create character: {characterName}");
+            // TODO: Show UI feedback for failure
+        }
+    }
+
+    #region Setters
+    public async Task SetSelectedCharacterAsync() // Changed to async
+    {
+        if (selectedPlayerCharacter == null || accountID <= 0)
+        {
+            Debug.LogWarning("Cannot set selected character - no character selected or invalid account ID.");
+            return;
+        }
+        Debug.Log($"Setting last played character for Account {accountID} to CharID {selectedPlayerCharacter.GetCharacterID()}");
+        // Use the async helper version from AccountManager
+        bool success = await AccountManager.Instance.SetAccountLastPlayedCharacterAsync(accountID, selectedPlayerCharacter.GetCharacterID());
+        if (!success)
+        {
+            Debug.LogError("Failed to update last played character in database.");
+        }
+    }
+    private void SetWaypoint()
+    {
+        if (currentZone != null)
+        {
+            Transform waypoint = currentZone.GetWaypoint();
+            if (waypoint != null && playerArmature != null)
+            {
+                playerArmature.transform.position = waypoint.position;
+                playerArmature.transform.rotation = waypoint.rotation;
+            }
+            else
+            {
+                Debug.LogWarning("Waypoint or playerArmature is null.");
+            }
+        }
+        else
+        {
+            Debug.LogError("ZoneManager not found in the scene.");
+        }
+    }
+    public void OnSetFamilyName(string newFamilyName)
+    {
+        if (GetCharacters().Count == 0)
+        {
+            familyName = newFamilyName;
+        }
+    }
+    public void OnSetAccountName(string newAccountName)
+    {
+        accountName = newAccountName;
+    }
+    #endregion
+
+    #region Getters
+    public string GetFamilyName()
+    {
+        return familyName;
+    }
+    public async Task<PlayerCharacter> GetSelectedPlayerCharacterAsync() // Make async
+    {
+        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        {
+            Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
+            await initializationTask;
+        }
+        if (selectedPlayerCharacter == null && isInitialized && playerCharacters != null && playerCharacters.Count > 0)
+        {
+            // If initialization finished but selection is null (e.g., no characters found initially),
+            // try setting the list again or selecting the first.
+            Debug.LogWarning("SelectedPlayerCharacter is null after init, attempting to select first.");
+            // Optionally re-run list loading if needed: await SetCharactersListAsync();
+            if (playerCharacters.Count > 0)
+            {
+                selectedPlayerCharacter = playerCharacters[0];
+                // SetSelectedCharacter(); // Defer DB update
+                selectedPlayerCharacter.ActivateModel(true);
+                if (playerArmature != null)
+                {
+                    selectedPlayerCharacter.transform.SetParent(playerArmature.transform, false);
+                }
+                else { Debug.LogError("PlayerArmature reference missing!"); }
+            }
+        }
+        return selectedPlayerCharacter;
+    }
+    public PlayerCharacter GetSelectedPlayerCharacter()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
+            // Cannot easily await. Return current state.
+        }
+        // Original logic had a call to SetCharactersList here - this caused the hang.
+        // We now rely on initialization in Start to populate the list.
+        return selectedPlayerCharacter;
+    }
+    public UIManager GetUIManager()
+    {
+        return uiManager;
+    }
+    private async Task<List<PlayerCharacter>> GetCharactersAsync()
+    {
+        // Ensure initialization is complete before returning list
+        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        {
+            Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
+            await initializationTask;
+        }
+        // If list is still somehow null after init, re-initialize (shouldn't happen)
+        if (playerCharacters == null)
+        {
+            playerCharacters = new List<PlayerCharacter>();
+            Debug.LogWarning("PlayerCharacters list was null after initialization check, re-initializing.");
+            // Re-running SetCharactersListAsync might be needed if initialization failed partially
+            // For now, just return the empty list. Consider more robust recovery if needed.
+            // await SetCharactersListAsync();
+        }
+        return playerCharacters;
+    }
+    public List<PlayerCharacter> GetCharacters()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
+            // Cannot easily await here. Return current state.
+            return playerCharacters ?? new List<PlayerCharacter>(); // Return empty list if null
+        }
+        return playerCharacters;
+    }
+    #endregion
+
+    #region Helpers
     private ItemType MapSlotIdToItemType(int slotId)
     {
         switch (slotId)
@@ -654,8 +624,8 @@ public class PlayerManager : MonoBehaviour
             case 2: return ItemType.Cuirass;
             case 3: return ItemType.Greaves;
             case 4: return ItemType.Vambraces;
-            case 5: return ItemType.Finger;
-            case 6: return ItemType.Finger;
+            case 5: return ItemType.Finger; // First finger slot
+            case 6: return ItemType.Finger; // Second finger slot
             case 7: return ItemType.PrimaryHand;
             case 8: return ItemType.SecondaryHand;
             case 9: return ItemType.MiningTool;
@@ -669,29 +639,90 @@ public class PlayerManager : MonoBehaviour
             case 17: return ItemType.Waist;
             case 18: return ItemType.Back;
             case 19: return ItemType.Boots;
-            case 20: return ItemType.Ear;
-            case 21: return ItemType.Ear;
+            case 20: return ItemType.Ear; // First ear slot
+            case 21: return ItemType.Ear; // Second ear slot
             default: return ItemType.Other;
         }
     }
 
-    private async Task LoadAllCharactersInventoryAsync()
+    private int GetSlotIndexForType(int slotId)
     {
-        if (playerCharacters == null || playerCharacters.Count == 0)
+        switch (slotId)
         {
-            Debug.LogWarning("No characters to load inventory for.");
-            return;
-        }
-
-        foreach (var character in playerCharacters)
-        {
-            await LoadCharacterInventoryAsync(character);
+            case 5: return 0; // First finger slot
+            case 6: return 1; // Second finger slot
+            case 20: return 0; // First ear slot
+            case 21: return 1; // Second ear slot
+            default: return 0; // All other slots use index 0
         }
     }
 
-    // Call this method after character list is loaded
-    private async void OnCharactersLoaded()
+    private void OnDestroy()
     {
-        await LoadAllCharactersInventoryAsync();
+        SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
     }
+    private void ClearPlayerListExceptSelected()
+    {
+        if (playerCharacters == null) playerCharacters = new List<PlayerCharacter>();
+
+        // Use a temporary list to avoid issues while iterating and modifying
+        List<PlayerCharacter> toRemove = new List<PlayerCharacter>();
+        foreach (PlayerCharacter character in playerCharacters)
+        {
+            if (character == null) continue; // Skip null entries if any
+            if (selectedPlayerCharacter == null || character.GetInstanceID() != selectedPlayerCharacter.GetInstanceID())
+            {
+                toRemove.Add(character);
+            }
+        }
+
+        foreach (PlayerCharacter characterToRemove in toRemove)
+        {
+            playerCharacters.Remove(characterToRemove);
+            if (characterToRemove.gameObject != null)
+            {
+                Destroy(characterToRemove.gameObject);
+                Debug.Log($"Destroyed non-selected character object: {characterToRemove.GetCharacterName()}");
+            }
+
+        }
+        // Ensure the selected character is definitely in the list if it exists
+        if (selectedPlayerCharacter != null && !playerCharacters.Contains(selectedPlayerCharacter))
+        {
+            playerCharacters.Add(selectedPlayerCharacter);
+        }
+    }
+    public void PlayerManagerControlSetActive(bool isActive)
+    {
+        if (mainCamera != null)
+        {
+            mainCamera.SetActive(isActive);
+        }
+        if (playerArmature != null)
+        {
+            playerArmature.SetActive(isActive);
+        }
+        if (playerFollowCam != null)
+        {
+            playerFollowCam.SetActive(isActive);
+        }
+    }
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        ZoneManager zoneManager = FindFirstObjectByType<ZoneManager>();
+        SetWaypoint();
+
+        // If UIManager needs the selected character, ensure it's ready first
+        if (isInitialized && selectedPlayerCharacter != null)
+        {
+            uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
+            Debug.Log("UIManager re-setup on scene load.");
+        }
+        else if (!isInitialized)
+        {
+            Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
+            // UI setup will happen when initialization completes
+        }
+    }
+    #endregion
 }
