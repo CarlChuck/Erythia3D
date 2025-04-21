@@ -36,11 +36,20 @@ public class ResourceManager : BaseManager
 
 
     #region Singleton
-    public static ResourceManager Instance => GetInstance<ResourceManager>();
+    public static ResourceManager Instance;
 
-    protected override void Awake()
+    protected void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate ResourceManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
     }
     #endregion
 

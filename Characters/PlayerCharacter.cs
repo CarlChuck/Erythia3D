@@ -161,6 +161,8 @@ public class PlayerCharacter : StatBlock
             return;
         }
 
+        Debug.Log($"Attempting to pick up resource item: {resourceItem.Resource?.ResourceName ?? "Unknown Resource"} with stack size {resourceItem.CurrentStackSize}");
+
         if (inventory == null)
         {
             Debug.LogError("No inventory component found on character");
@@ -171,12 +173,15 @@ public class PlayerCharacter : StatBlock
         ResourceItem existingItem = inventory.GetResourceItemByResource(resourceItem.Resource);
         if (existingItem != null)
         {
+            Debug.Log($"Found existing stack of {resourceItem.Resource.ResourceName} with {existingItem.CurrentStackSize}/{existingItem.StackSizeMax} items");
+            
             // Calculate how much we can add to the existing stack
             int spaceAvailable = existingItem.StackSizeMax - existingItem.CurrentStackSize;
             int amountToTransfer = Mathf.Min(spaceAvailable, resourceItem.CurrentStackSize);
 
             if (amountToTransfer > 0)
             {
+                Debug.Log($"Transferring {amountToTransfer} items to existing stack");
                 // Update the existing stack
                 existingItem.UpdateStackSize(stackToAdd: amountToTransfer);
                 
@@ -186,18 +191,28 @@ public class PlayerCharacter : StatBlock
                 // If the new item's stack is now empty, destroy it
                 if (resourceItem.CurrentStackSize <= 0)
                 {
+                    Debug.Log("Resource item stack depleted, destroying object");
                     Destroy(resourceItem.gameObject);
                     return;
                 }
+            }
+            else
+            {
+                Debug.Log("No space available in existing stack");
             }
         }
 
         // If we still have items to add (either no existing stack or existing stack is full)
         if (resourceItem.CurrentStackSize > 0)
         {
+            Debug.Log($"Adding new resource item to inventory: {resourceItem.Resource.ResourceName} with {resourceItem.CurrentStackSize} items");
             if (!inventory.AddResourceItem(resourceItem))
             {
                 Debug.LogWarning($"Failed to add resource item {resourceItem.Resource.ResourceName} to inventory");
+            }
+            else
+            {
+                Debug.Log($"Successfully added resource item to inventory");
             }
         }
     }

@@ -20,11 +20,20 @@ public class CharactersManager : BaseManager
     [SerializeField] private SpeciesTemplate raceValahoran;
 
     #region Singleton
-    public static CharactersManager Instance => GetInstance<CharactersManager>();
+    public static CharactersManager Instance;
 
-    protected override void Awake()
+    protected void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate CharactersManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
     }
     #endregion
 

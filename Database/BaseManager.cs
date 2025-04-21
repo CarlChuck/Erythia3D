@@ -9,46 +9,11 @@ public abstract class BaseManager : MonoBehaviour
     protected Task initializationTask;
     public event Action OnDataLoaded;
 
-    #region Singleton
-    private static Dictionary<Type, BaseManager> s_instances = new Dictionary<Type, BaseManager>();
-    public static T GetInstance<T>() where T : BaseManager
-    {
-        Type type = typeof(T);
-        if (!s_instances.TryGetValue(type, out BaseManager instance))
-        {
-            instance = FindFirstObjectByType<T>();
-            if (instance != null)
-            {
-                s_instances[type] = instance;
-            }
-        }
-        return (T)instance;
-    }
-
-    protected virtual void Awake()
-    {
-        Type type = GetType();
-        if (!s_instances.ContainsKey(type))
-        {
-            s_instances[type] = this;
-        }
-        else if (s_instances[type] != this)
-        {
-            LogWarning($"Duplicate {type.Name} instance detected. Destroying self.");
-            Destroy(gameObject);
-            return;
-        }
-    }
-
     protected virtual void OnDestroy()
     {
-        Type type = GetType();
-        if (s_instances.TryGetValue(type, out BaseManager instance) && instance == this)
-        {
-            s_instances.Remove(type);
-        }
+        Destroy(this);
     }
-    #endregion
+
 
     #region Initialization
     public void StartInitialization()

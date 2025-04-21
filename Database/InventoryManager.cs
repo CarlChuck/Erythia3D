@@ -9,11 +9,20 @@ public class InventoryManager : BaseManager
     private const string ResourceItemsTableName = "ResourceItems";
 
     #region Singleton
-    public static InventoryManager Instance => GetInstance<InventoryManager>();
+    public static InventoryManager Instance;
 
-    protected override void Awake()
+    protected void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate InventoryManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
     }
     #endregion
 

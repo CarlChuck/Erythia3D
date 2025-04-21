@@ -26,11 +26,20 @@ public class ItemManager : BaseManager
     private Dictionary<int, Item> itemsById = new Dictionary<int, Item>(); // Lookup for instances
 
     #region Singleton
-    public static ItemManager Instance => GetInstance<ItemManager>();
+    public static ItemManager Instance;
 
-    protected override void Awake()
+    protected void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate ItemManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
     }
     #endregion
 
@@ -266,7 +275,7 @@ public class ItemManager : BaseManager
         }
         return loadedItemInstances;
     }
-    public ItemTemplate GetTemplateById(int templateId)
+    public ItemTemplate GetItemTemplateById(int templateId)
     {
         if (!isInitialized) 
         { 

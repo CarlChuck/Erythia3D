@@ -11,11 +11,20 @@ public class AccountManager : BaseManager
     private const string AccountsTableName = "Accounts";
 
     #region Singleton
-    public static AccountManager Instance => GetInstance<AccountManager>();
+    public static AccountManager Instance;
 
-    protected override void Awake()
+    protected void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("Duplicate AccountManager detected. Destroying self.");
+            Destroy(gameObject);
+            return;
+        }
     }
     #endregion
 

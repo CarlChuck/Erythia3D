@@ -57,10 +57,14 @@ public abstract class ResourceNode : Interactable
             int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 0;
             damagetoSend = Mathf.Max(0, damagetoSend - nodeResistence); // Ensure damage is not negative            
             TakeDamage(damagetoSend);
-            ResourceItem resourceItem = GenerateResource(damagetoSend);
-            pCharacter.OnPickupResourceItem(resourceItem);
+            
+            // Only generate resources if we're actually doing damage
+            if (damagetoSend > 0)
+            {
+                ResourceItem resourceItem = GenerateResource(damagetoSend);
+                pCharacter.OnPickupResourceItem(resourceItem);
+            }
         }
-
     }
 
     public virtual void TakeDamage(int damage)
@@ -92,8 +96,9 @@ public abstract class ResourceNode : Interactable
     {
         // Get resource drops
         ResourceItem resourceItem = Instantiate(resourceItemPrefab, transform.position, Quaternion.identity);
-        resourceItem.Initialize(resource, amount);
-
+        // Ensure at least 1 resource is generated, even with 0 damage
+        int quantity = Mathf.Max(1, amount);
+        resourceItem.Initialize(resource, quantity);
         return resourceItem;
     }
 
