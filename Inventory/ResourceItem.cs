@@ -16,7 +16,7 @@ public class ResourceItem : MonoBehaviour
     {
         this.resource = resource;
         currentStackSize = quantity;
-        StackSizeMax = resource.ResourceTemplate?.StackSizeMax ?? 100;
+        StackSizeMax = resource.ResourceTemplate?.StackSizeMax ?? 100000;
         Weight = resource.Weight;
         Price = resource.Quality * 10; // Example pricing based on quality
     }

@@ -9,31 +9,15 @@ public class CraftingManager : BaseManager
     private Dictionary<string, Recipe> recipesByName = new Dictionary<string, Recipe>();
 
     #region Singleton
-    private static CraftingManager instance;
-    public static CraftingManager Instance
-    {
-        get
-        {
-            if (instance == null)
-            {
-                instance = FindFirstObjectByType<CraftingManager>();
-                if (instance == null)
-                {
-                    Debug.LogError("No CraftingManager found in the scene!");
-                }
-            }
-            return instance;
-        }
-    }
+    public static CraftingManager Instance;
 
     private void Awake()
     {
-        if (instance == null)
+        if (Instance == null)
         {
-            instance = this;
-            DontDestroyOnLoad(gameObject);
+            Instance = this;
         }
-        else if (instance != this)
+        else if (Instance != this)
         {
             Debug.LogWarning("Multiple CraftingManager instances detected. Destroying the new one.");
             Destroy(gameObject);

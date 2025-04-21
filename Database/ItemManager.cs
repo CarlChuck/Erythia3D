@@ -51,6 +51,96 @@ public class ItemManager : BaseManager
         OnDataLoaded += PerformPostLoadActions;
     }
 
+    public async Task<Item> CreateItemInstance(ItemTemplate template)
+    {
+        if (template == null)
+        {
+            LogError("Cannot create item instance: Template is null");
+            return null;
+        }
+
+        // Create new item instance from prefab
+        GameObject itemObj = Instantiate(itemPrefab.gameObject);
+        Item newItem = itemObj.GetComponent<Item>();
+        if (newItem == null)
+        {
+            LogError("Failed to get Item component from prefab");
+            Destroy(itemObj);
+            return null;
+        }
+
+        // Copy all statistics from template to new item
+        newItem.SetItem(
+            0, // ItemID will be set by database
+            template.ItemTemplateID,
+            template.ItemName,
+            (int)template.Type,
+            template.MaxDurability, // Start with full durability
+            template.MaxDurability,
+            template.Damage,
+            template.Speed,
+            (int)template.DmgType,
+            (int)template.Slot,
+            template.SlashResist,
+            template.ThrustResist,
+            template.CrushResist,
+            template.HeatResist,
+            template.ShockResist,
+            template.ColdResist,
+            template.MindResist,
+            template.CorruptResist,
+            template.IconPath,
+            template.ColourHex,
+            (int)template.Weight,
+            template.ModelPath,
+            template.Bonus1,
+            template.Bonus2,
+            template.Bonus3,
+            template.Bonus4,
+            template.Bonus5,
+            template.Bonus6,
+            template.Bonus7,
+            template.Bonus8,
+            (int)template.Bonus1Type,
+            (int)template.Bonus2Type,
+            (int)template.Bonus3Type,
+            (int)template.Bonus4Type,
+            (int)template.Bonus5Type,
+            (int)template.Bonus6Type,
+            (int)template.Bonus7Type,
+            (int)template.Bonus8Type,
+            template.IsStackable,
+            template.StackSizeMax,
+            template.Price
+        );
+
+        // Set the template reference
+        newItem.Template = template;
+
+        // Parent the item if a parent transform is specified
+        if (itemInstancesParent != null)
+        {
+            itemObj.transform.SetParent(itemInstancesParent, false);
+        }
+
+        // Save to database and get the new ItemID
+        long newItemId = await SaveNewItemInstanceAsync(newItem);
+        if (newItemId <= 0)
+        {
+            LogError("Failed to save new item instance to database");
+            Destroy(itemObj);
+            return null;
+        }
+
+        // Set the new ItemID
+        newItem.SetItemID((int)newItemId);
+
+        // Add to loaded instances and lookup dictionary
+        loadedItemInstances.Add(newItem);
+        itemsById[newItem.ItemID] = newItem;
+
+        return newItem;
+    }
 
     #region InitializeLoading
     protected override async Task InitializeAsync()

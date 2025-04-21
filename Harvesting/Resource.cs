@@ -19,10 +19,11 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     public int Carbohydrate { get; set; }
     public int Flavour { get; set; }
     public int Weight { get; set; }
+    public int Value { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
 
-    public void SetResource(int id, string name, int template, int type, int sType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int weight, DateTime startAt, DateTime endAt)
+    public void SetResource(int id, string name, int template, int type, int sType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int weight, int value, DateTime startAt, DateTime endAt)
     {
         ResourceSpawnID = id;
         ResourceName = name;
@@ -39,6 +40,7 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
         Carbohydrate = carbohydrate;
         Flavour = flavour;
         Weight = weight;
+        Value = value;
         StartDate = startAt;
         EndDate = endAt;
     }

@@ -103,6 +103,10 @@ public class PlayerCharacter : StatBlock
         //Fire the harvesting hit event
         //TODO Animation for Harvesting
     }
+    public void OnDefaultHarvestHit(){
+        //Fire the default harvest hit event
+        //TODO Animation for Hitting with Rock
+    }
 
 
     #region Getters

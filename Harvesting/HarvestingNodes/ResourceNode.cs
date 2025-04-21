@@ -54,7 +54,7 @@ public abstract class ResourceNode : Interactable
                 equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.HarvestingTool) as ToolItem;
                 pCharacter.OnHarvestHit();
             }
-            int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 0;
+            int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 2; 
             damagetoSend = Mathf.Max(0, damagetoSend - nodeResistence); // Ensure damage is not negative            
             TakeDamage(damagetoSend);
             

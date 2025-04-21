@@ -245,6 +245,7 @@ public class ResourceManager : BaseManager
             {"Carbohydrate", "INT"},
             {"Flavour", "INT"},
             {"Weight", "INT"},
+            {"Value", "INT"},
             {"StartDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
             {"EndDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
@@ -266,8 +267,9 @@ public class ResourceManager : BaseManager
             {"Protein", "INT"},
             {"Carbohydrate", "INT"},
             {"Flavour", "INT"},
-            {"StackSizeMax", "INT DEFAULT 100"},
-            {"Weight", "INT"}
+            {"StackSizeMax", "INT DEFAULT 100000"},
+            {"Weight", "INT"},
+            {"Value", "INT"}
         };
     }
 
@@ -289,8 +291,9 @@ public class ResourceManager : BaseManager
                 data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
                 data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
                 data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0
+                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100000,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0
             );
         }
         catch (Exception ex)
@@ -319,6 +322,7 @@ public class ResourceManager : BaseManager
                 data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
                 data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
                 data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0,
                 data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
                 data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
             );
@@ -454,6 +458,7 @@ public class ResourceManager : BaseManager
         int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-50, 51));
         int flavour = ClampNumber(template.Flavour + randomNumber.Next(-50, 51));
         int weight = ClampNumber(template.Weight + randomNumber.Next(-50, 51));
+        int value = ClampNumber(template.Value + randomNumber.Next(-50, 51));
 
         // 6. Set Dates
         DateTime startDate = DateTime.UtcNow;
@@ -487,6 +492,7 @@ public class ResourceManager : BaseManager
                             { "Carbohydrate", carbohydrate },
                             { "Flavour", flavour },
                             { "Weight", weight },
+                            { "Value", value },
                             { "StartDate", startDate },
                             { "EndDate", endDate }
                         };
@@ -529,6 +535,7 @@ public class ResourceManager : BaseManager
                                         carbohydrate,
                                         flavour,
                                         weight,
+                                        value,
                                         startDate,
                                         endDate
                                     );

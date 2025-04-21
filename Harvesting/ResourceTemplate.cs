@@ -21,9 +21,10 @@ public class ResourceTemplate : MonoBehaviour
     public int Flavour { get; protected set; }
     public int StackSizeMax { get; protected set; }
     public int Weight { get; protected set; }
+    public int Value { get; protected set; }
 
     
-    public void SetResourceTemplate(int id, int order, int family, int type, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int stackSizeMax, int weight)
+    public void SetResourceTemplate(int id, int order, int family, int type, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int stackSizeMax, int weight, int value)
     {
         ResourceTemplateID = id;
         Order = (ResourceOrder)order;
@@ -40,6 +41,7 @@ public class ResourceTemplate : MonoBehaviour
         Flavour = flavour;
         StackSizeMax = stackSizeMax;
         Weight = weight;
+        Value = value;
     }
     public void SetResourceTemplateID(int id)
     {
