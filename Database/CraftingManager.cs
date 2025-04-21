@@ -31,6 +31,7 @@ public class CraftingManager : BaseManager
         StartInitialization();
     }
 
+    #region Initialize
     protected override async Task InitializeAsync()
     {
         Debug.Log("Initializing CraftingManager...");
@@ -70,7 +71,6 @@ public class CraftingManager : BaseManager
         NotifyDataLoaded();
         Debug.Log("CraftingManager initialization complete");
     }
-
     private async Task LoadRecipesAsync()
     {
         string query = "SELECT * FROM Recipes";
@@ -147,7 +147,9 @@ public class CraftingManager : BaseManager
             }
         }
     }
+    #endregion
 
+    #region Getters
     public Recipe GetRecipeByID(int recipeID)
     {
         if (recipesById.TryGetValue(recipeID, out Recipe recipe))
@@ -156,7 +158,6 @@ public class CraftingManager : BaseManager
         }
         return null;
     }
-
     public Recipe GetRecipeByName(string recipeName)
     {
         if (recipesByName.TryGetValue(recipeName, out Recipe recipe))
@@ -165,4 +166,5 @@ public class CraftingManager : BaseManager
         }
         return null;
     }
-} 
+    #endregion
+}

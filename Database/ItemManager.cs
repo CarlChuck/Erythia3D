@@ -7,23 +7,22 @@ using UnityEngine;
 
 public class ItemManager : BaseManager
 {
-    // --- Table Names ---
-    private const string ItemTemplatesTableName = "ItemTemplates"; // Adjust if different
-    private const string ItemInstancesTableName = "Items"; // Adjust if different
+    private const string ItemTemplatesTableName = "ItemTemplates"; 
+    private const string ItemInstancesTableName = "Items"; 
 
     [Header("Prefabs")]
-    [SerializeField] private Item itemPrefab; // Prefab with Item component
-    [SerializeField] private ItemTemplate itemTemplatePrefab; // Prefab with ItemTemplate component
+    [SerializeField] private Item itemPrefab; 
+    [SerializeField] private ItemTemplate itemTemplatePrefab; 
 
     [Header("Parent Transforms (Optional)")]
-    [SerializeField] private Transform itemInstancesParent; // For organizing instantiated items
-    [SerializeField] private Transform itemTemplatesParent; // For organizing templates
+    [SerializeField] private Transform itemInstancesParent; 
+    [SerializeField] private Transform itemTemplatesParent; 
 
     [Header("Runtime Data (Loaded)")]
     private List<ItemTemplate> loadedTemplates = new List<ItemTemplate>();
     private List<Item> loadedItemInstances = new List<Item>();
     private Dictionary<int, ItemTemplate> templatesById = new Dictionary<int, ItemTemplate>();
-    private Dictionary<int, Item> itemsById = new Dictionary<int, Item>(); // Lookup for instances
+    private Dictionary<int, Item> itemsById = new Dictionary<int, Item>(); 
 
     #region Singleton
     public static ItemManager Instance;

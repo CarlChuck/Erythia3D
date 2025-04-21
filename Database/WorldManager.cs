@@ -2,15 +2,5 @@ using UnityEngine;
 
 public class WorldManager : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
+    //TODO: Implement WorldManager functionality
 }

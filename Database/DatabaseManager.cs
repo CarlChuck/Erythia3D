@@ -39,7 +39,6 @@ public class DatabaseManager : MonoBehaviour
     }
     #endregion
 
-    // Only prepares the connection string, doesn't create the shared connection object anymore
     private void InitializeDatabaseConnectionString()
     {
         try

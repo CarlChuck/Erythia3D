@@ -59,34 +59,7 @@ public class ResourceManager : BaseManager
         OnDataLoaded += PerformPostLoadActions;
     }
 
-    protected override void OnDestroy()
-    {
-        OnDataLoaded -= PerformPostLoadActions;
-        base.OnDestroy();
-    }
-
-    private void PerformPostLoadActions()
-    {
-        LogInfo("Performing post-load actions (parenting objects)...");
-        foreach (Resource resource in loadedResourceInstances)
-        {
-            if (resource != null && resource.gameObject != null && resourceInstancesParent != null)
-            {
-                resource.gameObject.transform.SetParent(resourceInstancesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed resource or missing parent."); }
-        }
-        foreach (ResourceTemplate template in loadedTemplates)
-        {
-            if (template != null && template.gameObject != null && resourceTemplatesParent != null)
-            {
-                template.gameObject.transform.SetParent(resourceTemplatesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
-        }
-        LogInfo("Post-load actions complete.");
-    }
-
+    #region Initialization
     protected override async Task InitializeAsync()
     {
         loadedTemplates.Clear();
@@ -134,7 +107,6 @@ public class ResourceManager : BaseManager
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
         }
     }
-
     private async Task EnsureResourceTablesExistAsync()
     {
         LogInfo("Checking and initializing resource data tables async...");
@@ -147,7 +119,6 @@ public class ResourceManager : BaseManager
         }
         LogInfo("Resource data tables checked/initialized async.");
     }
-
     public async Task<List<Resource>> LoadAllResourceInstancesAsync()
     {
         List<Resource> resources = new List<Resource>();
@@ -185,7 +156,6 @@ public class ResourceManager : BaseManager
         }
         catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); return null; }
     }
-
     public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
     {
         List<ResourceTemplate> templates = new List<ResourceTemplate>();
@@ -226,181 +196,6 @@ public class ResourceManager : BaseManager
             return null; // Indicate failure
         }
     }
-
-    private Dictionary<string, string> GetResourceTableDefinition()
-    {
-        return new Dictionary<string, string> {
-            {"ResourceSpawnID", "INT AUTO_INCREMENT PRIMARY KEY"},
-            {"ResourceName", "VARCHAR(255)"},
-            {"ResourceTemplateID", "INT"},
-            {"Type", "INT"},
-            {"SubType", "INT"},
-            {"Quality", "INT"},
-            {"Toughness", "INT"},
-            {"Strength", "INT"},
-            {"Density", "INT"},
-            {"Aura", "INT"},
-            {"Energy", "INT"},
-            {"Protein", "INT"},
-            {"Carbohydrate", "INT"},
-            {"Flavour", "INT"},
-            {"Weight", "INT"},
-            {"Value", "INT"},
-            {"StartDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
-            {"EndDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
-        };
-    }
-
-    private Dictionary<string, string> GetResourceTemplateTableDefinition()
-    {
-        return new Dictionary<string, string> {
-            {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"},
-            {"Order", "INT"},
-            {"Family", "INT"},
-            {"Type", "INT"},
-            {"Quality", "INT"},
-            {"Toughness", "INT"},
-            {"Strength", "INT"},
-            {"Density", "INT"},
-            {"Aura", "INT"},
-            {"Energy", "INT"},
-            {"Protein", "INT"},
-            {"Carbohydrate", "INT"},
-            {"Flavour", "INT"},
-            {"StackSizeMax", "INT DEFAULT 100000"},
-            {"Weight", "INT"},
-            {"Value", "INT"}
-        };
-    }
-
-    private void MapDictionaryToResourceTemplate(ResourceTemplate resourceTemplate, Dictionary<string, object> data)
-    {
-        try
-        {
-            resourceTemplate.SetResourceTemplate(
-                Convert.ToInt32(data["ResourceTemplateID"]),
-                data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
-                data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
-                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
-                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
-                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
-                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
-                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
-                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
-                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
-                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
-                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
-                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100000,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
-                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
-        }
-    }
-
-    private void MapDictionaryToResource(Resource resource, Dictionary<string, object> data)
-    {
-        try
-        {
-            resource.SetResource(
-                data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
-                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : null,
-                data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
-                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
-                data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
-                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
-                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
-                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
-                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
-                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
-                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
-                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
-                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
-                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
-                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0,
-                data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
-                data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
-        }
-    }
-
-    private void LinkInstancesToTemplates()
-    {
-        foreach (var resource in loadedResourceInstances)
-        {
-            if (templatesById.TryGetValue(resource.GetResourceTemplateID(), out ResourceTemplate template))
-            {
-                resource.ResourceTemplate = template;
-            }
-            else
-            {
-                LogWarning($"Resource instance '{resource.ResourceName}' (ID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
-            }
-        }
-    }
-
-    public Resource GetResourcePrefab()
-    {
-        return resourcePrefab;
-    }
-
-    public ResourceTemplate GetResourceTemplatePrefab()
-    {
-        return resourceTemplatePrefab;
-    }
-
-    public ResourceItem GetResourceItemPrefab()
-    {
-        return resourceItemPrefab;
-    }
-
-    public List<Resource> GetAllResourceInstances()
-    {
-        if (!isInitialized)
-        {
-            LogWarning("Attempted to access resource instances before ResourceManager is initialized.");
-            return new List<Resource>(); // Return empty list
-        }
-        return loadedResourceInstances; // Or return a copy
-    }
-
-    public List<ResourceTemplate> GetAllResourceTemplates()
-    {
-        if (!isInitialized)
-        {
-            LogWarning("Attempted to access templates before ResourceManager is initialized.");
-            return new List<ResourceTemplate>(); // Return empty list
-        }
-        return loadedTemplates; // Or return a copy: new List<ResourceTemplate>(loadedTemplates)
-    }
-
-    public Resource GetResourceInstanceById(int resourceID)
-    {
-        if (!isInitialized) return null;
-        resourcesById.TryGetValue(resourceID, out Resource resource);
-        return resource; // Returns null if not found
-    }
-
-    public ResourceTemplate GetResourceTemplateById(int templateID)
-    {
-        if (!isInitialized)
-        {
-            LogWarning("Attempted to access template by ID before ResourceManager is initialized.");
-            return null;
-        }
-        templatesById.TryGetValue(templateID, out ResourceTemplate template);
-        return template; // Returns null if not found
-    }
-
     public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType type, ResourceSubType regionType)
     {
         if (!isInitialized)
@@ -446,7 +241,7 @@ public class ResourceManager : BaseManager
 
         // 4. Generate Name and Set Initial Values
         string randomName = GenerateRandomResourceName();
-        
+
         // 5. Add Random Variation (+- 50, clamped)
         int quality = ClampNumber(template.Quality + randomNumber.Next(-50, 51));
         int toughness = ClampNumber(template.Toughness + randomNumber.Next(-50, 51));
@@ -539,7 +334,7 @@ public class ResourceManager : BaseManager
                                         startDate,
                                         endDate
                                     );
-                                    
+
                                     loadedResourceInstances.Add(newResource);
                                     resourcesById[newResource.ResourceSpawnID] = newResource;
                                     LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
@@ -561,13 +356,187 @@ public class ResourceManager : BaseManager
             return null;
         }
         catch (Exception ex)
-        {   
+        {
             LogError("Exception during resource saving process. Destroying spawned object.", ex);
             Destroy(resourceGO);
             return null;
         }
     }
+    private void MapDictionaryToResourceTemplate(ResourceTemplate resourceTemplate, Dictionary<string, object> data)
+    {
+        try
+        {
+            resourceTemplate.SetResourceTemplate(
+                Convert.ToInt32(data["ResourceTemplateID"]),
+                data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
+                data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
+                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
+                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
+                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
+                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
+                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
+                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
+                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
+                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
+                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
+                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
+                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100000,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+        }
+    }
+    private void MapDictionaryToResource(Resource resource, Dictionary<string, object> data)
+    {
+        try
+        {
+            resource.SetResource(
+                data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
+                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : null,
+                data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
+                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
+                data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
+                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
+                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
+                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
+                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
+                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
+                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
+                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
+                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
+                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0,
+                data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
+                data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+        }
+    }
+    private void PerformPostLoadActions()
+    {
+        LogInfo("Performing post-load actions (parenting objects)...");
+        foreach (Resource resource in loadedResourceInstances)
+        {
+            if (resource != null && resource.gameObject != null && resourceInstancesParent != null)
+            {
+                resource.gameObject.transform.SetParent(resourceInstancesParent, false);
+            }
+            else { LogWarning("Skipping parenting for null/destroyed resource or missing parent."); }
+        }
+        foreach (ResourceTemplate template in loadedTemplates)
+        {
+            if (template != null && template.gameObject != null && resourceTemplatesParent != null)
+            {
+                template.gameObject.transform.SetParent(resourceTemplatesParent, false);
+            }
+            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
+        }
+        LogInfo("Post-load actions complete.");
+    }
+    #endregion
 
+    #region Getters
+    private Dictionary<string, string> GetResourceTableDefinition()
+    {
+        return new Dictionary<string, string> {
+            {"ResourceSpawnID", "INT AUTO_INCREMENT PRIMARY KEY"},
+            {"ResourceName", "VARCHAR(255)"},
+            {"ResourceTemplateID", "INT"},
+            {"Type", "INT"},
+            {"SubType", "INT"},
+            {"Quality", "INT"},
+            {"Toughness", "INT"},
+            {"Strength", "INT"},
+            {"Density", "INT"},
+            {"Aura", "INT"},
+            {"Energy", "INT"},
+            {"Protein", "INT"},
+            {"Carbohydrate", "INT"},
+            {"Flavour", "INT"},
+            {"Weight", "INT"},
+            {"Value", "INT"},
+            {"StartDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
+            {"EndDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
+        };
+    }
+    private Dictionary<string, string> GetResourceTemplateTableDefinition()
+    {
+        return new Dictionary<string, string> {
+            {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"},
+            {"Order", "INT"},
+            {"Family", "INT"},
+            {"Type", "INT"},
+            {"Quality", "INT"},
+            {"Toughness", "INT"},
+            {"Strength", "INT"},
+            {"Density", "INT"},
+            {"Aura", "INT"},
+            {"Energy", "INT"},
+            {"Protein", "INT"},
+            {"Carbohydrate", "INT"},
+            {"Flavour", "INT"},
+            {"StackSizeMax", "INT DEFAULT 100000"},
+            {"Weight", "INT"},
+            {"Value", "INT"}
+        };
+    }
+    public Resource GetResourcePrefab()
+    {
+        return resourcePrefab;
+    }
+    public ResourceTemplate GetResourceTemplatePrefab()
+    {
+        return resourceTemplatePrefab;
+    }
+    public ResourceItem GetResourceItemPrefab()
+    {
+        return resourceItemPrefab;
+    }
+    public List<Resource> GetAllResourceInstances()
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access resource instances before ResourceManager is initialized.");
+            return new List<Resource>(); // Return empty list
+        }
+        return loadedResourceInstances; // Or return a copy
+    }
+    public List<ResourceTemplate> GetAllResourceTemplates()
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access templates before ResourceManager is initialized.");
+            return new List<ResourceTemplate>(); // Return empty list
+        }
+        return loadedTemplates; // Or return a copy: new List<ResourceTemplate>(loadedTemplates)
+    }
+    public Resource GetResourceInstanceById(int resourceID)
+    {
+        if (!isInitialized) return null;
+        resourcesById.TryGetValue(resourceID, out Resource resource);
+        return resource; // Returns null if not found
+    }
+    public ResourceTemplate GetResourceTemplateById(int templateID)
+    {
+        if (!isInitialized)
+        {
+            LogWarning("Attempted to access template by ID before ResourceManager is initialized.");
+            return null;
+        }
+        templatesById.TryGetValue(templateID, out ResourceTemplate template);
+        return template; // Returns null if not found
+    }
+    #endregion
+
+    #region Helpers
     private string GenerateRandomResourceName()
     {
         string firstPart = firstPartOfName[randomNumber.Next(firstPartOfName.Count)];
@@ -585,11 +554,31 @@ public class ResourceManager : BaseManager
 
         return assembledName;
     }
-
     private int ClampNumber(int value, int min = 1, int max = 1000)
     {
         return Math.Max(min, Math.Min(max, value));
     }
+    private void LinkInstancesToTemplates()
+    {
+        foreach (var resource in loadedResourceInstances)
+        {
+            if (templatesById.TryGetValue(resource.GetResourceTemplateID(), out ResourceTemplate template))
+            {
+                resource.ResourceTemplate = template;
+            }
+            else
+            {
+                LogWarning($"Resource instance '{resource.ResourceName}' (ID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
+            }
+        }
+    }
+    protected override void OnDestroy()
+    {
+        OnDataLoaded -= PerformPostLoadActions;
+        base.OnDestroy();
+    }
+
+    #endregion
 }
 
 public enum ResourceType

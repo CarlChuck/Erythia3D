@@ -31,11 +31,7 @@ public class InventoryManager : BaseManager
         StartInitialization();
     }
 
-    protected override void OnDestroy()
-    {
-        base.OnDestroy();
-    }
-
+    #region Initialization
     protected override async Task InitializeAsync()
     {
         try
@@ -54,7 +50,6 @@ public class InventoryManager : BaseManager
             isInitialized = false;
         }
     }
-
     private async Task EnsureInventoryTablesExistAsync()
     {
         LogInfo("Checking and initializing inventory data tables async...");
@@ -67,7 +62,6 @@ public class InventoryManager : BaseManager
         }
         LogInfo("Inventory data tables checked/initialized async.");
     }
-
     private Dictionary<string, string> GetInventoryTableDefinition()
     {
         return new Dictionary<string, string> 
@@ -78,7 +72,6 @@ public class InventoryManager : BaseManager
             {"SlotID", "INT"}
         };
     }
-
     private Dictionary<string, string> GetResourceItemsTableDefinition()
     {
         return new Dictionary<string, string> 
@@ -89,6 +82,7 @@ public class InventoryManager : BaseManager
             {"Quantity", "INT DEFAULT 1"}
         };
     }
+    #endregion
 
     #region Inventory Methods
     public async Task<List<Dictionary<string, object>>> GetCharacterInventoryAsync(int charId)
@@ -321,4 +315,11 @@ public class InventoryManager : BaseManager
         }
     }
     #endregion
-} 
+
+    #region Helpers
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+    }
+    #endregion
+}

@@ -42,11 +42,11 @@ public class CharactersManager : BaseManager
         StartInitialization();
     }
 
+    #region Initialize
     protected override void OnDestroy()
     {
         base.OnDestroy();
     }
-
     protected override async Task InitializeAsync()
     {
         try
@@ -65,7 +65,6 @@ public class CharactersManager : BaseManager
             isInitialized = false;
         }
     }
-
     private async Task EnsureCharacterTableExistsAsync()
     {
         LogInfo("Checking and initializing character data table async...");
@@ -77,31 +76,7 @@ public class CharactersManager : BaseManager
         }
         LogInfo("Character data table checked/initialized async.");
     }
-
-    private Dictionary<string, string> GetCharacterTableDefinition()
-    {
-        return new Dictionary<string, string> 
-        {
-            {"CharID", "INT AUTO_INCREMENT PRIMARY KEY"},
-            {"AccountID", "INT"},
-            {"FamilyName", "VARCHAR(255) UNIQUE"},
-            {"Name", "VARCHAR(255)"},
-            {"Title", "VARCHAR(255)"},
-            {"ZoneID", "INT"},
-            {"XLoc", "INT"},
-            {"YLoc", "INT"},
-            {"ZLoc", "INT"},
-            {"Race", "INT"},
-            {"Gender", "INT"},
-            {"Face", "INT"},
-            {"CombatExp", "INT"},
-            {"CraftingExp", "INT"},
-            {"ArcaneExp", "INT"},
-            {"SpiritExp", "INT"},
-            {"VeilExp", "INT"},
-            {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
-        };
-    }
+    #endregion
 
     public async Task<bool> CreateNewCharacterAsync(int accountID, string familyName, string characterName, string title = null, int startingArea = 1, int race = 1, int gender = 1, int face = 1)
     {
@@ -150,6 +125,7 @@ public class CharactersManager : BaseManager
         }
     }
 
+    #region Getters
     public async Task<List<Dictionary<string, object>>> GetCharactersbyAccountIDAsync(int accountId)
     {
         string query = $"SELECT * FROM `{CharacterDataTableName}` WHERE AccountID = @AccountID";
@@ -174,7 +150,30 @@ public class CharactersManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-
+    private Dictionary<string, string> GetCharacterTableDefinition()
+    {
+        return new Dictionary<string, string>
+        {
+            {"CharID", "INT AUTO_INCREMENT PRIMARY KEY"},
+            {"AccountID", "INT"},
+            {"FamilyName", "VARCHAR(255) UNIQUE"},
+            {"Name", "VARCHAR(255)"},
+            {"Title", "VARCHAR(255)"},
+            {"ZoneID", "INT"},
+            {"XLoc", "INT"},
+            {"YLoc", "INT"},
+            {"ZLoc", "INT"},
+            {"Race", "INT"},
+            {"Gender", "INT"},
+            {"Face", "INT"},
+            {"CombatExp", "INT"},
+            {"CraftingExp", "INT"},
+            {"ArcaneExp", "INT"},
+            {"SpiritExp", "INT"},
+            {"VeilExp", "INT"},
+            {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
+        };
+    }
     public SpeciesTemplate GetSpeciesByID(int id)
     {
         return id switch
@@ -191,4 +190,5 @@ public class CharactersManager : BaseManager
             _ => raceAelystian,
         };
     }
+    #endregion
 }
