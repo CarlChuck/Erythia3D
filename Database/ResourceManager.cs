@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
-using MySql.Data.MySqlClient;
+using MySqlConnector;
 
 public class ResourceManager : BaseManager
 {
@@ -242,18 +242,18 @@ public class ResourceManager : BaseManager
         // 4. Generate Name and Set Initial Values
         string randomName = GenerateRandomResourceName();
 
-        // 5. Add Random Variation (+- 50, clamped)
-        int quality = ClampNumber(template.Quality + randomNumber.Next(-50, 51));
-        int toughness = ClampNumber(template.Toughness + randomNumber.Next(-50, 51));
-        int strength = ClampNumber(template.Strength + randomNumber.Next(-50, 51));
-        int density = ClampNumber(template.Density + randomNumber.Next(-50, 51));
-        int aura = ClampNumber(template.Aura + randomNumber.Next(-50, 51));
-        int energy = ClampNumber(template.Energy + randomNumber.Next(-50, 51));
-        int protein = ClampNumber(template.Protein + randomNumber.Next(-50, 51));
-        int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-50, 51));
-        int flavour = ClampNumber(template.Flavour + randomNumber.Next(-50, 51));
-        int weight = ClampNumber(template.Weight + randomNumber.Next(-50, 51));
-        int value = ClampNumber(template.Value + randomNumber.Next(-50, 51));
+        // 5. Add Random Variation
+        int quality = ClampNumber(template.Quality + randomNumber.Next(-250, 251) + randomNumber.Next(-250, 251));
+        int toughness = ClampNumber(template.Toughness + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int strength = ClampNumber(template.Strength + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int density = ClampNumber(template.Density + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int aura = ClampNumber(template.Aura + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int energy = ClampNumber(template.Energy + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int protein = ClampNumber(template.Protein + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int flavour = ClampNumber(template.Flavour + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int weight = ClampNumber(template.Weight + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int value = ClampNumber(template.Value + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
 
         // 6. Set Dates
         DateTime startDate = DateTime.UtcNow;
@@ -368,6 +368,7 @@ public class ResourceManager : BaseManager
         {
             resourceTemplate.SetResourceTemplate(
                 Convert.ToInt32(data["ResourceTemplateID"]),
+                data["TemplateName"] != DBNull.Value ? Convert.ToString(data["TemplateName"]) : "Unnamed Template",
                 data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
                 data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
                 data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
@@ -471,6 +472,7 @@ public class ResourceManager : BaseManager
     {
         return new Dictionary<string, string> {
             {"ResourceTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"},
+            {"TemplateName", "VARCHAR(255)"},
             {"Order", "INT"},
             {"Family", "INT"},
             {"Type", "INT"},
@@ -669,9 +671,20 @@ public enum ResourceType
     TkyanMushroom,
 
     //Creature
-    Hide,
-    Carapace,
-    Scale,
+    SilkyHide,
+    LeatheryHide,
+    ThickHide,
+    WoolyHide,
+    ShinyCarapace,
+    RigidCarapace,
+    HeavyCarapace,
+    ShinyScale,
+    RigidScale,
+    HeavyScale,
+    LightBone,
+    RigidBone,
+    HeavyBone,
+
     Bone,
     ReptileMeat,
     MammalMeat,
@@ -679,16 +692,105 @@ public enum ResourceType
     InsectMeat,
     FishMeat,
     CrabMeat,
-    ExlixEgg,
-    LeptonEgg,
-    RikTelEgg,
-    VexuEgg,
-
-    //Plants
-
-    //Herbs
-
-    //Magical?
+    ReptileEgg,
+    BirdEgg,
+    FishEgg,
+    BirdFeathers,
+    ReptileFeathers,
+    AsiCrystal,
+    OriCrystal,
+    DiotCrystal,
+    EseCrystal,
+    CesiCrystal,
+    FiyCrystal,
+    LeiCrystal,
+    XeCrystal,
+    GhostRock,
+    Silkweed,
+    Redwort,
+    Laceflower,
+    Aldernettle,
+    Windroot,
+    Ribwort,
+    Feverbloom,
+    Hellebloom,
+    Deathnettle,
+    Lifebloom,
+    Woundwort,
+    Devilrose,
+    Trishade,
+    Finslip,
+    Gutweed,
+    Kuflower,
+    HeartPepper,
+    FaeLilly,
+    Krateweed,
+    HedgeMoss,
+    DsihMoss,
+    Silvermoss,
+    Cottonmoss,
+    Elocress,
+    ThjiMoss,
+    ReshMoss,
+    WurmMoss,
+    Bael,
+    Akleme,
+    Slathi,
+    Riyk,
+    Eatil,
+    Ariac,
+    Jipulse,
+    CaveOat,
+    Saltweed,
+    SpinePalmNeedle,
+    Azoana,
+    Hobola,
+    Etuce,
+    Ciove,
+    Khelish,
+    Iachini,
+    Weparrot,
+    DesertSquash,
+    CherryPepper,
+    Clichoy,
+    Strulene,
+    Klute,
+    Glasan,
+    RedGuan,
+    TammaniPepper,
+    AnurianLeaf,
+    Blayrang,
+    WeepingRedcap,
+    VoidMushroom,
+    WoundCap,
+    SorrowMushroom,
+    GhostbaneMushroom,
+    MithliMushroom,
+    BlackButton,
+    Goldcap,
+    Gjincap,
+    FeltLichen,
+    TravelBerry,
+    TundraApple,
+    Boqila,
+    Niamia,
+    Moonfruit,
+    Riaya,
+    Icefruit,
+    DewCherry,
+    RainPlum,
+    HoneyApple,
+    Ulery,
+    BronzeBerry,
+    FadeGrape,
+    OceanApple,
+    Asnip,
+    HoneyCactus,
+    Hurnut,
+    Nitech,
+    Ucan,
+    XaNut,
+    Yumbi
 }
 
 public enum ResourceSubType

@@ -7,6 +7,7 @@ using System.Linq;
 public class ResourceTemplate : MonoBehaviour
 {
     public int ResourceTemplateID { get; protected set; }
+    public string TemplateName { get; protected set; }
     public ResourceOrder Order { get; protected set; }
     public ResourceFamily Family { get; protected set; }
     public ResourceType Type { get; protected set; }
@@ -24,9 +25,10 @@ public class ResourceTemplate : MonoBehaviour
     public int Value { get; protected set; }
 
     
-    public void SetResourceTemplate(int id, int order, int family, int type, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int stackSizeMax, int weight, int value)
+    public void SetResourceTemplate(int id, string templateName, int order, int family, int type, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int stackSizeMax, int weight, int value)
     {
         ResourceTemplateID = id;
+        TemplateName = templateName;
         Order = (ResourceOrder)order;
         Family = (ResourceFamily)family;
         Type = (ResourceType)type;

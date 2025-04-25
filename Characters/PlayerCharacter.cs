@@ -60,7 +60,7 @@ public class PlayerCharacter : StatBlock
     public void InteractWithTarget()
     {
         // Define the ray starting point and direction
-        Vector3 rayOrigin = transform.position + Vector3.up; // Slightly above the player's position
+        Vector3 rayOrigin = transform.position + transform.forward * 0.2f + Vector3.up * 0.5f; // Start slightly in front and half a unit up
         Vector3 rayDirection = transform.forward;
 
         // Perform the raycast

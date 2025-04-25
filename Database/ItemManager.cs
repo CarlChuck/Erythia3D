@@ -282,27 +282,27 @@ public class ItemManager : BaseManager
     {
         // Based on ItemType columns from image
         return new Dictionary<string, string> {
-             {"ItemTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"}, // Renamed to ID for consistency? Or keep ItemTemplateID? Let's use ID.
+             {"ItemTemplateID", "INT AUTO_INCREMENT PRIMARY KEY"}, 
              {"Name", "VARCHAR(255) NOT NULL"},
-             {"ItemType", "INT"}, // Maps to ItemType Enum
-             {"ExamineText", "TEXT"}, // Use TEXT for potentially longer descriptions
+             {"ItemType", "INT"}, 
+             {"ExamineText", "TEXT"}, 
              {"MaxDurability", "INT DEFAULT 100"},
-             {"Damage", "FLOAT DEFAULT 0"}, // Use FLOAT
-             {"Speed", "FLOAT DEFAULT 1.0"}, // Use FLOAT
-             {"DamageType", "INT DEFAULT 0"}, // Maps to ItemDamageType Enum
-             {"SlotType", "INT DEFAULT 0"}, // Maps to ItemSlotType Enum
+             {"Damage", "FLOAT DEFAULT 0"}, 
+             {"Speed", "FLOAT DEFAULT 1.0"}, 
+             {"DamageType", "INT DEFAULT 0"}, 
+             {"SlotType", "INT DEFAULT 0"}, 
              {"SlashResist", "FLOAT DEFAULT 0"}, {"ThrustResist", "FLOAT DEFAULT 0"}, {"CrushResist", "FLOAT DEFAULT 0"},
              {"HeatResist", "FLOAT DEFAULT 0"}, {"ShockResist", "FLOAT DEFAULT 0"}, {"ColdResist", "FLOAT DEFAULT 0"},
              {"MindResist", "FLOAT DEFAULT 0"}, {"CorruptResist", "FLOAT DEFAULT 0"},
-             {"Icon", "VARCHAR(255)"}, // Path to icon asset
-             {"Colour", "VARCHAR(7) DEFAULT '#FFFFFF'"}, // Hex color string
-             {"Weight", "FLOAT DEFAULT 1.0"}, // Use FLOAT
-             {"Model", "VARCHAR(255)"}, // Path to model asset
+             {"Icon", "INT"}, 
+             {"Colour", "VARCHAR(7) DEFAULT '#FFFFFF'"}, 
+             {"Weight", "FLOAT DEFAULT 1.0"}, 
+             {"Model", "INT"}, 
              {"Bonus1", "INT DEFAULT 0"}, {"Bonus2", "INT DEFAULT 0"}, {"Bonus3", "INT DEFAULT 0"}, {"Bonus4", "INT DEFAULT 0"},
              {"Bonus5", "INT DEFAULT 0"}, {"Bonus6", "INT DEFAULT 0"}, {"Bonus7", "INT DEFAULT 0"}, {"Bonus8", "INT DEFAULT 0"},
              {"Bonus1Type", "INT DEFAULT 0"}, {"Bonus2Type", "INT DEFAULT 0"}, {"Bonus3Type", "INT DEFAULT 0"}, {"Bonus4Type", "INT DEFAULT 0"},
              {"Bonus5Type", "INT DEFAULT 0"}, {"Bonus6Type", "INT DEFAULT 0"}, {"Bonus7Type", "INT DEFAULT 0"}, {"Bonus8Type", "INT DEFAULT 0"},
-             {"Stackable", "TINYINT(1) DEFAULT 0"}, // Boolean (0 or 1)
+             {"Stackable", "TINYINT(1) DEFAULT 0"}, 
              {"StackSizeMax", "INT DEFAULT 1"},
              {"Price", "INT DEFAULT 0"}
         };
@@ -311,28 +311,28 @@ public class ItemManager : BaseManager
     {
         // Based on Item columns from image + necessary additions
         return new Dictionary<string, string> {
-             {"ItemID", "INT AUTO_INCREMENT PRIMARY KEY"}, // Unique instance ID
-             {"ItemTemplateID", "INT NOT NULL"}, // Foreign Key
+             {"ItemID", "INT AUTO_INCREMENT PRIMARY KEY"}, 
+             {"ItemTemplateID", "INT NOT NULL"}, 
              {"ItemName", "VARCHAR(255) NULL"},
-             {"ItemType", "INT"}, // Maps to ItemType Enum
-             {"Durability", "INT"}, // Current Durability
+             {"ItemType", "INT"}, 
+             {"Durability", "INT"}, 
              {"MaxDurability", "INT DEFAULT 100"},
              {"Damage", "FLOAT NULL"}, 
              {"Speed", "FLOAT NULL"},
-             {"DamageType", "INT DEFAULT 0"}, // Maps to ItemDamageType Enum
-             {"SlotType", "INT DEFAULT 0"}, // Maps to ItemSlotType Enum
+             {"DamageType", "INT DEFAULT 0"}, 
+             {"SlotType", "INT DEFAULT 0"}, 
              {"SlashResist", "FLOAT NULL"}, {"ThrustResist", "FLOAT NULL"}, {"CrushResist", "FLOAT NULL"},
              {"HeatResist", "FLOAT NULL"}, {"ShockResist", "FLOAT NULL"}, {"ColdResist", "FLOAT NULL"},
              {"MindResist", "FLOAT NULL"}, {"CorruptResist", "FLOAT NULL"},
-             {"Icon", "VARCHAR(255)"}, // Path to icon asset
-             {"Colour", "VARCHAR(7) DEFAULT '#FFFFFF'"}, // Hex color string
-             {"Weight", "FLOAT DEFAULT 1.0"}, // Use FLOAT
-             {"Model", "VARCHAR(255)"}, // Path to model asset
+             {"Icon", "INT"}, 
+             {"Colour", "VARCHAR(7) DEFAULT '#FFFFFF'"}, 
+             {"Weight", "FLOAT DEFAULT 1.0"}, 
+             {"Model", "INT"}, 
              {"Bonus1", "INT NULL"}, {"Bonus2", "INT NULL"}, {"Bonus3", "INT NULL"}, {"Bonus4", "INT NULL"},
              {"Bonus5", "INT NULL"}, {"Bonus6", "INT NULL"}, {"Bonus7", "INT NULL"}, {"Bonus8", "INT NULL"},
              {"Bonus1Type", "INT DEFAULT 0"}, {"Bonus2Type", "INT DEFAULT 0"}, {"Bonus3Type", "INT DEFAULT 0"}, {"Bonus4Type", "INT DEFAULT 0"},
              {"Bonus5Type", "INT DEFAULT 0"}, {"Bonus6Type", "INT DEFAULT 0"}, {"Bonus7Type", "INT DEFAULT 0"}, {"Bonus8Type", "INT DEFAULT 0"},
-             {"Stackable", "TINYINT(1) DEFAULT 0"}, // Boolean (0 or 1)
+             {"Stackable", "TINYINT(1) DEFAULT 0"}, 
              {"StackSizeMax", "INT DEFAULT 1"},
              {"Price", "INT DEFAULT 0"}
         };
@@ -608,27 +608,27 @@ public class ItemManager : BaseManager
         {
             // Use SafeConvert helper
             template.SetItemTemplate(
-                SafeConvert.ToInt32(data, "ItemTemplateID"), // Match definition ID column name
+                SafeConvert.ToInt32(data, "ItemTemplateID"), 
                 SafeConvert.ToString(data, "Name"),
                 SafeConvert.ToInt32(data, "ItemType"),
                 SafeConvert.ToString(data, "ExamineText"),
-                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
-                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
+                SafeConvert.ToInt32(data, "MaxDurability", 100), 
+                SafeConvert.ToSingle(data, "Damage"), 
                 SafeConvert.ToSingle(data, "Speed", 1.0f),
                 SafeConvert.ToInt32(data, "DamageType"),
                 SafeConvert.ToInt32(data, "SlotType"),
                 SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
                 SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
                 SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
-                SafeConvert.ToInt32(data, "Icon"),
+                SafeConvert.ToInt32(data, "Icon"), // Use ToInt32
                 SafeConvert.ToString(data, "Colour", "#FFFFFF"),
                 SafeConvert.ToInt32(data, "Weight"),
-                SafeConvert.ToInt32(data, "Model"),
+                SafeConvert.ToInt32(data, "Model"), // Use ToInt32
                 SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
                 SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
                 SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
                 SafeConvert.ToInt32(data, "Bonus5Type"), SafeConvert.ToInt32(data, "Bonus6Type"), SafeConvert.ToInt32(data, "Bonus7Type"), SafeConvert.ToInt32(data, "Bonus8Type"),
-                SafeConvert.ToBoolean(data, "Stackable"),
+                SafeConvert.ToBoolean(data, "Stackable"), 
                 SafeConvert.ToInt32(data, "StackSizeMax", 1),
                 SafeConvert.ToInt32(data, "Price")
             );
@@ -649,18 +649,18 @@ public class ItemManager : BaseManager
                 SafeConvert.ToString(data, "ItemName"),
                 SafeConvert.ToInt32(data, "ItemType"),
                 SafeConvert.ToInt32(data, "Durability"),
-                SafeConvert.ToInt32(data, "MaxDurability", 100), // Provide default
-                SafeConvert.ToSingle(data, "Damage"), // Use ToSingle for float
+                SafeConvert.ToInt32(data, "MaxDurability", 100), 
+                SafeConvert.ToSingle(data, "Damage"), 
                 SafeConvert.ToSingle(data, "Speed", 1.0f),
                 SafeConvert.ToInt32(data, "DamageType"),
                 SafeConvert.ToInt32(data, "SlotType"),
                 SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
                 SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
                 SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
-                SafeConvert.ToInt32(data, "Icon"),
+                SafeConvert.ToInt32(data, "Icon"), // Use ToInt32
                 SafeConvert.ToString(data, "Colour", "#FFFFFF"),
                 SafeConvert.ToInt32(data, "Weight"),
-                SafeConvert.ToInt32(data, "Model"),
+                SafeConvert.ToInt32(data, "Model"), // Use ToInt32
                 SafeConvert.ToInt32(data, "Bonus1"), SafeConvert.ToInt32(data, "Bonus2"), SafeConvert.ToInt32(data, "Bonus3"), SafeConvert.ToInt32(data, "Bonus4"),
                 SafeConvert.ToInt32(data, "Bonus5"), SafeConvert.ToInt32(data, "Bonus6"), SafeConvert.ToInt32(data, "Bonus7"), SafeConvert.ToInt32(data, "Bonus8"),
                 SafeConvert.ToInt32(data, "Bonus1Type"), SafeConvert.ToInt32(data, "Bonus2Type"), SafeConvert.ToInt32(data, "Bonus3Type"), SafeConvert.ToInt32(data, "Bonus4Type"),
