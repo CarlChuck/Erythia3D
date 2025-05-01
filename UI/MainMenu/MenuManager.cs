@@ -37,8 +37,8 @@ public class MenuManager : MonoBehaviour
     void Start()
     {
         OnMainMenu();
-        menuCamera.SetActive(true);
         playerManager.PlayerManagerControlSetActive(false);
+        menuCamera.SetActive(true);
     }
 
     #region Panes

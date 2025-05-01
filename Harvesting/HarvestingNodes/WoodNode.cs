@@ -7,8 +7,8 @@ public class WoodNode : ResourceNode
 {
     [Header("Wood Specific Settings")]
     [SerializeField] private float growthTime = 180f; // Time to fully grow
-    [SerializeField] private Vector3 minScale = new Vector3(0.5f, 0.5f, 0.5f);
-    [SerializeField] private Vector3 maxScale = Vector3.one;
+    [SerializeField] private Vector3 minScale = new Vector3(0.8f, 0.8f, 0.8f);
+    [SerializeField] private Vector3 maxScale = new Vector3(1.1f, 1.1f, 1.1f);
     [SerializeField] private Transform treeModel;
 
     private Vector3 originalScale;
@@ -31,7 +31,6 @@ public class WoodNode : ResourceNode
     {
         base.OnInteract(pCharacter);
     }
-
     protected override void OnRespawn()
     {
         // Start as a sapling
@@ -47,9 +46,6 @@ public class WoodNode : ResourceNode
         growthCoroutine = StartCoroutine(GrowOverTime());
     }
 
-    /// <summary>
-    /// Coroutine to handle gradual tree growth
-    /// </summary>
     private IEnumerator GrowOverTime()
     {
         float elapsedTime = 0f;

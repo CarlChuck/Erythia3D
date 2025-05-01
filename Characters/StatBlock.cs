@@ -316,8 +316,8 @@ public class StatBlock : MonoBehaviour
         }
         return statList;
     }
-
 }
+
 public enum StatType
 {
     Strength,
