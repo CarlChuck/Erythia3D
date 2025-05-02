@@ -50,13 +50,6 @@ public class ItemManager : BaseManager
     }
     #endregion
 
-    private void Start()
-    {
-        // Kick off the asynchronous initialization
-        StartInitialization();
-        // Subscribe to completion event for post-load actions if needed
-        OnDataLoaded += PerformPostLoadActions;
-    }
     public async Task<Item> CreateItemInstanceAsync(ItemTemplate template)
     {
         if (template == null)
@@ -215,6 +208,13 @@ public class ItemManager : BaseManager
     }
 
     #region InitializeLoading
+    private void Start()
+    {
+        // Kick off the asynchronous initialization
+        StartInitialization();
+        // Subscribe to completion event for post-load actions if needed
+        OnDataLoaded += PerformPostLoadActions;
+    }
     protected override async Task InitializeAsync()
     {
         // Clear runtime data first

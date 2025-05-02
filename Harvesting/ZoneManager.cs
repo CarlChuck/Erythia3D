@@ -46,7 +46,6 @@ public class ZoneManager : MonoBehaviour
         isInitialized = true;
         Debug.Log("ZoneManager Initialization Complete.");
     }
-
     private void PopulateRegionResources()
     {
         // ResourceManager instance check already happened in Start
@@ -110,7 +109,6 @@ public class ZoneManager : MonoBehaviour
     }
 
     #region Node Management
-
     private async Task AssignResourcesToNodesAsync()
     {
         Debug.Log("Assigning resources to nodes...");
@@ -173,7 +171,6 @@ public class ZoneManager : MonoBehaviour
     {
         return marketWaypoint;
     }
-
     public List<Resource> GetRegionResources()
     {
         return regionResources;

@@ -646,6 +646,7 @@ public class PlayerManager : MonoBehaviour
             default: return ItemType.Other;
         }
     }
+
     private int GetSlotIndexForType(int slotId)
     {
         switch (slotId)
@@ -657,6 +658,7 @@ public class PlayerManager : MonoBehaviour
             default: return 0; // All other slots use index 0
         }
     }
+
     private void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
@@ -709,7 +711,7 @@ public class PlayerManager : MonoBehaviour
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        ZoneManager zoneManager = FindFirstObjectByType<ZoneManager>();
+        currentZone = FindFirstObjectByType<ZoneManager>();
         SetWaypoint();
 
         // If UIManager needs the selected character, ensure it's ready first
