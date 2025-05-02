@@ -4,9 +4,14 @@ using UnityEngine;
 
 public class CraftingManager : BaseManager
 {
+    [Header("Prefabs")]
     [SerializeField] private GameObject recipePrefab;
+
+    [Header("Runtime Data")]
     private Dictionary<int, Recipe> recipesById = new Dictionary<int, Recipe>();
     private Dictionary<string, Recipe> recipesByName = new Dictionary<string, Recipe>();
+
+    private const string RecipesTableName = "Recipes";
 
     #region Singleton
     public static CraftingManager Instance;
@@ -26,12 +31,12 @@ public class CraftingManager : BaseManager
     }
     #endregion
 
+    #region Initialize
     private void Start()
     {
         StartInitialization();
     }
 
-    #region Initialize
     protected override async Task InitializeAsync()
     {
         Debug.Log("Initializing CraftingManager...");
@@ -58,11 +63,17 @@ public class CraftingManager : BaseManager
         };
 
         // Ensure the Recipes table exists
-        if (!await EnsureTableExistsAsync("Recipes", recipeColumns))
+        bool recipesTableOK = await EnsureTableExistsAsync(RecipesTableName, recipeColumns);
+
+        if (!recipesTableOK)
         {
-            Debug.LogError("Failed to create or verify Recipes table");
+            Debug.LogError("Failed to create or verify required crafting table (Recipes)");
             return;
         }
+
+        // Clear existing recipe data
+        recipesById.Clear();
+        recipesByName.Clear();
 
         // Load all recipes from the database
         await LoadRecipesAsync();
@@ -73,7 +84,13 @@ public class CraftingManager : BaseManager
     }
     private async Task LoadRecipesAsync()
     {
-        string query = "SELECT * FROM Recipes";
+        if (recipePrefab == null)
+        {
+            Debug.LogError("Recipe Prefab is not assigned in CraftingManager.");
+            return;
+        }
+
+        string query = $"SELECT * FROM {RecipesTableName}";
         var results = await QueryDataAsync(query);
 
         if (results == null)
@@ -81,6 +98,7 @@ public class CraftingManager : BaseManager
             Debug.LogError("Failed to load recipes from database");
             return;
         }
+        Debug.Log($"Loaded {results.Count} recipe rows from DB.");
 
         foreach (var row in results)
         {
@@ -114,20 +132,20 @@ public class CraftingManager : BaseManager
             {
                 if (itemIDs[i] > 0) // Only try to convert if there's an actual item ID
                 {
-                    requiredItems[i] = ItemManager.Instance.GetItemTemplateById(itemIDs[i]);
+                    requiredItems[i] = ItemManager.Instance?.GetItemTemplateById(itemIDs[i]);
                     if (requiredItems[i] == null)
                     {
-                        Debug.LogError($"Failed to find ItemTemplate with ID {itemIDs[i]} for recipe {recipeName}");
+                        Debug.LogWarning($"Failed to find ItemTemplate with ID {itemIDs[i]} for recipe {recipeName}");
                     }
                 }
             }
             
             // Get the output ItemTemplate
             int outputID = SafeConvert.ToInt32(row, "OutputID");
-            ItemTemplate outputItem = ItemManager.Instance.GetItemTemplateById(outputID);
+            ItemTemplate outputItem = ItemManager.Instance?.GetItemTemplateById(outputID);
             if (outputItem == null)
             {
-                Debug.LogError($"Failed to find ItemTemplate with ID {outputID} for recipe {recipeName}");
+                Debug.LogWarning($"Failed to find output ItemTemplate with ID {outputID} for recipe {recipeName}");
                 continue;
             }
 
@@ -139,6 +157,7 @@ public class CraftingManager : BaseManager
                 recipe.Initialize(recipeID, recipeName, recipeDescription, requiredResources, requiredResourceAmounts, requiredItems, outputItem);
                 recipesById[recipeID] = recipe;
                 recipesByName[recipeName] = recipe;
+                recipeObj.name = $"Recipe_{recipeID}_{recipeName}";
             }
             else
             {
@@ -146,25 +165,20 @@ public class CraftingManager : BaseManager
                 Destroy(recipeObj);
             }
         }
+        Debug.Log($"Finished processing recipes. Loaded {recipesById.Count} recipes.");
     }
     #endregion
 
     #region Getters
     public Recipe GetRecipeByID(int recipeID)
     {
-        if (recipesById.TryGetValue(recipeID, out Recipe recipe))
-        {
-            return recipe;
-        }
-        return null;
+        recipesById.TryGetValue(recipeID, out Recipe recipe);
+        return recipe;
     }
     public Recipe GetRecipeByName(string recipeName)
     {
-        if (recipesByName.TryGetValue(recipeName, out Recipe recipe))
-        {
-            return recipe;
-        }
-        return null;
+        recipesByName.TryGetValue(recipeName, out Recipe recipe);
+        return recipe;
     }
     #endregion
 }

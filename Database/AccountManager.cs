@@ -32,12 +32,20 @@ public class AccountManager : BaseManager
     {
         StartInitialization();
     }
-    public async Task<bool> CreateNewAccountAsync(string username, string password, string email, ulong steamId)
+    public async Task<bool> CreateNewAccountAsync(string username, string password, string email, ulong steamId, string language, string ipAddress = "0.0.0.0")
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
         {
             LogError("Username and password cannot be empty.");
             return false;
+        }
+        if (string.IsNullOrWhiteSpace(ipAddress))
+        {
+            LogWarning("IP Address is missing during account creation.");
+        }
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            LogWarning("Language is missing during account creation.");
         }
 
         string hashedPassword = HashPassword(password);
@@ -46,6 +54,8 @@ public class AccountManager : BaseManager
             {"PasswordHash", hashedPassword},
             {"Email", string.IsNullOrWhiteSpace(email) ? (object)DBNull.Value : email },
             {"SteamID", steamId == 0 ? (object)DBNull.Value : (long)steamId },
+            {"LastLoginIP", string.IsNullOrWhiteSpace(ipAddress) ? (object)DBNull.Value : ipAddress },
+            {"Language", string.IsNullOrWhiteSpace(language) ? (object)DBNull.Value : language },
             // LastCharacterID defaults to 0 in DB
         };
 
@@ -98,34 +108,6 @@ public class AccountManager : BaseManager
             throw new Exception("Failed to initialize accounts database table async.");
         }
         LogInfo("Accounts table checked/initialized async.");
-    }
-    public async Task<bool> SetAccountLastPlayedCharacterAsync(int accountId, int lastCharacterId)
-    {
-        if (accountId <= 0)
-        {
-            LogError("Invalid AccountID provided.");
-            return false;
-        }
-
-        Dictionary<string, object> values = new Dictionary<string, object>
-        {
-            { "LastCharacterID", lastCharacterId < 0 ? 0 : lastCharacterId } // Ensure non-negative ID
-        };
-        string whereCondition = "`AccountID` = @where_AccountID";
-        Dictionary<string, object> whereParams = new Dictionary<string, object>
-        {
-            { "@where_AccountID", accountId }
-        };
-
-        try
-        {
-            return await UpdateDataAsync(AccountsTableName, values, whereCondition, whereParams);
-        }
-        catch (Exception ex)
-        {
-            LogError($"Exception setting last played character for AccountID {accountId}", ex);
-            return false;
-        }
     }
     #endregion
 
@@ -245,8 +227,87 @@ public class AccountManager : BaseManager
             {"Email", "VARCHAR(255)"},
             {"SteamID", "BIGINT UNIQUE"},
             {"LastCharacterID", "INT"},
+            {"Status", "INT DEFAULT 0"},
+            {"LastLogin", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
+            {"LastLoginIP", "VARCHAR(45) DEFAULT '0.0.0.0'"},
+            {"Language", "VARCHAR(10)"},
             {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
+    }
+    #endregion
+
+    #region Update/Setters
+    public async Task<bool> SetAccountLastPlayedCharacterAsync(int accountId, int lastCharacterId)
+    {
+        if (accountId <= 0)
+        {
+            LogError("Invalid AccountID provided.");
+            return false;
+        }
+
+        Dictionary<string, object> values = new Dictionary<string, object>
+        {
+            { "LastCharacterID", lastCharacterId < 0 ? 0 : lastCharacterId } // Ensure non-negative ID
+        };
+        string whereCondition = "`AccountID` = @where_AccountID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            { "@where_AccountID", accountId }
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(AccountsTableName, values, whereCondition, whereParams);
+            if (!success)
+            {
+                 LogWarning($"Failed to set last played character for AccountID: {accountId}. Account might not exist?");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception setting last played character for AccountID {accountId}", ex);
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateAccountStatusAsync(int accountId, int newStatus)
+    {
+        if (accountId <= 0)
+        {
+            LogError("Invalid AccountID provided for status update.");
+            return false;
+        }
+
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "Status", newStatus }
+        };
+
+        string whereCondition = "`AccountID` = @where_AccountID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            { "@where_AccountID", accountId }
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(AccountsTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
+            {
+                LogInfo($"Account status updated successfully for AccountID: {accountId} to Status: {newStatus}");
+            }
+            else
+            {
+                LogWarning($"Failed to update account status for AccountID: {accountId}. Account might not exist?");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating account status for AccountID {accountId}", ex);
+            return false;
+        }
     }
     #endregion
 }

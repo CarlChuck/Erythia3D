@@ -108,7 +108,6 @@ public class InventoryManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-
     public async Task<bool> AddItemToInventoryAsync(int charId, int itemId, int slotId)
     {
         if (charId <= 0 || itemId <= 0 || slotId < 0)
@@ -143,7 +142,6 @@ public class InventoryManager : BaseManager
             return false;
         }
     }
-
     public async Task<bool> RemoveItemFromInventoryAsync(int charId, int slotId)
     {
         if (charId <= 0 || slotId < 0)
@@ -181,7 +179,7 @@ public class InventoryManager : BaseManager
     #endregion
 
     #region Resource Items Methods
-    public async Task<List<Dictionary<string, object>>> GetCharacterResourceItemsAsync(int charId)
+    public async Task<List<Dictionary<string, object>>> GetCharacterResourceItemsAsync(int charId)    
     {
         if (charId <= 0)
         {
@@ -204,42 +202,82 @@ public class InventoryManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-
-    public async Task<bool> AddResourceItemAsync(int charId, int resourceId, int quantity = 1)
+    private async Task<Dictionary<string, object>> GetResourceItemAsync(int charId, int resourceId)
     {
-        if (charId <= 0 || resourceId <= 0 || quantity <= 0)
+        string query = $"SELECT * FROM `{ResourceItemsTableName}` WHERE CharID = @CharID AND ResourceID = @ResourceID LIMIT 1";
+        Dictionary<string, object> parameters = new Dictionary<string, object>
         {
-            LogError("Invalid parameters provided for AddResourceItem.");
-            return false;
-        }
-
-        Dictionary<string, object> values = new Dictionary<string, object>
-        {
-            {"CharID", charId},
-            {"ResourceID", resourceId},
-            {"Quantity", quantity}
+            {"@CharID", charId},
+            {"@ResourceID", resourceId}
         };
 
         try
         {
-            bool success = await SaveDataAsync(ResourceItemsTableName, values);
-            if (success)
-            {
-                LogInfo($"Added resource {resourceId} (quantity: {quantity}) for character {charId}");
-            }
-            else
-            {
-                LogWarning($"Failed to add resource {resourceId} for character {charId}");
-            }
-            return success;
+            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
+            return results.Count > 0 ? results[0] : null;
         }
         catch (Exception ex)
         {
-            LogError($"Exception adding resource item", ex);
+            LogError($"Error checking for existing resource item (CharID: {charId}, ResourceID: {resourceId})", ex);
+            return null; // Indicate an error occurred or item not found
+        }
+    }
+    public async Task<bool> AddResourceItemAsync(int charId, int resourceId, int quantityToAdd = 1) // Renamed quantity to quantityToAdd for clarity
+    {
+        if (charId <= 0 || resourceId <= 0 || quantityToAdd <= 0)
+        {
+            LogError("Invalid parameters provided for AddResourceItemAsync. Ensure IDs and quantityToAdd are positive.");
+            return false;
+        }
+
+        try
+        {
+            // 1. Check if the item already exists for the character
+            Dictionary<string, object> existingItem = await GetResourceItemAsync(charId, resourceId);
+
+            if (existingItem != null)
+            {
+                // 2a. Item exists, update quantity
+                if (existingItem.TryGetValue("Quantity", out object currentQuantityObj) && currentQuantityObj is int currentQuantity)
+                {
+                    int newQuantity = currentQuantity + quantityToAdd;
+                    // Call the existing update method
+                    return await UpdateResourceItemQuantityAsync(charId, resourceId, newQuantity);
+                }
+                else
+                {
+                    LogError($"Could not parse existing quantity for CharID: {charId}, ResourceID: {resourceId}. Existing data: {currentQuantityObj}");
+                    return false; // Data integrity issue
+                }
+            }
+            else
+            {
+                // 2b. Item does not exist, insert new record
+                Dictionary<string, object> values = new Dictionary<string, object>
+                {
+                    {"CharID", charId},
+                    {"ResourceID", resourceId},
+                    {"Quantity", quantityToAdd} // Insert with the quantity to add
+                };
+
+                bool success = await SaveDataAsync(ResourceItemsTableName, values);
+                if (success)
+                {
+                    LogInfo($"Added new resource {resourceId} (quantity: {quantityToAdd}) for character {charId}");
+                }
+                else
+                {
+                    LogWarning($"Failed to add new resource {resourceId} for character {charId}");
+                }
+                return success;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception during AddResourceItemAsync operation (CharID: {charId}, ResourceID: {resourceId})", ex);
             return false;
         }
     }
-
     public async Task<bool> UpdateResourceItemQuantityAsync(int charId, int resourceId, int newQuantity)
     {
         if (charId <= 0 || resourceId <= 0 || newQuantity < 0)
@@ -279,7 +317,6 @@ public class InventoryManager : BaseManager
             return false;
         }
     }
-
     public async Task<bool> RemoveResourceItemAsync(int charId, int resourceId)
     {
         if (charId <= 0 || resourceId <= 0)

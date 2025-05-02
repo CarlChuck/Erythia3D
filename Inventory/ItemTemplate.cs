@@ -24,7 +24,7 @@ public class ItemTemplate : MonoBehaviour // Or ScriptableObject
     [NonSerialized] public Sprite IconSprite; 
     public string ColourHex { get; private set; } = "#FFFFFF";
     [NonSerialized] public Color ItemColor = Color.white; 
-    public float Weight { get; private set; } = 1.0f;
+    public int Weight { get; private set; } = 1;
     public int ModelPath { get; private set; } = 0;
     public int Bonus1 { get; private set; } = 0;
     public int Bonus2 { get; private set; } = 0;

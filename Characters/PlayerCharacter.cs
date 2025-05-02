@@ -1,10 +1,13 @@
 using UnityEngine;
 using UnityEngine.TextCore.Text;
+using System.Collections; // Required for Coroutines
 
 public class PlayerCharacter : StatBlock
 {
     [SerializeField] private EquipmentProfile equipment;
     [SerializeField] private Inventory inventory;
+    [SerializeField] private float interactionCooldownRate = 1.0f; // Cooldown time in seconds
+
     private GameObject characterModel;
     private int encumberence;
     private int characterID;
@@ -12,6 +15,7 @@ public class PlayerCharacter : StatBlock
     private int currentZone; 
     
     private Interactable currentInteractable; // Variable to store the interactable object
+    private bool isOnGlobalCooldown = false; // Cooldown flag
 
 
     #region Setup and Initialization
@@ -59,6 +63,13 @@ public class PlayerCharacter : StatBlock
 
     public void InteractWithTarget()
     {
+        // 1. Check if already on cooldown
+        if (isOnGlobalCooldown)
+        {
+            Debug.Log("Interaction on cooldown.");
+            return;
+        }
+
         // Define the ray starting point and direction
         Vector3 rayOrigin = transform.position + transform.forward * 0.2f + Vector3.up * 0.5f; // Start slightly in front and half a unit up
         Vector3 rayDirection = transform.forward;
@@ -73,7 +84,12 @@ public class PlayerCharacter : StatBlock
                 // Store the interactable object
                 currentInteractable = interactable;
                 Debug.Log($"Interactable found: {interactable.name}");
-                currentInteractable.OnInteract(this); // Call the OnInteract method on the interactable object
+
+                // 2. Call the interaction logic FIRST
+                currentInteractable.OnInteract(this);
+
+                // 3. Start the cooldown AFTER interaction attempt
+                StartCoroutine(InteractionCooldownCoroutine());
             }
             else
             {
@@ -114,9 +130,13 @@ public class PlayerCharacter : StatBlock
     {
         return equipment;
     }
-    public int GetCharacterID()
+    public int GetCharacterID()    
     {
         return characterID;
+    }
+    public Vector3 GetPosition()
+    {
+        return transform.position;
     }
     public int GetCurrentZone()
     {
@@ -156,7 +176,6 @@ public class PlayerCharacter : StatBlock
             Debug.LogWarning($"Failed to add item {item.ItemName} to inventory");
         }
     }
-
     public void OnPickupResourceItem(ResourceItem resourceItem)
     {
         if (resourceItem == null)
@@ -219,6 +238,17 @@ public class PlayerCharacter : StatBlock
                 Debug.Log($"Successfully added resource item to inventory");
             }
         }
+    }
+    #endregion
+
+    #region Helpers
+    private IEnumerator InteractionCooldownCoroutine()
+    {
+        isOnGlobalCooldown = true; // Set cooldown active
+        Debug.Log($"Interaction cooldown started ({interactionCooldownRate}s).");
+        yield return new WaitForSeconds(interactionCooldownRate); // Wait for the specified duration
+        isOnGlobalCooldown = false; // Reset cooldown flag
+        Debug.Log("Interaction cooldown finished.");
     }
     #endregion
 }

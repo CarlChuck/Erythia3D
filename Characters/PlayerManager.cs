@@ -17,6 +17,8 @@ public class PlayerManager : MonoBehaviour
     private string email = "Aini@Erythia";
     private ulong steamID = 1; //TODO set in Awake()
     private string familyName = "";
+    private string language = "en";
+    private string ipAddress = "0.0.0.0";
     [SerializeField] private CharacterModelManager characterModelManager;
     [SerializeField] private ZoneManager currentZone;
     [SerializeField] private GameObject characterPrefab;
@@ -116,8 +118,8 @@ public class PlayerManager : MonoBehaviour
             else
             {
                 Debug.Log($"No account found for SteamID {steamID}. Attempting to create...");
-                // Use the ASYNC version and await it
-                bool created = await AccountManager.Instance.CreateNewAccountAsync(accountName, AccountManager.Instance.GenerateRandomPassword(), email, steamID);
+                // Use the ASYNC version and await it, including ipAddress and language
+                bool created = await AccountManager.Instance.CreateNewAccountAsync(accountName, AccountManager.Instance.GenerateRandomPassword(), email, steamID, ipAddress, language);
                 if (created)
                 {
                     Debug.Log($"Created new account for Steam user: {accountName}. Fetching account info...");
@@ -644,7 +646,6 @@ public class PlayerManager : MonoBehaviour
             default: return ItemType.Other;
         }
     }
-
     private int GetSlotIndexForType(int slotId)
     {
         switch (slotId)
@@ -656,7 +657,6 @@ public class PlayerManager : MonoBehaviour
             default: return 0; // All other slots use index 0
         }
     }
-
     private void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks

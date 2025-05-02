@@ -125,6 +125,53 @@ public class CharactersManager : BaseManager
         }
     }
 
+    public async Task<bool> UpdateCharacterAsync(int characterID, string title, int xLoc, int yLoc, int zLoc, int combatExp, int craftingExp, int arcaneExp, int spiritExp, int veilExp)
+    {
+        if (characterID <= 0)
+        {
+            LogError("Invalid CharacterID provided for update.");
+            return false;
+        }
+
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "Title", title }, // Allow null/empty titles if needed
+            { "XLoc", xLoc },
+            { "YLoc", yLoc },
+            { "ZLoc", zLoc },
+            { "CombatExp", combatExp },
+            { "CraftingExp", craftingExp },
+            { "ArcaneExp", arcaneExp },
+            { "SpiritExp", spiritExp },
+            { "VeilExp", veilExp }
+        };
+
+        string whereCondition = "`CharID` = @where_CharID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            { "@where_CharID", characterID }
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
+            {
+                LogInfo($"Character data updated successfully for CharID: {characterID}");
+            }
+            else
+            {
+                LogWarning($"Failed to update character data for CharID: {characterID}. Character might not exist?");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating character data for CharID {characterID}", ex);
+            return false;
+        }
+    }
+
     #region Getters
     public async Task<List<Dictionary<string, object>>> GetCharactersbyAccountIDAsync(int accountId)
     {
