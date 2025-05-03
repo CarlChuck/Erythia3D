@@ -16,6 +16,9 @@ public class PlayerInputs : MonoBehaviour
 	public bool cursorLocked = true;
 	public bool cursorInputForLook = true;
 
+	private bool cursorWasLockedBeforeHold = false; // Track state for hold action
+	private Vector2 savedCursorPosition; // To restore cursor position
+
 	public void OnMove(InputValue value)
 	{
 		MoveInput(value.Get<Vector2>());
@@ -51,10 +54,47 @@ public class PlayerInputs : MonoBehaviour
 	{
         if (value.isPressed)
         {
-            // Interact with the object
-            PlayerManager.Instance.GetSelectedPlayerCharacter().InteractWithTarget();
+            var playerCharacter = PlayerManager.Instance?.GetSelectedPlayerCharacter();
+            if (playerCharacter != null)
+            {
+                playerCharacter.InteractWithTarget();
+            }
         }
     }
+	public void OnCursorToggle(InputValue value)
+	{
+		if (value.isPressed)
+		{
+            bool currentlyLocked = Cursor.lockState == CursorLockMode.Locked;
+            SetCursorState(!currentlyLocked); // Use the helper function
+		}
+	}
+	public void OnCursorHold(InputValue value)
+	{
+		bool buttonIsPressed = value.isPressed;
+
+        if (buttonIsPressed)
+        {
+            cursorWasLockedBeforeHold = (Cursor.lockState == CursorLockMode.Locked);
+
+            if (!cursorWasLockedBeforeHold)
+            {
+                 // Save position BEFORE locking/hiding
+                 savedCursorPosition = Mouse.current.position.ReadValue();
+                 SetCursorState(true); // Lock the cursor
+            }
+        }
+        else // Button released
+        {
+            // If the cursor was NOT locked before we started holding, unlock it now
+            if (!cursorWasLockedBeforeHold)
+            {
+                 SetCursorState(false);
+                 Mouse.current.WarpCursorPosition(savedCursorPosition);
+                 LookInput(Vector2.zero);
+            }
+        }
+	}
 
     public void MoveInput(Vector2 newMoveDirection)
 	{
@@ -78,12 +118,16 @@ public class PlayerInputs : MonoBehaviour
 		
 	private void OnApplicationFocus(bool hasFocus)
 	{
+        // Apply the last explicitly set cursor state on focus change
 		SetCursorState(cursorLocked);
 	}
 
 	private void SetCursorState(bool newState)
 	{
-		Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
-	}	
-	
+		cursorLocked = newState;
+        CursorLockMode targetMode = newState ? CursorLockMode.Locked : CursorLockMode.None;
+		Cursor.lockState = targetMode;
+        Cursor.visible = !newState;
+        cursorInputForLook = newState;
+    }	
 }

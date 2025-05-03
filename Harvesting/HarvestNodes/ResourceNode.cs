@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(OutlineToggle))] // Ensure OutlineToggle is present
 public abstract class ResourceNode : Interactable
 {
     [Header("Resource Node Settings")]
@@ -21,6 +22,7 @@ public abstract class ResourceNode : Interactable
     [Header("Components")]
     [SerializeField] protected Collider nodeCollider; //for detecting interaction
     [SerializeField] protected GameObject resourceModel; //Set in inspector
+    private OutlineToggle outlineToggle; // Reference to the outline controller
 
     protected Coroutine respawnCoroutine;
 
@@ -33,7 +35,42 @@ public abstract class ResourceNode : Interactable
     protected virtual void Awake()
     {
         currentHealth = maxHealth;
+
+        // Get the OutlineToggle component on the same GameObject
+        outlineToggle = GetComponent<OutlineToggle>();
+        if (outlineToggle == null)
+        {
+            Debug.LogError($"ResourceNode '{name}' is missing the required OutlineToggle component.", this);
+        }
     }
+
+    protected virtual void Start()
+    {
+        // Ensure outline is initially off when the game starts
+        if (outlineToggle != null)
+        {
+            outlineToggle.SetOutlineActive(false);
+        }
+    }
+
+    // Called when the mouse pointer enters the Collider
+    protected virtual void OnMouseEnter()
+    {
+        if (outlineToggle != null && currentHealth > 0) // Only outline if harvestable
+        {
+            outlineToggle.SetOutlineActive(true);
+        }
+    }
+
+    // Called when the mouse pointer exits the Collider
+    protected virtual void OnMouseExit()
+    {
+        if (outlineToggle != null)
+        {
+            outlineToggle.SetOutlineActive(false);
+        }
+    }
+
     public override void OnInteract(PlayerCharacter pCharacter)
     {
         ToolItem equippedTool = null;
@@ -112,11 +149,16 @@ public abstract class ResourceNode : Interactable
         {
             nodeCollider.enabled = false; // Disable the collider
         }
+        // Ensure outline is turned off when node is disabled
+        if (outlineToggle != null)
+        {
+            outlineToggle.SetOutlineActive(false);
+        }
     }
 
     protected virtual void EnableNode()
     {
-        if (resourceModel != null) 
+        if (resourceModel != null)
         {
             resourceModel.SetActive(true);
         }
@@ -124,7 +166,8 @@ public abstract class ResourceNode : Interactable
         {
             nodeCollider.enabled = true; // Enable the collider
         }
-        currentHealth = maxHealth; 
+        currentHealth = maxHealth;
+        // No need to turn outline on here, OnMouseEnter will handle it
     }
 
     protected virtual IEnumerator RespawnAfterDelay()
