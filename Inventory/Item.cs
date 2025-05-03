@@ -131,6 +131,7 @@ public enum ItemType
     HarvestingTool,
     Resource,
     Potion,
+    Schematic,
     Other,
 }
 public enum ItemSlotType
