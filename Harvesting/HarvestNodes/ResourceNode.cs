@@ -13,6 +13,7 @@ public abstract class ResourceNode : Interactable
     [SerializeField] protected float respawnTime = 300f; // Time in seconds
     [SerializeField] protected int nodeResistence = 0; // Resistance to damage
     [SerializeField] protected HarvestType hType;
+    [SerializeField] private float interactionRange = 5f; // Max distance for outline highlight
 
     [Header("Effects")]
     [SerializeField] protected GameObject hitEffect;
@@ -32,11 +33,13 @@ public abstract class ResourceNode : Interactable
     [SerializeField] protected ResourceType resourceType; // Type that this node can drop - Set in Inspector
     [SerializeField] protected ResourceSubType resourceSubType; // Type that this node can drop - Set by ResourceNodeManager
 
+    private bool isMouseOver = false;
+    private PlayerCharacter playerCharacter; // Reference to the player
+
     protected virtual void Awake()
     {
         currentHealth = maxHealth;
 
-        // Get the OutlineToggle component on the same GameObject
         outlineToggle = GetComponent<OutlineToggle>();
         if (outlineToggle == null)
         {
@@ -46,6 +49,12 @@ public abstract class ResourceNode : Interactable
 
     protected virtual void Start()
     {
+        playerCharacter = FindFirstObjectByType<PlayerCharacter>();
+        if (playerCharacter == null)
+        {
+            Debug.LogWarning("ResourceNode could not find PlayerCharacter in the scene.", this);
+        }
+
         // Ensure outline is initially off when the game starts
         if (outlineToggle != null)
         {
@@ -56,17 +65,32 @@ public abstract class ResourceNode : Interactable
     // Called when the mouse pointer enters the Collider
     protected virtual void OnMouseEnter()
     {
-        if (outlineToggle != null && currentHealth > 0) // Only outline if harvestable
-        {
-            outlineToggle.SetOutlineActive(true);
-        }
+        isMouseOver = true; // Flag that the mouse is over the node
+        // Outline logic moved to Update
     }
 
     // Called when the mouse pointer exits the Collider
     protected virtual void OnMouseExit()
     {
+        isMouseOver = false; // Flag that the mouse left
         if (outlineToggle != null)
         {
+            outlineToggle.SetOutlineActive(false); // Always turn off outline on exit
+        }
+    }
+
+    protected virtual void Update()
+    {
+        // Handle outline visibility based on distance and mouse hover
+        if (isMouseOver && playerCharacter != null && outlineToggle != null)
+        {
+            float distance = Vector3.Distance(playerCharacter.transform.position, transform.position);
+            bool shouldOutlineBeActive = (distance <= interactionRange && currentHealth > 0);
+            outlineToggle.SetOutlineActive(shouldOutlineBeActive);
+        }
+        else if (!isMouseOver && outlineToggle != null)
+        {
+             // Ensure outline is off if mouse is not over
             outlineToggle.SetOutlineActive(false);
         }
     }

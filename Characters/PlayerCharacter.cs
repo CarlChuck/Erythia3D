@@ -7,6 +7,7 @@ public class PlayerCharacter : StatBlock
     [SerializeField] private EquipmentProfile equipment;
     [SerializeField] private Inventory inventory;
     [SerializeField] private float interactionCooldownRate = 1.0f; // Cooldown time in seconds
+    [SerializeField] private float interactionDistance = 5f; // Maximum distance to interact
 
     private GameObject characterModel;
     private int encumberence;
@@ -17,8 +18,10 @@ public class PlayerCharacter : StatBlock
     private Interactable currentInteractable; // Variable to store the interactable object
     private bool isOnGlobalCooldown = false; // Cooldown flag
 
+    [SerializeField] private Camera mainCamera; // Cache the main camera
 
     #region Setup and Initialization
+
     public void AddModel(GameObject playerModel)
     {
         characterModel = playerModel;
@@ -32,7 +35,7 @@ public class PlayerCharacter : StatBlock
             characterModel.SetActive(isActive);
         }
     }
-    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp)
+    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, Camera newCamera)
     {
         SetSpecies(CharactersManager.Instance.GetSpeciesByID(race));
         SetGender(gender);
@@ -44,6 +47,7 @@ public class PlayerCharacter : StatBlock
         SetUpInventory();
         SetUpEquipment();
         SetEncumberence();
+        SetCamera(newCamera);
     }
     private void SetUpInventory() 
     {
@@ -58,6 +62,10 @@ public class PlayerCharacter : StatBlock
         encumberence = equipment.GetTotalWeight();
         encumberence += inventory.GetTotalWeight();
     }
+    private void SetCamera(Camera cameraToSet) 
+    {
+        mainCamera = cameraToSet;
+    }
 
     #endregion
 
@@ -70,36 +78,53 @@ public class PlayerCharacter : StatBlock
             return;
         }
 
-        // Define the ray starting point and direction
-        Vector3 rayOrigin = transform.position + transform.forward * 0.2f + Vector3.up * 0.5f; // Start slightly in front and half a unit up
-        Vector3 rayDirection = transform.forward;
+        if (mainCamera == null)
+        {
+            Debug.LogError("Main camera reference is missing.", this);
+            return; // Cannot interact without a camera
+        }
+
+        // Create a ray from the camera going through the mouse position
+        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
         // Perform the raycast
-        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, 5f))
+        if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity)) // Raycast infinitely for now, distance check later
         {
             // Check if the hit object has an Interactable component
             Interactable interactable = hit.collider.GetComponent<Interactable>();
             if (interactable != null)
             {
-                // Store the interactable object
-                currentInteractable = interactable;
-                Debug.Log($"Interactable found: {interactable.name}");
+                // Calculate distance between player and the interactable object
+                float distanceToTarget = Vector3.Distance(transform.position, hit.transform.position);
 
-                // 2. Call the interaction logic FIRST
-                currentInteractable.OnInteract(this);
+                // Check if the interactable is within range
+                if (distanceToTarget <= interactionDistance)
+                {
+                    // Store the interactable object
+                    currentInteractable = interactable;
+                    Debug.Log($"Interactable found within range: {interactable.name}");
 
-                // 3. Start the cooldown AFTER interaction attempt
-                StartCoroutine(InteractionCooldownCoroutine());
+                    // Call the interaction logic
+                    currentInteractable.OnInteract(this);
+
+                    // Start the cooldown
+                    StartCoroutine(InteractionCooldownCoroutine());
+                }
+                else
+                {
+                    Debug.Log($"Interactable '{interactable.name}' found, but it's too far away ({distanceToTarget:F1}m > {interactionDistance}m).");
+                    currentInteractable = null;
+                }
             }
             else
             {
-                Debug.Log("No interactable object found.");
+                Debug.Log("Object hit, but it's not interactable.");
                 currentInteractable = null;
             }
         }
         else
         {
-            Debug.Log("No object detected in front of the player.");
+            Debug.Log("No object detected under the mouse cursor.");
             currentInteractable = null;
         }
     }

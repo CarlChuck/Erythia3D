@@ -145,11 +145,6 @@ public class UIManager : MonoBehaviour
         Debug.Log("UIManager: Character window name and stats updated via OnStatsChanged event.");
     }
 
-
-    // --- Other methods (UpdateHUD, SetupCharacterWindowStructure, ToggleCharacterWindow, Update) remain largely the same ---
-    // Make sure SetupCharacterWindowStructure ONLY creates the elements and links them,
-    // it should NOT set the text values (that's now handled by the first call to UpdateCharacterWindowStatsList in SetupUI)
-
     void SetupCharacterWindowStructure()
     {
         if (playerCharacter == null || statsContainer == null || statDisplayPrefab == null) return;

@@ -7,17 +7,22 @@ public class Inventory : MonoBehaviour
     [SerializeField] private int bagspace;
     [SerializeField] private List<Item> items = new List<Item>();
     [SerializeField] private List<ResourceItem> resourceItems = new List<ResourceItem>();
+    [SerializeField] private List<SubComponent> subComponents = new List<SubComponent>();
 
     public event Action OnInventoryChanged;
     public void SetupInventory()
     {
         SetBagSpace(20);
+        items.Clear();
+        resourceItems.Clear();
+        subComponents.Clear();
         OnInventoryChanged?.Invoke(); // Initial update
     }
     public void ClearInventory()
     {
         items.Clear();
         resourceItems.Clear();
+        subComponents.Clear();
         OnInventoryChanged?.Invoke();
     }
     public bool AddItem(Item item)
@@ -54,6 +59,27 @@ public class Inventory : MonoBehaviour
         }
     }
 
+    // Try adding a SubComponent
+    public bool AddSubComponent(SubComponent subComponent)
+    {
+        if (subComponent == null)
+        {
+            Debug.LogWarning("Attempted to add a null SubComponent.");
+            return false;
+        }
+
+        if (IsFull()) // Use IsFull() which now checks all types
+        {
+            Debug.LogWarning("Inventory is full. Cannot add SubComponent: " + subComponent.Name);
+            return false;
+        }
+
+        subComponent.transform.SetParent(transform); // Assume SubComponent is a MonoBehaviour and parent it
+        subComponents.Add(subComponent);
+        OnInventoryChanged?.Invoke(); // Notify listeners
+        return true;
+    }
+
     // Try removing a specific item instance
     public bool RemoveItem(Item item)
     {
@@ -79,6 +105,19 @@ public class Inventory : MonoBehaviour
         return removed;
     }
 
+    // Try removing a specific SubComponent instance
+    public bool RemoveSubComponent(SubComponent subComponent)
+    {
+        if (subComponent == null) return false;
+
+        bool removed = subComponents.Remove(subComponent);
+        if (removed)
+        {
+            OnInventoryChanged?.Invoke(); // Notify listeners
+        }
+        return removed;
+    }
+
     // Get all items (useful for UI display)
     public List<Item> GetAllItems()
     {
@@ -88,6 +127,11 @@ public class Inventory : MonoBehaviour
     public List<ResourceItem> GetAllResourceItems()
     {
         return resourceItems;
+    }
+
+    public List<SubComponent> GetAllSubComponents()
+    {
+        return subComponents;
     }
 
     public Item GetItem(int index)
@@ -104,6 +148,15 @@ public class Inventory : MonoBehaviour
         if (index >= 0 && index < resourceItems.Count)
         {
             return resourceItems[index];
+        }
+        return null;
+    }
+
+    public SubComponent GetSubComponent(int index)
+    {
+        if (index >= 0 && index < subComponents.Count)
+        {
+            return subComponents[index];
         }
         return null;
     }
@@ -157,6 +210,6 @@ public class Inventory : MonoBehaviour
 
     public bool IsFull() 
     { 
-        return items.Count + resourceItems.Count >= bagspace; 
+        return items.Count + resourceItems.Count + subComponents.Count >= bagspace; 
     }
 }

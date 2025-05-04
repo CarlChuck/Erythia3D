@@ -262,7 +262,8 @@ public class PlayerManager : MonoBehaviour
             }
             else { Debug.LogWarning($"Could not find character model for Race:{race} Gender:{gender}"); }
 
-            newCharacter.SetUpCharacter(newCharacterName, newCharacterID, title, zoneID, race, face, gender, combatxp, craftingxp, arcaneexp, spiritxp, veilexp);
+            Camera cameraToSet = mainCamera.GetComponent<Camera>();
+            newCharacter.SetUpCharacter(newCharacterName, newCharacterID, title, zoneID, race, face, gender, combatxp, craftingxp, arcaneexp, spiritxp, veilexp, cameraToSet);
             playerCharacters.Add(newCharacter); // Add to the list
 
             // Set as selected if none currently selected
