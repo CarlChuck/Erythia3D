@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using System;
+using System.Linq;
 
 public class InventoryManager : BaseManager
 {
@@ -9,7 +10,9 @@ public class InventoryManager : BaseManager
     private const string ResourceItemsTableName = "ResourceItems";
     private const string InventoryResourceItemsTableName = "InventoryResourceItems";
     private const string InventorySubComponentsTableName = "InventorySubComponents";
-
+    [SerializeField] private ResourceItem resourceItemPrefab; 
+    [SerializeField] private Transform resourceItemParent;     
+    private List<ResourceItem> resourceItems = new List<ResourceItem>();
     #region Singleton
     public static InventoryManager Instance;
 
@@ -65,6 +68,9 @@ public class InventoryManager : BaseManager
             throw new Exception("Failed to initialize required inventory database tables async.");
         }
         LogInfo("Inventory data tables checked/initialized async.");
+
+        // Load and instantiate ResourceItems after tables are confirmed
+        await LoadAndInstantiateAllResourceItemsAsync();
     }
     private Dictionary<string, string> GetInventoryItemsTableDefinition()
     {
@@ -105,6 +111,63 @@ public class InventoryManager : BaseManager
             {"SubComponentID", "INT"},
             {"SlotID", "INT"}
         };
+    }
+    private async Task LoadAndInstantiateAllResourceItemsAsync()
+    {
+        LogInfo("Loading and instantiating all ResourceItems from database...");
+
+        if (resourceItemPrefab == null)
+        {
+            LogError("ResourceItem Prefab is not assigned in InventoryManager.");
+            return;
+        }
+        if (resourceItemParent == null)
+        {
+            LogWarning("ResourceItem Parent is not assigned in InventoryManager. Instantiating at root.");
+            // Optionally assign a default parent or handle this case as needed
+        }
+        if (ResourceManager.Instance == null)
+        {
+             LogError("ResourceManager instance not available. Cannot load Resource types.");
+            return;
+        }
+
+        string query = $"SELECT * FROM `{ResourceItemsTableName}`";
+        List<Dictionary<string, object>> results = await QueryDataAsync(query);
+
+        resourceItems.Clear(); // Clear list before loading
+
+        foreach (var row in results)
+        {
+            if (!row.TryGetValue("ResourceItemID", out object dbIdObj) || dbIdObj == DBNull.Value ||
+                !row.TryGetValue("ResourceID", out object resourceIdObj) || resourceIdObj == DBNull.Value ||
+                !row.TryGetValue("Quantity", out object quantityObj) || quantityObj == DBNull.Value)
+            {
+                LogWarning("Skipping ResourceItem row due to missing ID, ResourceID, or Quantity.");
+                continue;
+            }
+
+            int resourceItemId = Convert.ToInt32(dbIdObj);
+            int resourceId = Convert.ToInt32(resourceIdObj);
+            int quantity = Convert.ToInt32(quantityObj);
+
+            // Get the base Resource definition
+            Resource resourceType = ResourceManager.Instance.GetResourceInstanceById(resourceId);
+            if (resourceType == null)
+            {
+                LogWarning($"Resource type with ID {resourceId} not found in ResourceManager. Cannot instantiate ResourceItem ID: {resourceItemId}.");
+                continue;
+            }
+
+            // Instantiate and initialize
+            ResourceItem newInstance = Instantiate(resourceItemPrefab, resourceItemParent); // Parent can be null
+            newInstance.Initialize(resourceType, quantity);
+            newInstance.SetDatabaseID(resourceItemId); // << IMPORTANT: Assumes this method exists on ResourceItem
+
+            resourceItems.Add(newInstance);
+        }
+
+        LogInfo($"Loaded and instantiated {resourceItems.Count} ResourceItems.");
     }
     #endregion
 
@@ -260,6 +323,13 @@ public class InventoryManager : BaseManager
             return false;
         }
     }
+    public ResourceItem GetResourceItemById(int resourceItemId)
+    {
+        if (resourceItems == null) return null;
+
+        // Use Linq FirstOrDefault to find the item efficiently
+        return resourceItems.FirstOrDefault(item => item != null && item.GetDatabaseID() == resourceItemId);
+    }
     #endregion
 
     #region Inventory Items Methods
@@ -356,7 +426,7 @@ public class InventoryManager : BaseManager
     }
     #endregion
 
-    #region Inventory Resource Items Methods
+    #region Inventory ResourceItems Methods
     public async Task<List<Dictionary<string, object>>> GetCharacterInventoryResourceItemsAsync(int charId)
     {
         if (charId <= 0)
@@ -521,5 +591,11 @@ public class InventoryManager : BaseManager
     {
         base.OnDestroy();
     }
+
+    public void SetBagSpace(int newBagSpace)
+    {
+        // Implementation of SetBagSpace method
+    }
+
     #endregion
 }

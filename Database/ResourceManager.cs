@@ -22,7 +22,7 @@ public class ResourceManager : BaseManager
     [Header("Prefabs")]
     [SerializeField] private Resource resourcePrefab;
     [SerializeField] private ResourceTemplate resourceTemplatePrefab;
-    [SerializeField] private ResourceItem resourceItemPrefab;
+
 
     [Header("Parent Transforms (Optional)")]
     [SerializeField] private Transform resourceInstancesParent;
@@ -497,10 +497,6 @@ public class ResourceManager : BaseManager
     public ResourceTemplate GetResourceTemplatePrefab()
     {
         return resourceTemplatePrefab;
-    }
-    public ResourceItem GetResourceItemPrefab()
-    {
-        return resourceItemPrefab;
     }
     public List<Resource> GetAllResourceInstances()
     {

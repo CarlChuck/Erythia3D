@@ -332,124 +332,208 @@ public class PlayerManager : MonoBehaviour
         }
 
         int charId = character.GetCharacterID();
+        Inventory inventory = character.GetInventory();
+        EquipmentProfile equipment = character.GetEquipmentProfile();
+
         if (charId <= 0)
         {
-            Debug.LogError($"Invalid character ID: {charId}");
+            Debug.LogError($"Invalid character ID: {charId} for character {character.GetCharacterName()}");
             return;
         }
+        if (inventory == null)
+        {
+            Debug.LogError($"Inventory component not found for character {character.GetCharacterName()} (ID: {charId}).");
+            return;
+        }
+        if (equipment == null)
+        { 
+            Debug.LogError($"EquipmentProfile component not found for character {character.GetCharacterName()} (ID: {charId}).");
+            return;
+        }
+        if (ItemManager.Instance == null)
+        {
+            Debug.LogError("ItemManager instance is not available.");
+            return;
+        }
+         if (ResourceManager.Instance == null)
+        {
+            Debug.LogError("ResourceManager instance is not available.");
+            return;
+        }
+        // Assuming SubComponentManager exists
+        // if (SubComponentManager.Instance == null)
+        // {
+        //     Debug.LogError("SubComponentManager instance is not available.");
+        //     return;
+        // }
+
+        Debug.Log($"Starting inventory load for character: {character.GetCharacterName()} (ID: {charId})");
+
+        // Clear existing inventory and equipment before loading
+        inventory.ClearInventory();
+        equipment.ClearEquipmentProfile(); // Assuming an UnequipAll method exists
 
         try
         {
-            // Load inventory items
-            List<Dictionary<string, object>> inventoryItems = await InventoryManager.Instance.GetCharacterInventoryAsync(charId);
-            foreach (var itemData in inventoryItems)
-            {
-                int itemId = Convert.ToInt32(itemData["ItemID"]);
-                int slotId = Convert.ToInt32(itemData["SlotID"]);
+            // --- 1. Load Inventory Items (Equipment and Bag Items) ---
+            Debug.Log($"Loading InventoryItems for CharID: {charId}...");
+            List<Dictionary<string, object>> inventoryItemsData = await InventoryManager.Instance.GetCharacterInventoryItemsAsync(charId);
+            Debug.Log($"Found {inventoryItemsData.Count} InventoryItems entries.");
 
-                // Get the item from ItemManager
-                Item item = ItemManager.Instance.GetItemInstanceById(itemId);
-                if (item == null)
+            foreach (var itemData in inventoryItemsData)
+            {
+                if (!itemData.TryGetValue("ItemID", out object itemIdObj) || itemIdObj == DBNull.Value ||
+                    !itemData.TryGetValue("SlotID", out object slotIdObj) || slotIdObj == DBNull.Value)
                 {
-                    Debug.LogWarning($"Item with ID {itemId} not found in ItemManager.");
+                    Debug.LogWarning($"Skipping inventory item entry due to missing ItemID or SlotID for CharID: {charId}");
                     continue;
                 }
 
-                // If slotId > 0, add to equipment profile
-                if (slotId > 0)
+                int itemId = Convert.ToInt32(itemIdObj);
+                int slotId = Convert.ToInt32(slotIdObj);
+
+                Item itemInstance = ItemManager.Instance.GetItemInstanceById(itemId); // Assumes this creates/returns the specific instance
+                if (itemInstance == null)
                 {
-                    EquipmentProfile equipment = character.GetEquipmentProfile();
-                    if (equipment != null)
+                    Debug.LogWarning($"Item with ID {itemId} not found via ItemManager. Cannot load.");
+                    continue;
+                }
+
+                if (slotId > 0)
+                { 
+                    // Equip Item
+                    ItemType slotType = MapSlotIdToItemType(slotId);
+                    if (slotType != ItemType.Other)
                     {
-                        // Map slotId to appropriate ItemType
-                        ItemType slotType = MapSlotIdToItemType(slotId);
-                        if (slotType != ItemType.Other)
+                        int slotIndex = GetSlotIndexForType(slotId);
+                        EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
+                        if (targetSlot != null)
                         {
-                            // Get the specific slot index for this slotId
-                            int slotIndex = GetSlotIndexForType(slotId);
-                            EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
-                            
-                            if (targetSlot != null)
-                            {
-                                equipment.EquipItemToSlot(item, targetSlot);
-                            }
-                            else
-                            {
-                                Debug.LogWarning($"No equipment slot found for type {slotType} at index {slotIndex}");
-                            }
+                            Debug.Log($"Equipping item {itemInstance.ItemName} (ID: {itemId}) to SlotID: {slotId} (Type: {slotType}, Index: {slotIndex})");
+                            equipment.EquipItemToSlot(itemInstance, targetSlot);
                         }
                         else
                         {
-                            Debug.LogWarning($"Invalid slot ID {slotId} for item {item.ItemName}");
+                            Debug.LogWarning($"Could not find EquipmentSlot for SlotID: {slotId} (Type: {slotType}, Index: {slotIndex}). Cannot equip {itemInstance.ItemName}.");
+                            // Optionally add to inventory bag as fallback?
+                            // inventory.AddItem(itemInstance);
                         }
                     }
                     else
                     {
-                        Debug.LogWarning($"No equipment profile found for character {charId}");
+                        Debug.LogWarning($"Invalid SlotID {slotId} found in InventoryItems table for ItemID {itemId}. Cannot equip.");
+                        // Optionally add to inventory bag as fallback?
+                        // inventory.AddItem(itemInstance);
                     }
                 }
-                else
+                else // slotId == 0 (or other designated bag slot identifier)
                 {
-                    // Add to inventory
-                    Inventory inventory = character.GetInventory();
-                    if (inventory != null)
+                    // Add to Inventory Bag
+                    Debug.Log($"Adding item {itemInstance.ItemName} (ID: {itemId}) to inventory bag.");
+                    if (!inventory.AddItem(itemInstance))
                     {
-                        if (!inventory.AddItem(item))
-                        {
-                            Debug.LogWarning($"Failed to add item {item.ItemName} to inventory for character {charId}");
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"No inventory component found for character {charId}");
+                        Debug.LogWarning($"Failed to add item {itemInstance.ItemName} (ID: {itemId}) to inventory bag for character {charId}. Bag might be full or item invalid.");
                     }
                 }
             }
 
-            // Load resource items
-            List<Dictionary<string, object>> resourceItems = await InventoryManager.Instance.GetCharacterResourceItemsAsync(charId);
-            foreach (var resourceData in resourceItems)
+            // --- 2. Load Inventory Resource Items (Specific Instances in Bag Slots) ---
+            // IMPORTANT: This assumes ResourceItemID links to a uniquely defined instance somewhere (e.g., another table or ResourceManager knows about specific instances)
+            Debug.Log($"Loading InventoryResourceItems for CharID: {charId}...");
+            List<Dictionary<string, object>> inventoryResourceItemsData = await InventoryManager.Instance.GetCharacterInventoryResourceItemsAsync(charId);
+            Debug.Log($"Found {inventoryResourceItemsData.Count} InventoryResourceItems entries.");
+
+            foreach (var resourceItemData in inventoryResourceItemsData)
             {
-                int resourceId = Convert.ToInt32(resourceData["ResourceID"]);
-                int quantity = Convert.ToInt32(resourceData["Quantity"]);
-
-                // Get the resource from ResourceManager
-                Resource resource = ResourceManager.Instance.GetResourceInstanceById(resourceId);
-                if (resource == null)
+                 if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value ||
+                    !resourceItemData.TryGetValue("SlotID", out object slotIdObj) || slotIdObj == DBNull.Value)
                 {
-                    Debug.LogWarning($"Resource with ID {resourceId} not found in ResourceManager.");
+                    Debug.LogWarning($"Skipping inventory resource item entry due to missing ResourceItemID or SlotID for CharID: {charId}");
                     continue;
                 }
 
-                // Create a ResourceItem from prefab
-                ResourceItem resourceItemPrefab = ResourceManager.Instance.GetResourceItemPrefab();
-                if (resourceItemPrefab == null)
+                int resourceItemId = Convert.ToInt32(resourceItemIdObj);
+                int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
+
+                // ASSUMPTION: GetResourceItemInstanceById returns a fully populated ResourceItem
+                ResourceItem resourceItemInstance = InventoryManager.Instance.GetResourceItemById(resourceItemId);
+                if (resourceItemInstance == null)
                 {
-                    Debug.LogError("ResourceItem prefab not found in ResourceManager.");
+                    Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via ResourceManager. Cannot load.");
                     continue;
                 }
 
-                ResourceItem resourceItem = Instantiate(resourceItemPrefab);
-                resourceItem.Initialize(resource, quantity);
-
-                // Add to inventory
-                Inventory inventory = character.GetComponent<Inventory>();
-                if (inventory != null)
+                if (slotId == 0) // Assuming resources only go into the bag for now
                 {
-                    if (!inventory.AddResourceItem(resourceItem))
+                    Debug.Log($"Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemId}) to inventory bag.");
+                    if (!inventory.AddResourceItem(resourceItemInstance))
                     {
-                        Debug.LogWarning($"Failed to add resource item {resource.ResourceName} to inventory for character {charId}");
+                        Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to inventory bag for character {charId}.");
                     }
                 }
                 else
                 {
-                    Debug.LogWarning($"No inventory component found for character {charId}");
+                    Debug.LogWarning($"InventoryResourceItem instance (ID: {resourceItemId}) found with SlotID {slotId}. Equipping resources not currently supported. Adding to bag instead.");
+                    // Fallback to adding to bag
+                     if (!inventory.AddResourceItem(resourceItemInstance))
+                    {
+                        Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to inventory bag (fallback) for character {charId}.");
+                    }
                 }
             }
+
+            // --- 3. Load Inventory SubComponents (Specific Instances in Bag Slots) ---
+             // IMPORTANT: This assumes SubComponentID links to a uniquely defined instance
+            Debug.Log($"Loading InventorySubComponents for CharID: {charId}...");
+            List<Dictionary<string, object>> inventorySubComponentsData = await InventoryManager.Instance.GetCharacterInventorySubComponentsAsync(charId);
+            Debug.Log($"Found {inventorySubComponentsData.Count} InventorySubComponents entries.");
+
+            foreach (var subCompData in inventorySubComponentsData)
+            {
+                if (!subCompData.TryGetValue("SubComponentID", out object subCompIdObj) || subCompIdObj == DBNull.Value ||
+                    !subCompData.TryGetValue("SlotID", out object slotIdObj) || slotIdObj == DBNull.Value)
+                {
+                    Debug.LogWarning($"Skipping inventory subcomponent entry due to missing SubComponentID or SlotID for CharID: {charId}");
+                    continue;
+                }
+                
+                int subComponentId = Convert.ToInt32(subCompIdObj);
+                int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
+
+                 // ASSUMPTION: GetSubComponentInstanceById returns a fully populated SubComponent
+                 // Replace 'SubComponentManager' with your actual manager if different
+                SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subComponentId);
+                if (subComponentInstance == null)
+                {
+                    Debug.LogWarning($"SubComponent instance with ID {subComponentId} not found via SubComponentManager. Cannot load.");
+                    continue;
+                }
+
+                if (slotId == 0) // Assuming subcomponents only go into the bag
+                {
+                    Debug.Log($"Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subComponentId}) to inventory bag.");
+                    if (!inventory.AddSubComponent(subComponentInstance))
+                    {
+                         Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag for character {charId}.");
+                    }
+                }
+                 else
+                {
+                    Debug.LogWarning($"InventorySubComponent instance (ID: {subComponentId}) found with SlotID {slotId}. Equipping subcomponents not currently supported. Adding to bag instead.");
+                    // Fallback to adding to bag
+                     if (!inventory.AddSubComponent(subComponentInstance))
+                    {
+                        Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag (fallback) for character {charId}.");
+                    }
+                }
+            }
+
+             Debug.Log($"Finished inventory load for character: {character.GetCharacterName()} (ID: {charId})");
+
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Error loading inventory for character {charId}: {ex.Message}");
+            Debug.LogError($"Error during LoadCharacterInventoryAsync for character {charId}: {ex.Message}\n{ex.StackTrace}");
         }
     }
     #endregion
