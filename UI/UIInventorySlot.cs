@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro; // Added for TextMeshPro
 
-public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler // No drop handling here
+public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
 {
     [SerializeField] private Image itemIconImage;   // Assign the child Image used to show the icon
     [SerializeField] private TMP_Text quantityText; // Assign the child TextMeshPro UGUI for quantity
@@ -14,15 +14,12 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     private ResourceItem currentResourceItem;
     private SubComponent currentSubComponent;
 
-    private Inventory parentInventory; // Reference to the backend inventory - MAYBE remove if not needed?
-
     // --- Display Methods --- Called by UIInventoryPanel.UpdateDisplay ---
 
     public void DisplayItem(Item item)
     {
         ClearInternalReferences(); // Clear other types
         currentItem = item;
-        parentInventory = null; // Or get from item if needed? Depends on drag/drop
 
         if (item != null && itemIconImage != null)
         {
@@ -49,12 +46,11 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     {
         ClearInternalReferences();
         currentResourceItem = resourceItem;
-        parentInventory = null;
 
         if (resourceItem != null && resourceItem.Resource != null && itemIconImage != null)
         {
             // Use IconLibrary to get the sprite based on resource type
-            itemIconImage.sprite = IconLibrary.Instance.GetIconByResourceType(resourceItem.Resource.GetResourceType());
+            itemIconImage.sprite = resourceItem.IconSprite;
 
             // Check if the sprite was successfully retrieved
             if (itemIconImage.sprite != null)
@@ -97,13 +93,12 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     {
         ClearInternalReferences();
         currentSubComponent = subComponent;
-        parentInventory = null;
 
         // ASSUMPTION: SubComponent Template has an IconSprite
         Sprite icon = null;
         if (subComponent?.Template != null)
         {
-            icon = subComponent.Template.IconSprite; // Example: Get icon from template
+            icon = subComponent.IconSprite; // Example: Get icon from template
         }
 
         if (icon != null && itemIconImage != null)
@@ -229,5 +224,41 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         // The OnInventoryChanged event will formally update it later.
         // For now, just clear everything visually
         Clear();
+    }
+
+    // --- Tooltip Handling ---
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        // Determine which item type is currently displayed
+        object itemToShow = null;
+        if (currentItem != null) 
+        {
+            itemToShow = currentItem;
+        }
+        else if (currentResourceItem != null) 
+        {
+            itemToShow = currentResourceItem;
+        }
+        else if (currentSubComponent != null) 
+        {
+            itemToShow = currentSubComponent;
+        }
+
+        // If there's something to show, request the tooltip
+        if (itemToShow != null && UITooltipManager.Instance != null)
+        {
+            Debug.Log($"Pointer Enter on slot with: {itemToShow.GetType().Name}");
+            UITooltipManager.Instance.RequestShowTooltip(itemToShow);
+        }
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        // Always hide tooltip on exit
+        if (UITooltipManager.Instance != null)
+        {
+            Debug.Log("Pointer Exit from slot");
+            UITooltipManager.Instance.RequestHideTooltip();
+        }
     }
 }

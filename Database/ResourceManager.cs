@@ -253,7 +253,7 @@ public class ResourceManager : BaseManager
         int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
         int flavour = ClampNumber(template.Flavour + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
         int weight = ClampNumber(template.Weight + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int value = ClampNumber(template.Value + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int value = 0; // TODO: Implement this
 
         // 6. Set Dates
         DateTime startDate = DateTime.UtcNow;
@@ -317,7 +317,7 @@ public class ResourceManager : BaseManager
                                     newResource.SetResource(
                                         (int)newId,
                                         randomName,
-                                        template.ResourceTemplateID,
+                                        template,
                                         (int)template.Type,
                                         (int)regionType,
                                         quality,
@@ -357,7 +357,14 @@ public class ResourceManager : BaseManager
         }
         catch (Exception ex)
         {
-            LogError("Exception during resource saving process. Destroying spawned object.", ex);
+            // Log the FULL exception details, including the inner exception if present
+            string fullErrorMessage = $"Exception during resource saving process. Destroying spawned object. Error: {ex.Message}\nType: {ex.GetType().FullName}\nStackTrace: {ex.StackTrace}";
+            if (ex.InnerException != null)
+            {
+                fullErrorMessage += $"\nInner Exception: {ex.InnerException.Message}\nInner Type: {ex.InnerException.GetType().FullName}\nInner StackTrace: {ex.InnerException.StackTrace}";
+            }
+            LogError(fullErrorMessage); // Use LogError which might already log stack trace
+            
             Destroy(resourceGO);
             return null;
         }
@@ -397,7 +404,7 @@ public class ResourceManager : BaseManager
         {
             resource.SetResource(
                 data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
-                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : null,
+                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : "",
                 data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
                 data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
                 data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
@@ -562,7 +569,7 @@ public class ResourceManager : BaseManager
         {
             if (templatesById.TryGetValue(resource.GetResourceTemplateID(), out ResourceTemplate template))
             {
-                resource.ResourceTemplate = template;
+                resource.SetResourceTemplate(template);
             }
             else
             {

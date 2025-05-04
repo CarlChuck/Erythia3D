@@ -6,9 +6,9 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     public int ResourceSpawnID { get; set; } 
     public string ResourceName { get; set; }
     private int resourceTemplateID; // temp only needed if ResourceTemplate needs a delay to be added
-    public ResourceTemplate ResourceTemplate { get; set; }
+    public ResourceTemplate resourceTemplate;
     public ResourceType Type { get; set; } 
-    public ResourceSubType Subtype { get; set; }
+    public ResourceSubType SubType { get; set; }
     public int Quality { get; set; } 
     public int Toughness { get; set; }
     public int Strength { get; set; }
@@ -23,13 +23,18 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
 
-    public void SetResource(int id, string name, int template, int type, int sType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int weight, int value, DateTime startAt, DateTime endAt)
+    public void SetResource(int id, string newName, ResourceTemplate template, int type, int sType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int weight, int value, DateTime startAt, DateTime endAt)
     {
         ResourceSpawnID = id;
-        ResourceName = name;
-        resourceTemplateID = template;
+        ResourceName = newName;
+        if (newName == null)
+        {
+            ResourceName = "Broken Name";
+        }
+        resourceTemplate = template;
+        resourceTemplateID = template.ResourceTemplateID;
         Type = (ResourceType)type;
-        Subtype = (ResourceSubType)sType;
+        SubType = (ResourceSubType)sType;
         Quality = quality;
         Toughness = toughness;
         Strength = strength;
@@ -44,14 +49,54 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
         StartDate = startAt;
         EndDate = endAt;
     }
-
+    public void SetResource(int id, string newName, int templateID, int type, int sType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour, int weight, int value, DateTime startAt, DateTime endAt)
+    {
+        ResourceSpawnID = id;
+        ResourceName = newName;
+        if (newName == null)
+        {
+            ResourceName = "Broken Name";
+        }
+        resourceTemplateID = templateID;
+        Type = (ResourceType)type;
+        SubType = (ResourceSubType)sType;
+        Quality = quality;
+        Toughness = toughness;
+        Strength = strength;
+        Density = density;
+        Aura = aura;
+        Energy = energy;
+        Protein = protein;
+        Carbohydrate = carbohydrate;
+        Flavour = flavour;
+        Weight = weight;
+        Value = value;
+        StartDate = startAt;
+        EndDate = endAt;
+    }
     public void SetResourceTemplateID(ResourceTemplate newResourceTemplate)
     {
-        ResourceTemplate = newResourceTemplate;
+        resourceTemplate = newResourceTemplate;
     }
     public int GetResourceTemplateID()
     {
         return resourceTemplateID;
+    }
+    public ResourceTemplate GetResourceTemplate()
+    {
+        if (resourceTemplate == null)
+        {
+            resourceTemplate = ResourceManager.Instance.GetResourceTemplateById(resourceTemplateID);
+            return resourceTemplate;
+        }
+        else
+        {
+            return resourceTemplate;
+        }
+    }
+    public void SetResourceTemplate(ResourceTemplate newResourceTemplate)
+    {
+        resourceTemplate = newResourceTemplate;
     }
     public ResourceType GetResourceType()
     {
@@ -59,6 +104,11 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     }
     public ResourceSubType GetResourceSubType()
     {
-        return Subtype;
+        return SubType;
     }
+    public ResourceOrder GetResourceOrder()
+    {           
+        return resourceTemplate.Order;
+    }
+
 }

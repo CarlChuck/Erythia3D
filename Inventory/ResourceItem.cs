@@ -1,4 +1,5 @@
 using JetBrains.Annotations;
+using System;
 using UnityEngine;
 
 public class ResourceItem : MonoBehaviour
@@ -8,7 +9,9 @@ public class ResourceItem : MonoBehaviour
     public float Weight { get; private set; } = 1.0f;
     public int StackSizeMax { get; private set; } = 1;
     public int Price { get; private set; } = 0;
-    
+
+    public Sprite IconSprite { get; private set; }
+
     private int databaseID = 0; // Stores the ResourceItemID from the database
 
     public Resource Resource => resource;
@@ -18,9 +21,10 @@ public class ResourceItem : MonoBehaviour
     {
         this.resource = resource;
         currentStackSize = quantity;
-        StackSizeMax = resource.ResourceTemplate?.StackSizeMax ?? 100000;
+        StackSizeMax = resource.GetResourceTemplate()?.StackSizeMax ?? 100000;
         Weight = resource.Weight;
         Price = resource.Quality * 10; // Example pricing based on quality
+        IconSprite = IconLibrary.Instance.GetIconByResourceType(resource.Type);
     }
 
     public void UpdateStackSize(int stackToAdd = 0, int stackToRemove = 0)
@@ -38,11 +42,6 @@ public class ResourceItem : MonoBehaviour
         Weight = (currentStackSize * resource.Weight) / 10;
     }
 
-    /// <summary>
-    /// Sets the unique database ID for this resource item instance.
-    /// Should generally only be called once during loading.
-    /// </summary>
-    /// <param name="id">The ResourceItemID from the database.</param>
     public void SetDatabaseID(int id)
     {
         if (databaseID == 0 && id > 0)
@@ -59,12 +58,13 @@ public class ResourceItem : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Gets the unique database ID (ResourceItemID) associated with this instance.
-    /// </summary>
-    /// <returns>The database ID, or 0 if not set.</returns>
     public int GetDatabaseID()
     {
         return databaseID;
+    }
+    public string GetDescription()
+    {
+        //TODO: Add description logic
+        return resource.ResourceName;
     }
 }

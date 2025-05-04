@@ -104,6 +104,11 @@ public class Item : MonoBehaviour
         if (ItemID <= 0) { ItemID = id; }
         else { Debug.LogWarning($"Attempted to change ItemID for '{ItemName}' from {ItemID} to {id}"); }
     }
+    public string GetDescription() 
+    {
+        //TODO: Add description logic
+        return Template?.ExamineText ?? "No description available."; 
+    }
 }
 public enum ItemType
 {

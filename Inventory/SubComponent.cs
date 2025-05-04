@@ -18,6 +18,7 @@ public class SubComponent : MonoBehaviour // Or just public class SubComponent
     public int Protein { get; private set; }
     public int Carbohydrate { get; private set; }
     public int Flavour { get; private set; }
+    public Sprite IconSprite { get; private set; }
 
     public void Initialize(int id, string name, int templateId, int componentType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour)
     {
@@ -34,12 +35,28 @@ public class SubComponent : MonoBehaviour // Or just public class SubComponent
         Protein = protein;
         Carbohydrate = carbohydrate;
         Flavour = flavour;
+        SetIconSprite();
     }
 
     // Optional: Method to set the ID after saving to DB if needed
     public void SetSubComponentID(int id)
     {
-        if (SubComponentID <= 0) { SubComponentID = id; }
-        else { Debug.LogWarning($"Attempted to change SubComponentID for '{Name ?? "Unnamed"}' from {SubComponentID} to {id}"); }
+        if (SubComponentID <= 0) 
+        { 
+            SubComponentID = id; 
+        }
+        else 
+        { 
+            Debug.LogWarning($"Attempted to change SubComponentID for '{Name ?? "Unnamed"}' from {SubComponentID} to {id}"); 
+        }
+    }
+    private void SetIconSprite()
+    {
+        IconSprite = IconLibrary.Instance.GetIconByID(Template.Icon);
+    }
+    public string GetDescription()
+    {
+        //TODO: Add description logic
+        return Name;
     }
 }

@@ -7,7 +7,6 @@ public class SubComponentTemplate : MonoBehaviour // Or just `public class SubCo
     public string Name { get; private set; }
     public int ComponentType { get; private set; } // Consider using an enum if types are predefined
     public int Icon { get; private set; }
-    [NonSerialized] public Sprite IconSprite; // For runtime use
     public string Colour { get; private set; }
     [NonSerialized] public Color ComponentColor = Color.white; // For runtime use
     public int Weight { get; private set; }
