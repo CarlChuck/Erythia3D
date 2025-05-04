@@ -230,10 +230,10 @@ public class PlayerCharacter : StatBlock
             if (amountToTransfer > 0)
             {
                 Debug.Log($"Transferring {amountToTransfer} items to existing stack");
-                // Update the existing stack
-                existingItem.UpdateStackSize(stackToAdd: amountToTransfer);
+                // Update the existing stack VIA the Inventory manager to trigger UI update
+                inventory.UpdateResourceQuantity(existingItem, amountToAdd: amountToTransfer);
                 
-                // Update the new item's stack size
+                // Update the picked-up item's stack size (this one doesn't need UI event)
                 resourceItem.UpdateStackSize(stackToRemove: amountToTransfer);
 
                 // If the new item's stack is now empty, destroy it

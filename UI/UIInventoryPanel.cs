@@ -11,11 +11,6 @@ public class UIInventoryPanel : MonoBehaviour
     private Inventory targetInventory;
     private List<UIInventorySlot> uiSlots = new List<UIInventorySlot>();
 
-    void Start()
-    {
-        // Hide panel initially, perhaps? Or setup called externally.
-        // inventoryPanelRoot?.SetActive(false);
-    }
 
     public void Setup(Inventory inventory)
     {
@@ -82,31 +77,67 @@ public class UIInventoryPanel : MonoBehaviour
     // Called by the OnInventoryChanged event
     public void UpdateDisplay()
     {
-        if (targetInventory == null) return;
+        if (targetInventory == null || uiSlots == null)
+        {
+            Debug.LogError("UIInventoryPanel: UpdateDisplay called but targetInventory or uiSlots is null.");
+            return;
+        }
 
-        // Ensure correct number of slots exist first
+        // Ensure correct number of UI slots exist based on bag space
         if (uiSlots.Count != targetInventory.GetBagSpace())
         {
+            Debug.Log($"Inventory bag space ({targetInventory.GetBagSpace()}) differs from UI slots ({uiSlots.Count}). Recreating slots.");
             CreateOrUpdateSlots();
         }
 
-
+        // Get all item types from the inventory
         List<Item> items = targetInventory.GetAllItems();
+        List<ResourceItem> resourceItems = targetInventory.GetAllResourceItems();
+        List<SubComponent> subComponents = targetInventory.GetAllSubComponents();
 
+        int currentItemIndex = 0;
+        int currentResourceIndex = 0;
+        int currentSubComponentIndex = 0;
+
+        // Iterate through available UI slots and populate them sequentially
         for (int i = 0; i < uiSlots.Count; i++)
         {
-            if (i < items.Count)
+            UIInventorySlot currentUISlot = uiSlots[i];
+            if (currentUISlot == null) continue; // Skip if slot somehow became null
+
+            // Try to place an Item
+            if (currentItemIndex < items.Count)
             {
-                // Pass item and inventory reference to the slot
-                uiSlots[i].Setup(items[i], targetInventory);
+                currentUISlot.DisplayItem(items[currentItemIndex]);
+                currentItemIndex++;
             }
+            // Else, try to place a ResourceItem
+            else if (currentResourceIndex < resourceItems.Count)
+            {
+                currentUISlot.DisplayResource(resourceItems[currentResourceIndex]);
+                currentResourceIndex++;
+            }
+            // Else, try to place a SubComponent
+            else if (currentSubComponentIndex < subComponents.Count)
+            {
+                currentUISlot.DisplaySubComponent(subComponents[currentSubComponentIndex]);
+                currentSubComponentIndex++;
+            }
+            // Else, this slot is empty
             else
             {
-                // Clear slot if no item exists at this index
-                uiSlots[i].Setup(null, targetInventory);
+                currentUISlot.Clear();
             }
         }
-        Debug.Log("UIInventoryPanel updated.");
+
+        // Log if not all items from inventory could be displayed (bag space < total items)
+        int totalInventoryItems = items.Count + resourceItems.Count + subComponents.Count;
+        if (totalInventoryItems > uiSlots.Count)
+        {
+            Debug.LogWarning($"UIInventoryPanel: Inventory contains {totalInventoryItems} items, but only {uiSlots.Count} UI slots are available based on bag space.");
+        }
+
+        Debug.Log("UIInventoryPanel updated display with Items, ResourceItems, and SubComponents.");
     }
 
     public void TogglePanel()

@@ -53,4 +53,12 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     {
         return resourceTemplateID;
     }
+    public ResourceType GetResourceType()
+    {
+        return Type;
+    }
+    public ResourceSubType GetResourceSubType()
+    {
+        return Subtype;
+    }
 }

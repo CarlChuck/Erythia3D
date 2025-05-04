@@ -118,6 +118,33 @@ public class Inventory : MonoBehaviour
         return removed;
     }
 
+    /// <summary>
+    /// Updates the stack size of a specific ResourceItem already in the inventory 
+    /// and triggers the OnInventoryChanged event.
+    /// </summary>
+    /// <param name="itemToUpdate">The ResourceItem instance within this inventory.</param>
+    /// <param name="amountToAdd">Positive amount to add.</param>
+    /// <param name="amountToRemove">Positive amount to remove.</param>
+    /// <returns>True if the item was found and updated, false otherwise.</returns>
+    public bool UpdateResourceQuantity(ResourceItem itemToUpdate, int amountToAdd = 0, int amountToRemove = 0)
+    {
+        // Ensure the item actually belongs to this inventory list
+        if (itemToUpdate != null && resourceItems.Contains(itemToUpdate))
+        {
+            itemToUpdate.UpdateStackSize(amountToAdd, amountToRemove);
+            // If stack becomes empty after update, consider removing it (optional, depends on design)
+            // if (itemToUpdate.CurrentStackSize <= 0) { RemoveResourceItem(itemToUpdate); }
+            
+            OnInventoryChanged?.Invoke(); // Notify UI that something changed
+            return true;
+        }
+        else
+        {
+            Debug.LogWarning($"UpdateResourceQuantity: Item '{itemToUpdate?.Resource?.ResourceName ?? "NULL"}' not found in this inventory.");
+            return false;
+        }
+    }
+
     // Get all items (useful for UI display)
     public List<Item> GetAllItems()
     {

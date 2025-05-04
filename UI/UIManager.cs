@@ -21,6 +21,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject statDisplayPrefab;
     [SerializeField] private GameObject UICanvas;
 
+    [Header("Other UI Panels")]
+    [SerializeField] private UIInventoryPanel inventoryPanel;
+
     private List<StatDisplayUI> statDisplays = new List<StatDisplayUI>();
     private bool isInitialized = false;
 
@@ -59,10 +62,17 @@ public class UIManager : MonoBehaviour
         } 
 
         playerCharacter = targetPlayer;
-        if (playerCharacter == null) 
-        { 
+        Inventory playerInventory = playerCharacter.GetInventory();
+        if (playerCharacter == null)
+        {
+            Debug.LogError("UIManager: SetupUI called with null PlayerCharacter!");
             //Error handling
             return; 
+        }
+         if (playerInventory == null)
+        {
+            Debug.LogError($"UIManager: PlayerCharacter '{playerCharacter.GetCharacterName()}' is missing Inventory component!");
+            return;
         }
 
         // Initial UI population
@@ -70,6 +80,17 @@ public class UIManager : MonoBehaviour
         UpdateHUD();                        // Sets initial health/mana bars
         // Initial stats AND name update now happens here:
         UpdateCharacterWindowStatsList();
+
+        // Setup Inventory Panel if reference exists
+        if (inventoryPanel != null)
+        {
+            inventoryPanel.Setup(playerInventory);
+            inventoryPanel.gameObject.SetActive(false);
+        }
+        else
+        {
+            Debug.LogWarning("UIManager: UIInventoryPanel reference not set in Inspector.");
+        }
 
         // Subscribe to events
         playerCharacter.OnVitalsChanged += UpdateHUD;
@@ -187,6 +208,18 @@ public class UIManager : MonoBehaviour
         {
             // Refresh name AND stats when opened
             UpdateCharacterWindowStatsList();
+        }
+    }
+
+    public void ToggleInventoryWindow()
+    {
+        if (inventoryPanel != null)
+        {
+            inventoryPanel.TogglePanel();
+        }
+        else
+        {
+             Debug.LogWarning("UIManager: Cannot toggle inventory, UIInventoryPanel reference not set.");
         }
     }
 

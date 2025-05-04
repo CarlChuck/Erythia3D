@@ -44,6 +44,11 @@ public class UIDragDropManager : MonoBehaviour
         dragIconImage.raycastTarget = false; // Prevent icon from blocking drops
     }
 
+    public bool IsDragging()
+    {
+        return isDragging;
+    }
+
     public bool StartDragging(Item item, Component source, Sprite icon)
     {
         if (isDragging || item == null || source == null || icon == null)

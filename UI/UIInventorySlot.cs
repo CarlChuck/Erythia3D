@@ -1,43 +1,168 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using TMPro; // Added for TextMeshPro
 
 public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler // No drop handling here
 {
     [SerializeField] private Image itemIconImage;   // Assign the child Image used to show the icon
+    [SerializeField] private TMP_Text quantityText; // Assign the child TextMeshPro UGUI for quantity
     [SerializeField] private Image backgroundImage; // Optional: for visual feedback
 
+    // Store references to the different types of items this slot might hold
     private Item currentItem;
-    private Inventory parentInventory; // Reference to the backend inventory
+    private ResourceItem currentResourceItem;
+    private SubComponent currentSubComponent;
 
-    public void Setup(Item item, Inventory inventory)
+    private Inventory parentInventory; // Reference to the backend inventory - MAYBE remove if not needed?
+
+    // --- Display Methods --- Called by UIInventoryPanel.UpdateDisplay ---
+
+    public void DisplayItem(Item item)
     {
+        ClearInternalReferences(); // Clear other types
         currentItem = item;
-        parentInventory = inventory;
-        UpdateDisplay();
+        parentInventory = null; // Or get from item if needed? Depends on drag/drop
+
+        if (item != null && itemIconImage != null)
+        {
+            itemIconImage.sprite = item.IconSprite;
+            itemIconImage.color = Color.white;
+            itemIconImage.enabled = true;
+        }
+        else
+        {
+            itemIconImage.sprite = null;
+            itemIconImage.color = Color.clear;
+            itemIconImage.enabled = false;
+        }
+
+        // Hide quantity text for regular items
+        if (quantityText != null)
+        {
+            quantityText.enabled = false;
+        }
+        itemIconImage.gameObject.SetActive(true);
     }
 
-    public void UpdateDisplay()
+    public void DisplayResource(ResourceItem resourceItem)
     {
-        if (currentItem != null && itemIconImage != null)
+        ClearInternalReferences();
+        currentResourceItem = resourceItem;
+        parentInventory = null;
+
+        if (resourceItem != null && resourceItem.Resource != null && itemIconImage != null)
         {
-            itemIconImage.sprite = currentItem.IconSprite;
-            itemIconImage.color = Color.white; // Make sure it's visible
+            // Use IconLibrary to get the sprite based on resource type
+            itemIconImage.sprite = IconLibrary.Instance.GetIconByResourceType(resourceItem.Resource.GetResourceType());
+
+            // Check if the sprite was successfully retrieved
+            if (itemIconImage.sprite != null)
+            {
+                itemIconImage.color = Color.white;
+                itemIconImage.enabled = true;
+            }
+            else
+            {
+                 // If icon not found in library, maybe show a default or hide?
+                Debug.LogWarning($"Icon not found in IconLibrary for ResourceType: {resourceItem.Resource.GetResourceType()}");
+                itemIconImage.color = Color.clear; // Hide if not found
+                itemIconImage.enabled = false;
+            }
+        }
+        else
+        {
+            itemIconImage.sprite = null;
+            itemIconImage.color = Color.clear;
+            itemIconImage.enabled = false;
+        }
+
+        // Show and update quantity text
+        if (quantityText != null)
+        {
+            if (resourceItem != null && resourceItem.CurrentStackSize > 1) // Only show quantity if > 1
+            {
+                quantityText.text = resourceItem.CurrentStackSize.ToString();
+                quantityText.enabled = true;
+            }
+            else
+            {
+                quantityText.enabled = false;
+            }
+        }
+        itemIconImage.gameObject.SetActive(true);
+    }
+
+    public void DisplaySubComponent(SubComponent subComponent)
+    {
+        ClearInternalReferences();
+        currentSubComponent = subComponent;
+        parentInventory = null;
+
+        // ASSUMPTION: SubComponent Template has an IconSprite
+        Sprite icon = null;
+        if (subComponent?.Template != null)
+        {
+            icon = subComponent.Template.IconSprite; // Example: Get icon from template
+        }
+
+        if (icon != null && itemIconImage != null)
+        {
+            itemIconImage.sprite = icon;
+            itemIconImage.color = Color.white;
             itemIconImage.enabled = true;
+        }
+        else if (subComponent != null && itemIconImage != null) // If no icon, maybe show a default or hide?
+        { 
+             // Fallback? For now, hide if no specific icon
+             itemIconImage.sprite = null; 
+             itemIconImage.color = Color.clear;
+             itemIconImage.enabled = false;
         }
         else if (itemIconImage != null)
         {
             itemIconImage.sprite = null;
-            itemIconImage.color = Color.clear; // Make invisible
+            itemIconImage.color = Color.clear;
             itemIconImage.enabled = false;
         }
+
+        // Hide quantity text for subcomponents
+        if (quantityText != null)
+        {
+            quantityText.enabled = false;
+        }
+        itemIconImage.gameObject.SetActive(true);
     }
 
-    // --- Drag Handling ---
+    public void Clear()
+    {
+        ClearInternalReferences();
+
+        if (itemIconImage != null)
+        {
+            itemIconImage.sprite = null;
+            itemIconImage.color = Color.clear;
+            itemIconImage.enabled = false;
+        }
+        if (quantityText != null)
+        { 
+            quantityText.text = "";
+            quantityText.enabled = false;
+        }
+        itemIconImage.gameObject.SetActive(false); // Hide the icon image
+    }
+
+    private void ClearInternalReferences()
+    {
+        currentItem = null;
+        currentResourceItem = null;
+        currentSubComponent = null;
+    }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (currentItem != null && UIDragDropManager.Instance != null)
+        // ONLY allow dragging if it's a regular Item for now
+        if (currentItem != null && currentResourceItem == null && currentSubComponent == null && UIDragDropManager.Instance != null)
         {
             // Try to start dragging via the manager
             bool started = UIDragDropManager.Instance.StartDragging(currentItem, this, currentItem.IconSprite);
@@ -45,17 +170,20 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             {
                 // Make the item icon in *this* slot invisible during drag
                 itemIconImage.color = Color.clear;
+                 if (quantityText != null) quantityText.enabled = false; // Hide quantity too
             }
         }
         else
         {
-            eventData.pointerDrag = null; // Cancel drag if no item
+            Debug.Log("Drag cancelled: Slot does not contain a draggable Item.");
+            eventData.pointerDrag = null; // Cancel drag if not a draggable item
         }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (UIDragDropManager.Instance != null)
+        // Only update if dragging an Item
+        if (currentItem != null && UIDragDropManager.Instance != null && UIDragDropManager.Instance.IsDragging())
         {
             // Update the managers drag icon position
             UIDragDropManager.Instance.UpdateDragIconPosition(eventData.position);
@@ -64,62 +192,42 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        // The UIDragDropManager handles telling us if the drop failed via OnDragCancelled
-        // It determines success based on whether OnDrop was successfully called on a target.
-        // We just need to reset the drag state in the manager.
-        // Check if it was actually dragging something from this slot potentially
-        if (UIDragDropManager.Instance != null && UIDragDropManager.Instance.GetSourceSlot() == this)
+        // Only process if we were dragging an Item
+        if (currentItem != null && UIDragDropManager.Instance != null && UIDragDropManager.Instance.GetSourceSlot() == this)
         {
-            // Check if the drop occurred on a valid target UI element
-            // eventData.pointerEnter is the UI element the pointer is over *now*
+             // Check if the drop occurred on a valid target UI element
             bool droppedOnValidTarget = eventData.pointerEnter != null && eventData.pointerEnter.GetComponent<IDropHandler>() != null;
 
-            // If dropped on something that isn't a drop handler OR the item wasn't successfully processed by OnDrop,
-            // the manager's StopDragging call below will have 'dropSuccessful' as false.
-            // The manager calls OnDragCancelled in that case.
-
-            // Tell the manager to stop, regardless of success. It figures out if it needs to call OnDragCancelled.
-            // We cannot reliably know here if the drop logic within OnDrop succeeded (e.g. inventory full).
-            // The drop handler (UIEquipmentSlot) is responsible for the backend logic and triggering UI updates.
-            // For simplicity, we assume if dropped on *any* drop handler, it *might* succeed.
-            // A more robust system might involve the drop handler setting a flag in the manager.
             UIDragDropManager.Instance.StopDragging(droppedOnValidTarget);
         }
-
-        // If the drag was cancelled (handled by OnDragCancelled), the icon visibility is restored there.
-        // If successful, the parentInventory.OnInventoryChanged event will cause UpdateDisplay to run later.
+        // If not dragging an item from this slot, do nothing.
     }
 
-    // Called by UIDragDropManager if drop failed or was outside a target
     public void OnDragCancelled()
     {
-        // Restore visibility if the item still logically belongs here
+        // Restore visibility ONLY if it's an item and it still logically belongs here
         if (currentItem != null && itemIconImage != null)
         {
-            // Double check if the item is still in the backend inventory
-            // This check might be redundant if backend logic is sound, but adds safety
-            if (parentInventory != null && parentInventory.GetAllItems().Contains(currentItem))
-            {
-                itemIconImage.color = Color.white; // Make visible again
-                itemIconImage.enabled = true;
-            }
-            else
-            {
-                // Item was somehow removed - ensure display is clear
-                UpdateDisplay();
-            }
-
+            // TODO: Re-evaluate if parentInventory check is needed/possible here
+            // if (parentInventory != null && parentInventory.GetAllItems().Contains(currentItem))
+            // For now, assume if cancelled, it returns visually
+            itemIconImage.color = Color.white; // Make visible again
+            itemIconImage.enabled = true;
+            // No quantity for items
+            // if (quantityText != null) quantityText.enabled = false;
         }
-        Debug.Log($"Drag cancelled for slot with item: {currentItem?.ItemName}");
+        // Don't restore visual for ResourceItems or SubComponents as they aren't draggable yet
+
+        Debug.Log($"Drag cancelled for slot.");
     }
 
     // Required for OnDragCancelled to work if item is successfully dropped
-    public void ClearDisplayAfterDrop()
+    public void ClearDisplayAfterDrop() // Might need renaming if only for Items
     {
-        // Called by UIInventoryPanel after a successful drag originating from this slot
+        // Called by UIDragDropManager after a successful drag originating from this slot
         // Ensures the slot appears empty immediately after dropping elsewhere.
         // The OnInventoryChanged event will formally update it later.
-        currentItem = null; // Assume item is gone
-        UpdateDisplay();
+        // For now, just clear everything visually
+        Clear();
     }
 }
