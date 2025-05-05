@@ -99,13 +99,36 @@ public class UITooltipManager : MonoBehaviour
                 yield break; 
             }
 
-            header = resourceItem.Resource.ResourceName ?? "Resource";
+            header = resourceItem.Resource.GetResourceType().ToString() ?? "Resource";
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"Type: {resourceItem.Resource.GetResourceType()}"); // Assuming method exists
-            sb.AppendLine($"Quantity: {resourceItem.CurrentStackSize} / {resourceItem.StackSizeMax}");
+            sb.AppendLine($"Resource: {resourceItem.Resource.ResourceName}");
+            sb.AppendLine($"{resourceItem.Resource.SubType}" + $" {resourceItem.Resource.Type}");
+            sb.AppendLine($"{resourceItem.Resource.resourceTemplate.Family}");
+            sb.AppendLine("");
             sb.AppendLine($"Quality: {resourceItem.Resource.Quality}");
-            sb.AppendLine($"Weight (Stack): {resourceItem.Weight:F1}"); // Show stack weight
-                                                                        // Add more resource-specific details
+            if (CheckIfResourceIsMineral(resourceItem))
+            {
+                sb.AppendLine($"Toughness: {resourceItem.Resource.Toughness}");
+                sb.AppendLine($"Strength: {resourceItem.Resource.Strength}");
+                sb.AppendLine($"Density: {resourceItem.Resource.Density}"); 
+                sb.AppendLine($"Aura: {resourceItem.Resource.Aura}");
+            }
+            else
+            {
+                sb.AppendLine($"Aura: {resourceItem.Resource.Aura}");
+                sb.AppendLine($"Energy: {resourceItem.Resource.Energy}");
+                sb.AppendLine($"Protein: {resourceItem.Resource.Protein}");
+                sb.AppendLine($"Carbohydrate: {resourceItem.Resource.Carbohydrate}");
+                sb.AppendLine($"Flavour: {resourceItem.Resource.Flavour}");
+            }
+            if (resourceItem.Resource.Type == ResourceType.Coal)
+            {
+                sb.AppendLine($"Energy: {resourceItem.Resource.Energy}");
+            }
+
+            sb.AppendLine($"Quantity: {resourceItem.CurrentStackSize} / {resourceItem.StackSizeMax}");
+            sb.AppendLine($"Weight (Stack): {resourceItem.Weight:F1}");
+            sb.AppendLine($"Value: ({resourceItem.Resource.Value}) - {resourceItem.Price}");
             if (!string.IsNullOrEmpty(resourceItem.GetDescription())) 
             { 
                 sb.AppendLine($"\n<i>{resourceItem.GetDescription()}</i>"); 
@@ -151,36 +174,61 @@ public class UITooltipManager : MonoBehaviour
 
     private void PositionTooltip()
     {
-        if (currentTooltip == null || canvasRectTransform == null) 
-        { 
-            return; 
-        }
+        if (currentTooltip == null || canvasRectTransform == null) return;
 
         Vector2 mousePosition = Input.mousePosition;
-        Vector2 anchoredPosition;
+        RectTransform tooltipRect = currentTooltip.GetComponent<RectTransform>();
 
-        // Convert screen point to canvas local point
+        // 1. Set Pivot to Top-Right for alignment
+        tooltipRect.pivot = new Vector2(1, 1); 
+
+        // 2. Convert mouse position to anchored position within the canvas
+        Vector2 cursorAnchoredPosition;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            canvasRectTransform,
-            mousePosition,
-            null, // Use Canvas's render camera (or null for Screen Space Overlay)
-            out anchoredPosition);
+            canvasRectTransform, 
+            mousePosition, 
+            null, // Use Canvas's assigned camera or null for overlay
+            out cursorAnchoredPosition);
 
-        // Apply offset
-        anchoredPosition += offset;
+        // 3. Define the desired offset (e.g., 5 pixels left of the cursor)
+        Vector2 desiredOffset = new Vector2(-5f, 0f); 
 
-        // Keep tooltip within canvas bounds
-        Vector2 tooltipSize = currentTooltip.GetSize();
+        // 4. Calculate the target position for the tooltip's pivot (top-right)
+        Vector2 targetPosition = cursorAnchoredPosition + desiredOffset;
+
+        // 5. Get sizes for clamping
+        Vector2 tooltipSize = tooltipRect.sizeDelta; // Use current sizeDelta
         Vector2 canvasSize = canvasRectTransform.sizeDelta;
+        Vector2 halfCanvasSize = canvasSize * 0.5f;
 
-        // Adjust Pivot based on which side of the mouse we place it (simple example: always bottom-right)
-        // A more complex pivot adjustment would be needed to flip sides near screen edges
-        currentTooltip.GetComponent<RectTransform>().pivot = new Vector2(0, 1); // Top-left pivot
+        // 6. Calculate min/max allowed positions for the pivot (top-right)
+        // MinX = left edge of canvas + tooltip width
+        float minX = -halfCanvasSize.x + tooltipSize.x; 
+        // MaxX = right edge of canvas
+        float maxX = halfCanvasSize.x;
+        // MinY = bottom edge of canvas + tooltip height
+        float minY = -halfCanvasSize.y + tooltipSize.y;
+        // MaxY = top edge of canvas
+        float maxY = halfCanvasSize.y;
 
-        // Clamp position
-        float clampedX = Mathf.Clamp(anchoredPosition.x, -canvasSize.x / 2f, (canvasSize.x / 2f) - tooltipSize.x);
-        float clampedY = Mathf.Clamp(anchoredPosition.y, (-canvasSize.y / 2f) + tooltipSize.y, canvasSize.y / 2f);
+        // 7. Clamp the target position
+        float clampedX = Mathf.Clamp(targetPosition.x, minX, maxX);
+        float clampedY = Mathf.Clamp(targetPosition.y, minY, maxY);
 
-        currentTooltip.GetComponent<RectTransform>().anchoredPosition = new Vector2(clampedX, clampedY);
+        // 8. Apply the clamped position
+        tooltipRect.anchoredPosition = new Vector2(clampedX, clampedY);
+    }
+
+    private bool CheckIfResourceIsMineral(ResourceItem resourceItem)
+    {
+        if (resourceItem.Resource.resourceTemplate.Family == ResourceFamily.Meat)
+        {
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+
     }
 }

@@ -203,7 +203,12 @@ public class UIManager : MonoBehaviour
         }
         bool isActive = !characterWindowPanel.activeSelf;
         characterWindowPanel.SetActive(isActive);
-
+        
+        // Always hide tooltip when inventory is toggled
+        if (UITooltipManager.Instance != null)
+        {
+            UITooltipManager.Instance.RequestHideTooltip();
+        }
         if (isActive && isInitialized)
         {
             // Refresh name AND stats when opened
@@ -216,6 +221,12 @@ public class UIManager : MonoBehaviour
         if (inventoryPanel != null)
         {
             inventoryPanel.TogglePanel();
+
+            // Always hide tooltip when inventory is toggled
+            if (UITooltipManager.Instance != null)
+            {
+                UITooltipManager.Instance.RequestHideTooltip();
+            }
         }
         else
         {

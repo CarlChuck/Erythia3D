@@ -252,8 +252,8 @@ public class ResourceManager : BaseManager
         int protein = ClampNumber(template.Protein + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
         int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
         int flavour = ClampNumber(template.Flavour + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int weight = ClampNumber(template.Weight + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int value = 0; // TODO: Implement this
+        int weight = template.Weight;
+        int value = GenerateValue(template); 
 
         // 6. Set Dates
         DateTime startDate = DateTime.UtcNow;
@@ -317,7 +317,7 @@ public class ResourceManager : BaseManager
                                     newResource.SetResource(
                                         (int)newId,
                                         randomName,
-                                        template,
+                                        template.ResourceTemplateID,
                                         (int)template.Type,
                                         (int)regionType,
                                         quality,
@@ -334,7 +334,7 @@ public class ResourceManager : BaseManager
                                         startDate,
                                         endDate
                                     );
-
+                                    newResource.SetResourceTemplate(template);
                                     loadedResourceInstances.Add(newResource);
                                     resourcesById[newResource.ResourceSpawnID] = newResource;
                                     LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
@@ -542,6 +542,30 @@ public class ResourceManager : BaseManager
     #endregion
 
     #region Helpers
+
+    private int GenerateValue(ResourceTemplate resourceTemplate)
+    {
+        int prelimValue = resourceTemplate.Value;
+        float multiplier = 1;
+        if (resourceTemplate.Type == ResourceType.Coal)
+        {
+            multiplier = resourceTemplate.Quality + resourceTemplate.Toughness + resourceTemplate.Strength + resourceTemplate.Density + resourceTemplate.Energy;
+        }
+        else if (resourceTemplate.Family == ResourceFamily.Stone || resourceTemplate.Family == ResourceFamily.Metal || 
+            resourceTemplate.Family == ResourceFamily.Gemstone || resourceTemplate.Family == ResourceFamily.Wood || 
+            resourceTemplate.Family == ResourceFamily.Hide || resourceTemplate.Family == ResourceFamily.Carapace || 
+            resourceTemplate.Family == ResourceFamily.Scale)
+        {
+            multiplier = resourceTemplate.Quality + resourceTemplate.Toughness + resourceTemplate.Strength + resourceTemplate.Density + resourceTemplate.Aura;
+        }
+        else if (resourceTemplate.Family == ResourceFamily.Meat)
+        {
+            multiplier = (float)(resourceTemplate.Quality + ((resourceTemplate.Energy + resourceTemplate.Protein + resourceTemplate.Carbohydrate + resourceTemplate.Flavour + resourceTemplate.Aura)*0.8f));
+        }
+        float value = prelimValue * (multiplier/1000);
+
+        return (int)value;
+    }
     private string GenerateRandomResourceName()
     {
         string firstPart = firstPartOfName[randomNumber.Next(firstPartOfName.Count)];
@@ -853,5 +877,11 @@ public enum ResourceFamily
     Wood,
     Hide,
     Carapace,
-    Scale,
+    Scale, 
+    Meat,
+    Egg,
+    Feather,
+    Bone,
+    Silk,
+    Leaf,
 }

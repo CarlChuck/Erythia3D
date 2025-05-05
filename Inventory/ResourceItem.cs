@@ -22,8 +22,8 @@ public class ResourceItem : MonoBehaviour
         this.resource = resource;
         currentStackSize = quantity;
         StackSizeMax = resource.GetResourceTemplate()?.StackSizeMax ?? 100000;
-        Weight = resource.Weight;
-        Price = resource.Quality * 10; // Example pricing based on quality
+        Weight = (float)(currentStackSize * resource.Weight) / 100;
+        Price = resource.Value * CurrentStackSize;
         IconSprite = IconLibrary.Instance.GetIconByResourceType(resource.Type);
     }
 
@@ -39,7 +39,8 @@ public class ResourceItem : MonoBehaviour
         {
             currentStackSize = 0;
         }
-        Weight = (currentStackSize * resource.Weight) / 10;
+        Weight = (float)(currentStackSize * resource.Weight) / 100;
+        Price = resource.Value * CurrentStackSize;
     }
 
     public void SetDatabaseID(int id)
