@@ -117,7 +117,8 @@ public class CraftingManager : BaseManager
             { "Item4Stat2Distribution", "INT DEFAULT 0" },
 
             // Output
-            { "OutputID", "INT DEFAULT 0" }
+            { "OutputItemID", "INT DEFAULT 0" },
+            { "OutputSubComponentID", "INT DEFAULT 0" }
         };
 
         // Ensure the Recipes table exists
@@ -167,7 +168,7 @@ public class CraftingManager : BaseManager
             int recipeType = SafeConvert.ToInt32(row, "RecipeType");
 
             // --- Resources ---
-            ResourceType[] requiredResources = new ResourceType[4];
+            int[] resourceID = new int[4];
             int[] requiredResourceAmounts = new int[4];
             int[] resourceTypeLevels = new int[4];
             int[] resourceStat1 = new int[4];
@@ -176,17 +177,17 @@ public class CraftingManager : BaseManager
             int[] resourceStat2Dist = new int[4];            
             
             // --- Items ---
-            ItemTemplate[] requiredItems = new ItemTemplate[4];
-            int[] requiredItemAmounts = new int[4];
-            int[] itemStat1 = new int[4];
-            int[] itemStat1Dist = new int[4];
-            int[] itemStat2 = new int[4];
-            int[] itemStat2Dist = new int[4];
+            SubComponentTemplate[] requiredComponents = new SubComponentTemplate[4];
+            int[] componentAmounts = new int[4];
+            int[] componentStat1 = new int[4];
+            int[] componentStat1Dist = new int[4];
+            int[] componentStat2 = new int[4];
+            int[] componentStat2Dist = new int[4];
 
             for (int i = 0; i < 4; i++)
             {
                 int index = i + 1;
-                requiredResources[i] = (ResourceType)SafeConvert.ToInt32(row, $"Resource{index}");
+                resourceID[i] = SafeConvert.ToInt32(row, $"Resource{index}");
                 requiredResourceAmounts[i] = SafeConvert.ToInt32(row, $"Resource{index}Amount");
                 resourceTypeLevels[i] = SafeConvert.ToInt32(row, $"Resource{index}TypeLevel");
                 resourceStat1[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat1");
@@ -194,29 +195,32 @@ public class CraftingManager : BaseManager
                 resourceStat2[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2");
                 resourceStat2Dist[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2Distribution");
 
-                int itemID = SafeConvert.ToInt32(row, $"Item{index}");
-                requiredItemAmounts[i] = SafeConvert.ToInt32(row, $"Item{index}Amount");
-                itemStat1[i] = SafeConvert.ToInt32(row, $"Item{index}Stat1");
-                itemStat1Dist[i] = SafeConvert.ToInt32(row, $"Item{index}Stat1Distribution");
-                itemStat2[i] = SafeConvert.ToInt32(row, $"Item{index}Stat2");
-                itemStat2Dist[i] = SafeConvert.ToInt32(row, $"Item{index}Stat2Distribution");
+                int componentID = SafeConvert.ToInt32(row, $"Item{index}");
+                componentAmounts[i] = SafeConvert.ToInt32(row, $"Item{index}Amount");
+                componentStat1[i] = SafeConvert.ToInt32(row, $"Item{index}Stat1");
+                componentStat1Dist[i] = SafeConvert.ToInt32(row, $"Item{index}Stat1Distribution");
+                componentStat2[i] = SafeConvert.ToInt32(row, $"Item{index}Stat2");
+                componentStat2Dist[i] = SafeConvert.ToInt32(row, $"Item{index}Stat2Distribution");
 
-                if (itemID > 0)
+                if (componentID > 0)
                 {
-                    requiredItems[i] = ItemManager.Instance?.GetItemTemplateById(itemID);
-                    if (requiredItems[i] == null)
+                    requiredComponents[i] = ItemManager.Instance?.GetSubComponentTemplateByID(componentID);
+                    if (requiredComponents[i] == null)
                     {
-                        Debug.LogWarning($"Failed to find ItemTemplate with ID {itemID} for recipe {recipeName}");
+                        Debug.LogWarning($"Failed to find ItemTemplate with ID {componentID} for recipe {recipeName}");
                     }
                 }
             }
 
             // --- Output ---
-            int outputID = SafeConvert.ToInt32(row, "OutputID");
-            ItemTemplate outputItem = ItemManager.Instance?.GetItemTemplateById(outputID);
+            int outputItemID = SafeConvert.ToInt32(row, "OutputItemID");
+            int outputComponentID = SafeConvert.ToInt32(row, "OutputSubComponentID");
+            ItemTemplate outputItem = ItemManager.Instance?.GetItemTemplateById(outputItemID);
+            SubComponentTemplate outputSubComponent = ItemManager.Instance?.GetSubComponentTemplateByID(outputComponentID);
             if (outputItem == null)
             {
-                Debug.LogWarning($"Failed to find output ItemTemplate with ID {outputID} for recipe {recipeName}");
+                Debug.LogWarning($"Failed to find output ItemTemplate with ID {outputItemID} for recipe {recipeName}");
+                Debug.LogWarning($"Failed to find output SubComponentTemplate with ID {outputItemID} for recipe {recipeName}");
                 continue;
             }
 
@@ -226,9 +230,9 @@ public class CraftingManager : BaseManager
             if (recipe != null)
             {
                 recipe.Initialize(recipeID, recipeName, recipeDescription, recipeType,
-                                  requiredResources, requiredResourceAmounts, resourceTypeLevels, resourceStat1, resourceStat1Dist, resourceStat2, resourceStat2Dist,
-                                  requiredItems, requiredItemAmounts, itemStat1, itemStat1Dist, itemStat2, itemStat2Dist,
-                                  outputItem);
+                                  resourceID, requiredResourceAmounts, resourceTypeLevels, resourceStat1, resourceStat1Dist, resourceStat2, resourceStat2Dist,
+                                  requiredComponents, componentAmounts, componentStat1, componentStat1Dist, componentStat2, componentStat2Dist,
+                                  outputItem, outputSubComponent);
 
                 recipesById[recipeID] = recipe;
                 recipesByName[recipeName] = recipe;

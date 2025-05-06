@@ -189,17 +189,26 @@ public class PlayerCharacter : StatBlock
             Debug.LogWarning("Attempted to pick up null item");
             return;
         }
-
         if (inventory == null)
         {
             Debug.LogError("No inventory component found on character");
             return;
         }
-
-        if (!inventory.AddItem(item))
+        inventory.AddItem(item);        
+    }
+    public void OnPickupSubComponent(SubComponent subComponent)
+    {
+        if (subComponent == null)
         {
-            Debug.LogWarning($"Failed to add item {item.ItemName} to inventory");
+            Debug.LogWarning("Attempted to pick up null subcomponent");
+            return;
         }
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+        inventory.AddSubComponent(subComponent);
     }
     public void OnPickupResourceItem(ResourceItem resourceItem)
     {
