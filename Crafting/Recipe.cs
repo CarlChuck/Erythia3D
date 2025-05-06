@@ -1,5 +1,5 @@
 using UnityEngine;
-using System; // Added for Array declaration convenience
+using System; 
 
 public class Recipe : MonoBehaviour
 {
@@ -7,24 +7,24 @@ public class Recipe : MonoBehaviour
     [SerializeField] private int recipeID;
     [SerializeField] private string recipeName;
     [SerializeField] private string recipeDescription;
-    [SerializeField] private int recipeType; // Added
+    [SerializeField] private int recipeType;
 
     [Header("Resources")]
     [SerializeField] private ResourceType[] requiredResources = new ResourceType[4];
     [SerializeField] private int[] requiredResourceAmounts = new int[4];
-    [SerializeField] private int[] resourceTypeLevels = new int[4];      // Added
-    [SerializeField] private int[] resourceStat1 = new int[4];             // Added
-    [SerializeField] private int[] resourceStat1Dist = new int[4];       // Added
-    [SerializeField] private int[] resourceStat2 = new int[4];             // Added
-    [SerializeField] private int[] resourceStat2Dist = new int[4];       // Added
+    [SerializeField] private int[] resourceTypeLevels = new int[4];
+    [SerializeField] private int[] resourceStat1 = new int[4];
+    [SerializeField] private int[] resourceStat1Dist = new int[4];
+    [SerializeField] private int[] resourceStat2 = new int[4];
+    [SerializeField] private int[] resourceStat2Dist = new int[4];
 
     [Header("Items")]
     [SerializeField] private ItemTemplate[] requiredItems = new ItemTemplate[4];
-    [SerializeField] private int[] requiredItemAmounts = new int[4];     // Added
-    [SerializeField] private int[] itemStat1 = new int[4];                 // Added
-    [SerializeField] private int[] itemStat1Dist = new int[4];           // Added
-    [SerializeField] private int[] itemStat2 = new int[4];                 // Added
-    [SerializeField] private int[] itemStat2Dist = new int[4];           // Added
+    [SerializeField] private int[] requiredItemAmounts = new int[4];
+    [SerializeField] private int[] itemStat1 = new int[4];
+    [SerializeField] private int[] itemStat1Dist = new int[4];
+    [SerializeField] private int[] itemStat2 = new int[4];
+    [SerializeField] private int[] itemStat2Dist = new int[4];
 
     [Header("Output")]
     [SerializeField] private ItemTemplate outputItem;
@@ -33,24 +33,24 @@ public class Recipe : MonoBehaviour
     public int RecipeID => recipeID;
     public string RecipeName => recipeName;
     public string RecipeDescription => recipeDescription;
-    public int RecipeType => recipeType; // Added
+    public int RecipeType => recipeType;
 
     // Resource Properties
     public ResourceType[] RequiredResources => requiredResources;
     public int[] RequiredResourceAmounts => requiredResourceAmounts;
-    public int[] ResourceTypeLevels => resourceTypeLevels;            // Added
-    public int[] ResourceStat1 => resourceStat1;                   // Added
-    public int[] ResourceStat1Dist => resourceStat1Dist;             // Added
-    public int[] ResourceStat2 => resourceStat2;                   // Added
-    public int[] ResourceStat2Dist => resourceStat2Dist;             // Added
+    public int[] ResourceTypeLevels => resourceTypeLevels;
+    public int[] ResourceStat1 => resourceStat1;
+    public int[] ResourceStat1Dist => resourceStat1Dist;
+    public int[] ResourceStat2 => resourceStat2;
+    public int[] ResourceStat2Dist => resourceStat2Dist;
 
     // Item Properties
     public ItemTemplate[] RequiredItems => requiredItems;
-    public int[] RequiredItemAmounts => requiredItemAmounts;           // Added
-    public int[] ItemStat1 => itemStat1;                         // Added
-    public int[] ItemStat1Dist => itemStat1Dist;                   // Added
-    public int[] ItemStat2 => itemStat2;                         // Added
-    public int[] ItemStat2Dist => itemStat2Dist;                   // Added
+    public int[] RequiredItemAmounts => requiredItemAmounts;
+    public int[] ItemStat1 => itemStat1;
+    public int[] ItemStat1Dist => itemStat1Dist;
+    public int[] ItemStat2 => itemStat2;
+    public int[] ItemStat2Dist => itemStat2Dist;
 
     // Output Property
     public ItemTemplate OutputItem => outputItem;
@@ -80,4 +80,16 @@ public class Recipe : MonoBehaviour
 
         outputItem = output;
     }
+    public RecipeType GetRecipeType()
+    {
+        return (RecipeType)recipeType;
+    }
 } 
+public enum RecipeType
+{
+    Item,
+    SubComponent,
+    Weapon,
+    Tool,
+    Armour
+}

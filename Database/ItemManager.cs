@@ -78,7 +78,7 @@ public class ItemManager : BaseManager
             template.MaxDurability,
             template.Damage,
             template.Speed,
-            (int)template.DmgType,
+            (int)template.DamageType,
             (int)template.Slot,
             template.SlashResist,
             template.ThrustResist,

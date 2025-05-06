@@ -46,78 +46,78 @@ public class CraftingManager : BaseManager
             { "RecipeID", "INT AUTO_INCREMENT PRIMARY KEY" },
             { "RecipeName", "VARCHAR(255)" },
             { "RecipeDescription", "TEXT" },
-            { "RecipeType", "INT" },
+            { "RecipeType", "INT DEFAULT 0" },
 
             // Resource 1
-            { "Resource1", "INT" },
-            { "Resource1Amount", "INT" },
-            { "Resource1TypeLevel", "INT" },
-            { "Resource1Stat1", "INT" },
-            { "Resource1Stat1Distribution", "INT" },
-            { "Resource1Stat2", "INT" },
-            { "Resource1Stat2Distribution", "INT" },
+            { "Resource1", "INT DEFAULT 0" },
+            { "Resource1Amount", "INT DEFAULT 0" },
+            { "Resource1TypeLevel", "INT DEFAULT 0" },
+            { "Resource1Stat1", "INT DEFAULT 0" },
+            { "Resource1Stat1Distribution", "INT DEFAULT 0" },
+            { "Resource1Stat2", "INT DEFAULT 0" },
+            { "Resource1Stat2Distribution", "INT DEFAULT 0" },
 
             // Resource 2
-            { "Resource2", "INT" },
-            { "Resource2Amount", "INT" },
-            { "Resource2TypeLevel", "INT" },
-            { "Resource2Stat1", "INT" },
-            { "Resource2Stat1Distribution", "INT" },
-            { "Resource2Stat2", "INT" },
-            { "Resource2Stat2Distribution", "INT" },
+            { "Resource2", "INT DEFAULT 0" },
+            { "Resource2Amount", "INT DEFAULT 0" },
+            { "Resource2TypeLevel", "INT DEFAULT 0" },
+            { "Resource2Stat1", "INT DEFAULT 0" },
+            { "Resource2Stat1Distribution", "INT DEFAULT 0" },
+            { "Resource2Stat2", "INT DEFAULT 0" },
+            { "Resource2Stat2Distribution", "INT DEFAULT 0" },
 
             // Resource 3
-            { "Resource3", "INT" },
-            { "Resource3Amount", "INT" },
-            { "Resource3TypeLevel", "INT" },
-            { "Resource3Stat1", "INT" },
-            { "Resource3Stat1Distribution", "INT" },
-            { "Resource3Stat2", "INT" },
-            { "Resource3Stat2Distribution", "INT" },
+            { "Resource3", "INT DEFAULT 0" },
+            { "Resource3Amount", "INT DEFAULT 0" },
+            { "Resource3TypeLevel", "INT DEFAULT 0" },
+            { "Resource3Stat1", "INT DEFAULT 0" },
+            { "Resource3Stat1Distribution", "INT DEFAULT 0" },
+            { "Resource3Stat2", "INT DEFAULT 0" },
+            { "Resource3Stat2Distribution", "INT DEFAULT 0" },
 
             // Resource 4
-            { "Resource4", "INT" },
-            { "Resource4Amount", "INT" },
-            { "Resource4TypeLevel", "INT" },
-            { "Resource4Stat1", "INT" },
-            { "Resource4Stat1Distribution", "INT" },
-            { "Resource4Stat2", "INT" },
-            { "Resource4Stat2Distribution", "INT" },
+            { "Resource4", "INT DEFAULT 0" },
+            { "Resource4Amount", "INT DEFAULT 0" },
+            { "Resource4TypeLevel", "INT DEFAULT 0" },
+            { "Resource4Stat1", "INT DEFAULT 0" },
+            { "Resource4Stat1Distribution", "INT DEFAULT 0" },
+            { "Resource4Stat2", "INT DEFAULT 0" },
+            { "Resource4Stat2Distribution", "INT DEFAULT 0" },
 
             // Required Item 1
-            { "Item1", "INT" },
-            { "Item1Amount", "INT" },
-            { "Item1Stat1", "INT" },
-            { "Item1Stat1Distribution", "INT" },
-            { "Item1Stat2", "INT" },
-            { "Item1Stat2Distribution", "INT" },
+            { "Item1", "INT DEFAULT 0" },
+            { "Item1Amount", "INT DEFAULT 0" },
+            { "Item1Stat1", "INT DEFAULT 0" },
+            { "Item1Stat1Distribution", "INT DEFAULT 0" },
+            { "Item1Stat2", "INT DEFAULT 0" },
+            { "Item1Stat2Distribution", "INT DEFAULT 0" },
 
             // Required Item 2
-            { "Item2", "INT" },
-            { "Item2Amount", "INT" },
-            { "Item2Stat1", "INT" },
-            { "Item2Stat1Distribution", "INT" },
-            { "Item2Stat2", "INT" },
-            { "Item2Stat2Distribution", "INT" },
+            { "Item2", "INT DEFAULT 0" },
+            { "Item2Amount", "INT DEFAULT 0" },
+            { "Item2Stat1", "INT DEFAULT 0" },
+            { "Item2Stat1Distribution", "INT DEFAULT 0" },
+            { "Item2Stat2", "INT DEFAULT 0" },
+            { "Item2Stat2Distribution", "INT DEFAULT 0" },
 
             // Required Item 3
-            { "Item3", "INT" },
-            { "Item3Amount", "INT" },
-            { "Item3Stat1", "INT" },
-            { "Item3Stat1Distribution", "INT" },
-            { "Item3Stat2", "INT" },
-            { "Item3Stat2Distribution", "INT" },
+            { "Item3", "INT DEFAULT 0" },
+            { "Item3Amount", "INT DEFAULT 0" },
+            { "Item3Stat1", "INT DEFAULT 0" },
+            { "Item3Stat1Distribution", "INT DEFAULT 0" },
+            { "Item3Stat2", "INT DEFAULT 0" },
+            { "Item3Stat2Distribution", "INT DEFAULT 0" },
 
             // Required Item 4
-            { "Item4", "INT" },
-            { "Item4Amount", "INT" },
-            { "Item4Stat1", "INT" },
-            { "Item4Stat1Distribution", "INT" },
-            { "Item4Stat2", "INT" },
-            { "Item4Stat2Distribution", "INT" },
+            { "Item4", "INT DEFAULT 0" },
+            { "Item4Amount", "INT DEFAULT 0" },
+            { "Item4Stat1", "INT DEFAULT 0" },
+            { "Item4Stat1Distribution", "INT DEFAULT 0" },
+            { "Item4Stat2", "INT DEFAULT 0" },
+            { "Item4Stat2Distribution", "INT DEFAULT 0" },
 
             // Output
-            { "OutputID", "INT" }
+            { "OutputID", "INT DEFAULT 0" }
         };
 
         // Ensure the Recipes table exists
@@ -173,20 +173,8 @@ public class CraftingManager : BaseManager
             int[] resourceStat1 = new int[4];
             int[] resourceStat1Dist = new int[4];
             int[] resourceStat2 = new int[4];
-            int[] resourceStat2Dist = new int[4];
-
-            for (int i = 0; i < 4; i++)
-            {
-                int index = i + 1;
-                requiredResources[i] = (ResourceType)SafeConvert.ToInt32(row, $"Resource{index}");
-                requiredResourceAmounts[i] = SafeConvert.ToInt32(row, $"Resource{index}Amount");
-                resourceTypeLevels[i] = SafeConvert.ToInt32(row, $"Resource{index}TypeLevel");
-                resourceStat1[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat1");
-                resourceStat1Dist[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat1Distribution");
-                resourceStat2[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2");
-                resourceStat2Dist[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2Distribution");
-            }
-
+            int[] resourceStat2Dist = new int[4];            
+            
             // --- Items ---
             ItemTemplate[] requiredItems = new ItemTemplate[4];
             int[] requiredItemAmounts = new int[4];
@@ -198,6 +186,14 @@ public class CraftingManager : BaseManager
             for (int i = 0; i < 4; i++)
             {
                 int index = i + 1;
+                requiredResources[i] = (ResourceType)SafeConvert.ToInt32(row, $"Resource{index}");
+                requiredResourceAmounts[i] = SafeConvert.ToInt32(row, $"Resource{index}Amount");
+                resourceTypeLevels[i] = SafeConvert.ToInt32(row, $"Resource{index}TypeLevel");
+                resourceStat1[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat1");
+                resourceStat1Dist[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat1Distribution");
+                resourceStat2[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2");
+                resourceStat2Dist[i] = SafeConvert.ToInt32(row, $"Resource{index}Stat2Distribution");
+
                 int itemID = SafeConvert.ToInt32(row, $"Item{index}");
                 requiredItemAmounts[i] = SafeConvert.ToInt32(row, $"Item{index}Amount");
                 itemStat1[i] = SafeConvert.ToInt32(row, $"Item{index}Stat1");
@@ -248,18 +244,6 @@ public class CraftingManager : BaseManager
     }
     #endregion
 
-    public void CraftRecipe(Recipe recipe, Resource resource1, Resource resource2, Resource resource3, Resource resource4, Item item1, Item item2, Item item3, Item item4, Item output)
-    {
-        
-    }
-    public void CraftItem(Recipe recipe,Resource resource1, Resource resource2, Resource resource3, Resource resource4, Item item1, Item item2, Item item3, Item item4, Item output)
-    {
-        
-    }
-    public void CraftSubComponent(Recipe recipe, Resource resource1, Resource resource2, Resource resource3, Resource resource4, Item item1, Item item2, Item item3, Item item4, Item output)
-    {
-        
-    }
 
     #region Getters
     public Recipe GetRecipeByID(int recipeID)

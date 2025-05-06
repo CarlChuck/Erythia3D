@@ -121,7 +121,7 @@ public class UITooltipManager : MonoBehaviour
                 sb.AppendLine($"Carbohydrate: {resourceItem.Resource.Carbohydrate}");
                 sb.AppendLine($"Flavour: {resourceItem.Resource.Flavour}");
             }
-            if (resourceItem.Resource.Type == ResourceType.Coal)
+            if (resourceItem.Resource.Type == ResourceType.Coal || resourceItem.Resource.resourceTemplate.Family == ResourceFamily.Wood)
             {
                 sb.AppendLine($"Energy: {resourceItem.Resource.Energy}");
             }
@@ -131,7 +131,8 @@ public class UITooltipManager : MonoBehaviour
             sb.AppendLine($"Value: ({resourceItem.Resource.Value}) - {resourceItem.Price}");
             if (!string.IsNullOrEmpty(resourceItem.GetDescription())) 
             { 
-                sb.AppendLine($"\n<i>{resourceItem.GetDescription()}</i>"); 
+                //Description maybe used later
+                //sb.AppendLine($"\n<i>{resourceItem.GetDescription()}</i>"); 
             }
             content = sb.ToString();
             canShow = true;

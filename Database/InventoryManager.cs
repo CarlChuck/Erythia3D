@@ -364,6 +364,15 @@ public class InventoryManager : BaseManager
             return false;
         }
 
+        // --- Check if item already exists for this character --- 
+        bool itemExists = await CheckIfItemExistsAsync(charId, itemId);
+        if (itemExists)
+        {
+            LogWarning($"Item with ID {itemId} already exists in inventory for character {charId}. Cannot add duplicate.");
+            return false;
+        }
+        // -------
+
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"CharID", charId},
@@ -458,6 +467,15 @@ public class InventoryManager : BaseManager
             return false;
         }
 
+        // --- Check if resource item instance already exists for this character ---
+        bool resourceExists = await CheckIfInventoryResourceItemExistsAsync(charId, resourceItemId);
+        if (resourceExists)
+        {
+            LogWarning($"ResourceItem with ID {resourceItemId} already exists in inventory slots for character {charId}. Cannot add duplicate.");
+            return false;
+        }
+        // --------
+
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"CharID", charId},
@@ -538,6 +556,15 @@ public class InventoryManager : BaseManager
             return false;
         }
 
+        // --- Check if subcomponent instance already exists for this character ---
+        bool subComponentExists = await CheckIfInventorySubComponentExistsAsync(charId, subComponentId);
+        if (subComponentExists)
+        {
+            LogWarning($"SubComponent with ID {subComponentId} already exists in inventory slots for character {charId}. Cannot add duplicate.");
+            return false;
+        }
+        // --------
+
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"CharID", charId},
@@ -591,11 +618,72 @@ public class InventoryManager : BaseManager
     {
         base.OnDestroy();
     }
-
     public void SetBagSpace(int newBagSpace)
     {
         // Implementation of SetBagSpace method
     }
+    private async Task<bool> CheckIfItemExistsAsync(int charId, int itemId)
+    {
+        string query = $"SELECT COUNT(*) FROM `{InventoryItemsTableName}` WHERE CharID = @CharID AND ItemID = @ItemID";
+        Dictionary<string, object> parameters = new Dictionary<string, object>
+        {
+            {"@CharID", charId},
+            {"@ItemID", itemId}
+        };
 
+        try
+        {
+            object result = await DatabaseManager.Instance.ExecuteScalarAsync(query, parameters); 
+            int count = result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error checking if item exists (CharID: {charId}, ItemID: {itemId})", ex);
+            return true; // Assume it exists on error to prevent potential duplicates
+        }
+    }
+    private async Task<bool> CheckIfInventoryResourceItemExistsAsync(int charId, int resourceItemId)
+    {
+        string query = $"SELECT COUNT(*) FROM `{InventoryResourceItemsTableName}` WHERE CharID = @CharID AND ResourceItemID = @ResourceItemID";
+        Dictionary<string, object> parameters = new Dictionary<string, object>
+        {
+            {"@CharID", charId},
+            {"@ResourceItemID", resourceItemId}
+        };
+
+        try
+        {
+            object result = await DatabaseManager.Instance.ExecuteScalarAsync(query, parameters);
+            int count = result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error checking if inventory resource item exists (CharID: {charId}, ResourceItemID: {resourceItemId})", ex);
+            return true; // Assume it exists on error to prevent potential duplicates
+        }
+    }
+    private async Task<bool> CheckIfInventorySubComponentExistsAsync(int charId, int subComponentId)
+    {
+        string query = $"SELECT COUNT(*) FROM `{InventorySubComponentsTableName}` WHERE CharID = @CharID AND SubComponentID = @SubComponentID";
+        Dictionary<string, object> parameters = new Dictionary<string, object>
+        {
+            {"@CharID", charId},
+            {"@SubComponentID", subComponentId}
+        };
+
+        try
+        {
+            object result = await DatabaseManager.Instance.ExecuteScalarAsync(query, parameters);
+            int count = result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error checking if inventory subcomponent exists (CharID: {charId}, SubComponentID: {subComponentId})", ex);
+            return true; // Assume it exists on error to prevent potential duplicates
+        }
+    }
     #endregion
 }
