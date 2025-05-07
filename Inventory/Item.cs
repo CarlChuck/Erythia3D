@@ -80,6 +80,10 @@ public class Item : MonoBehaviour
         //TODO: Add description logic
         return Template?.ExamineText ?? "No description available."; 
     }
+    public void SetDamage(int damage)
+    {
+        Damage = damage;
+    }
 }
 public enum ItemType
 {

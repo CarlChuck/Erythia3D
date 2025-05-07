@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Threading;
 using System.Threading.Tasks;
+using static UnityEngine.Rendering.DebugUI;
 
 public class Crafter : MonoBehaviour
 {
@@ -18,6 +19,7 @@ public class Crafter : MonoBehaviour
         if (recipe != null)
         {
             Resource[] resources;
+            SubComponent[] components;
             if (res4 != null)
             {
                 resources = new Resource[4] { res1, res2, res3, res4 };
@@ -34,41 +36,25 @@ public class Crafter : MonoBehaviour
             {
                 resources = new Resource[1] { res1 };
             }
-
-            bool areResourcesMatching = true;
-            for (int i = 0; i < resources.Length; i++)
+            if (component4 != null)
             {
-                if (recipe.ResourceTypeLevels[i] == 0)
-                {
-                    if (recipe.ResourceOrders[i] != resources[i].GetResourceOrder())
-                    {
-                        areResourcesMatching = false;
-                        break;
-                    }
-                }
-                else if (recipe.ResourceTypeLevels[i] == 1)
-                {
-                    if (recipe.ResourceFamilies[i] != resources[i].GetResourceTemplate().Family)
-                    {
-                        areResourcesMatching = false;
-                        break;
-                    }
-                }
-                else if (recipe.ResourceTypeLevels[i] == 2)
-                {
-                    if (recipe.ResourceTypes[i] != resources[i].GetResourceType())
-                    {
-                        areResourcesMatching = false;
-                        break;
-                    }
-                }
-                else
-                {
-                    Debug.LogError("Invalid resource type level");
-                }
-            }            
+                components = new SubComponent[4] { component1, component2, component3, component4 };
+            }
+            else if (component3 != null)
+            {
+                components = new SubComponent[3] { component1, component2, component3 };
+            }
+            else if (component2 != null)
+            {
+                components = new SubComponent[2] { component1, component2 };
+            }
+            else
+            {
+                components = new SubComponent[1] { component1 };
+            }
+                
 
-            if (areResourcesMatching)
+            if (IsResourcesAndSubComponentsMatching(recipe, resources, components))
             {
                 if (recipe.GetRecipeType() == RecipeType.SubComponent)
                 {
@@ -91,12 +77,18 @@ public class Crafter : MonoBehaviour
                     return CraftItem(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
                 }
             }
+            else
+            {
+                Debug.LogError("Resources and subcomponents do not match recipe requirements");
+                return null;
+            }
         }
         else
         {
             Debug.LogError("Recipe is null");
+            return null;
         }
-        return null;
+
     }
     public Item CraftItem(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
     {
@@ -127,73 +119,92 @@ public class Crafter : MonoBehaviour
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
 
+        int resCount = 0;
+        if (res1 != null) resCount++;
+        if (res2 != null) resCount++;
+        if (res3 != null) resCount++;
+        if (res4 != null) resCount++;
 
-        int resValue1 = 0;
-        int resValue2 = 0;
-        int resValue3 = 0;
-        int resValue4 = 0;
-        int subComponentValue1 = 0;
-        int subComponentValue2 = 0;
-        int subComponentValue3 = 0;
-        int subComponentValue4 = 0;
+        int componentCount = 0;
+        if (component1 != null) componentCount++;
+        if (component2 != null) componentCount++;
+        if (component3 != null) componentCount++;
+        if (component4 != null) componentCount++;
 
-        if (recipe.ResourceStat1[0] > 0)
+        int[] resValues = new int[resCount];
+        int[] subComponentValues = new int[componentCount];
+
+        if (recipe.ResourceStat1[0] > 0 && res1 != null)
         {
-            int stat1 = 0;
-            int stat2 = 0;
-            if (res1.GetResourceType() == recipe.ResourceTypes[0])
-            {
-                stat1 = GetStatByNumber(res1, (recipe.ResourceStat1[0]) * (recipe.ResourceStat1Dist[0]) / 100);
-                stat2 = GetStatByNumber(res1, (recipe.ResourceStat2[0]) * (recipe.ResourceStat2Dist[0]) / 100);
-            }
-            resValue1 = stat1 + stat2;
+            int stat1 = GetStatByNumber(recipe.ResourceStat1[0], res1, null);
+            int stat2 = GetStatByNumber(recipe.ResourceStat2[0], res1, null);
+
+            resValues[0] = ((stat1 * recipe.ResourceStat1Dist[0]) / 100) + ((stat2 * recipe.ResourceStat2Dist[0]) / 100);
         }
-        if (recipe.ResourceStat1[1] > 0)
+        if (recipe.ResourceStat1[1] > 0 && res2 != null)
         {
-            int stat1 = 0;
-            int stat2 = 0;
-            if (res2.GetResourceType() == recipe.ResourceTypes[1])
-            {
-                stat1 = GetStatByNumber(res2, (recipe.ResourceStat1[1]) * (recipe.ResourceStat1Dist[1]) / 100);
-                stat2 = GetStatByNumber(res2, (recipe.ResourceStat2[1]) * (recipe.ResourceStat2Dist[1]) / 100);
-            }
-            resValue2 = stat1 + stat2;
+            int stat1 = GetStatByNumber(recipe.ResourceStat1[1], res2, null);
+            int stat2 = GetStatByNumber(recipe.ResourceStat2[1], res2, null);
+
+            resValues[1] = ((stat1 * recipe.ResourceStat1Dist[1]) / 100) + ((stat2 * recipe.ResourceStat2Dist[1]) / 100);
         }
-        if (recipe.ResourceStat1[2] > 0)
+        if (recipe.ResourceStat1[2] > 0 && res3 != null)
         {
-            int stat1 = 0;
-            int stat2 = 0;
-            if (res3.GetResourceType() == recipe.ResourceTypes[2])
-            {
-                stat1 = GetStatByNumber(res3, (recipe.ResourceStat1[2]) * (recipe.ResourceStat1Dist[2]) / 100);
-                stat2 = GetStatByNumber(res3, (recipe.ResourceStat2[2]) * (recipe.ResourceStat2Dist[2]) / 100);
-            }
-            resValue3 = stat1 + stat2;
+            int stat1 = GetStatByNumber(recipe.ResourceStat1[2], res3, null);
+            int stat2 = GetStatByNumber(recipe.ResourceStat2[2], res3, null);
+
+            resValues[2] = ((stat1 * recipe.ResourceStat1Dist[2]) / 100) + ((stat2 * recipe.ResourceStat2Dist[2]) / 100);
         }
-        if (recipe.ResourceStat1[3] > 0)
+        if (recipe.ResourceStat1[3] > 0 && res4 != null)
         {
-            int stat1 = 0;
-            int stat2 = 0;
-            if (res4.GetResourceType() == recipe.ResourceTypes[3])
-            {
-                stat1 = GetStatByNumber(res4, (recipe.ResourceStat1[3]) * (recipe.ResourceStat1Dist[3]) / 100);
-                stat2 = GetStatByNumber(res4, (recipe.ResourceStat2[3]) * (recipe.ResourceStat2Dist[3]) / 100);
-            }
-            resValue4 = stat1 + stat2;
+            int stat1 = GetStatByNumber(recipe.ResourceStat1[3], res4, null);
+            int stat2 = GetStatByNumber(recipe.ResourceStat2[3], res4, null);
+
+            resValues[3] = ((stat1 * recipe.ResourceStat1Dist[3]) / 100) + ((stat2 * recipe.ResourceStat2Dist[3]) / 100);
         }
-        if (recipe.SubComponentStat1[0] > 0)
+        if (recipe.SubComponentStat1[0] > 0 && component1 != null)
         {
-            int stat1 = 0;
-            int stat2 = 0;
-
-            subComponentValue1 = stat1 + stat2;
+            int stat1 = GetStatByNumber(recipe.SubComponentStat1[0], null, component1);
+            int stat2 = GetStatByNumber(recipe.SubComponentStat2[0], null, component1);
+            subComponentValues[0] = ((stat1 * recipe.SubComponentStat1Dist[0]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[0]) / 100);
+        }
+        if (recipe.SubComponentStat1[1] > 0 && component2 != null)
+        {
+            int stat1 = GetStatByNumber(recipe.SubComponentStat1[1], null, component2);
+            int stat2 = GetStatByNumber(recipe.SubComponentStat2[1], null, component2);
+            subComponentValues[1] = ((stat1 * recipe.SubComponentStat1Dist[1]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[1]) / 100);
+        }
+        if (recipe.SubComponentStat1[2] > 0 && component3 != null)
+        {
+            int stat1 = GetStatByNumber(recipe.SubComponentStat1[2], null, component3);
+            int stat2 = GetStatByNumber(recipe.SubComponentStat2[2], null, component3);
+            subComponentValues[2] = ((stat1 * recipe.SubComponentStat1Dist[2]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[2]) / 100);
+        }
+        if (recipe.SubComponentStat1[3] > 0 && component4 != null)
+        {
+            int stat1 = GetStatByNumber(recipe.SubComponentStat1[3], null, component4);
+            int stat2 = GetStatByNumber(recipe.SubComponentStat2[3], null, component4);
+            subComponentValues[3] = ((stat1 * recipe.SubComponentStat1Dist[3]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[3]) / 100);
         }
 
+        int averageResValue = 0;
+        for (int i = 0; i < resValues.Length; i++)
+        {
+            averageResValue += resValues[i];
+        }
+        averageResValue /= resValues.Length;
+
+        int averageSubComponentValue = 0;
+        for (int i = 0; i < subComponentValues.Length; i++)
+        {
+            averageSubComponentValue += subComponentValues[i];
+        }
+        averageSubComponentValue /= subComponentValues.Length;
 
 
+        int toolDamage = (int)(recipe.OutputItem.Damage * (averageResValue + averageSubComponentValue) / 200);
 
-
-        int toolDamage = 0;
+        itemToReturn.SetDamage(toolDamage);
 
         long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
         if (itemID > 0)
@@ -220,45 +231,132 @@ public class Crafter : MonoBehaviour
     }
 
     #region Helpers
-    public int GetStatByNumber(Resource resource, int num)
+    public int GetStatByNumber(int num, Resource resource = null, SubComponent component = null)
     {
-        int statValueToReturn = 0;
-        switch (num)
+        if (resource == null && component == null)
         {
-            case 1:
-                statValueToReturn = resource.Quality;
-                break;
-            case 2:
-                statValueToReturn = resource.Toughness;
-                break;
-            case 3:
-                statValueToReturn = resource.Strength;
-                break;
-            case 4:
-                statValueToReturn = resource.Density;
-                break;
-            case 5:
-                statValueToReturn = resource.Aura;
-                break;
-            case 6:
-                statValueToReturn = resource.Energy;
-                break;
-            case 7:
-                statValueToReturn = resource.Protein;
-                break;
-            case 8:
-                statValueToReturn = resource.Carbohydrate;
-                break;
-            case 9:
-                statValueToReturn = resource.Flavour;
-                break;
-            default:
-                Debug.LogError("Invalid stat number");                
-                break;
+            Debug.LogError("No resource or subcomponent provided");
+            return 0;
         }
-        return statValueToReturn;
+        if (component == null)
+        {
+
+            int statValueToReturn = 0;
+            switch (num)
+            {
+                case 1:
+                    statValueToReturn = resource.Quality;
+                    break;
+                case 2:
+                    statValueToReturn = resource.Toughness;
+                    break;
+                case 3:
+                    statValueToReturn = resource.Strength;
+                    break;
+                case 4:
+                    statValueToReturn = resource.Density;
+                    break;
+                case 5:
+                    statValueToReturn = resource.Aura;
+                    break;
+                case 6:
+                    statValueToReturn = resource.Energy;
+                    break;
+                case 7:
+                    statValueToReturn = resource.Protein;
+                    break;
+                case 8:
+                    statValueToReturn = resource.Carbohydrate;
+                    break;
+                case 9:
+                    statValueToReturn = resource.Flavour;
+                    break;
+                default:
+                    Debug.LogError("Invalid stat number");
+                    break;
+            }
+            return statValueToReturn;
+        }
+        else
+        {
+
+            int statValueToReturn = 0;
+            switch (num)
+            {
+                case 1:
+                    statValueToReturn = component.Quality;
+                    break;
+                case 2:
+                    statValueToReturn = component.Toughness;
+                    break;
+                case 3:
+                    statValueToReturn = component.Strength;
+                    break;
+                case 4:
+                    statValueToReturn = component.Density;
+                    break;
+                case 5:
+                    statValueToReturn = component.Aura;
+                    break;
+                case 6:
+                    statValueToReturn = component.Energy;
+                    break;
+                case 7:
+                    statValueToReturn = component.Protein;
+                    break;
+                case 8:
+                    statValueToReturn = component.Carbohydrate;
+                    break;
+                case 9:
+                    statValueToReturn = component.Flavour;
+                    break;
+                default:
+                    Debug.LogError("Invalid stat number");
+                    break;
+            }
+            return statValueToReturn;
+        }
     }
 
+    public bool IsResourcesAndSubComponentsMatching(Recipe recipe, Resource[] resources, SubComponent[] components)
+    {
+        for (int i = 0; i < resources.Length; i++)
+        {
+            if (recipe.ResourceTypeLevels[i] == 0)
+            {
+                if (recipe.ResourceOrders[i] != resources[i].GetResourceOrder())
+                {
+                    return false;
+                }
+            }
+            else if (recipe.ResourceTypeLevels[i] == 1)
+            {
+                if (recipe.ResourceFamilies[i] != resources[i].GetResourceTemplate().Family)
+                {
+                    return false;
+                }
+            }
+            else if (recipe.ResourceTypeLevels[i] == 2)
+            {
+                if (recipe.ResourceTypes[i] != resources[i].GetResourceType())
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                Debug.LogError("Invalid resource type level");
+            }
+            if (recipe.ComponentAmounts[i] > 0)
+            {
+                if (recipe.SubComponents[i].ComponentTemplateID != components[i].SubComponentTemplateID)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
     public Item MapTemplateToItem(ItemTemplate itemTemplate)
     {
         Item item = Instantiate(itemManager.GetItemPrefab());
