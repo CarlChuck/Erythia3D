@@ -17,34 +17,79 @@ public class Crafter : MonoBehaviour
     {
         if (recipe != null)
         {
-            for (int i = 0; i < recipe.ResourceTypes.Length; i++)
+            Resource[] resources;
+            if (res4 != null)
             {
-                if (recipe.ResourceTypeLevels[i] == 1)
-                {
-                    break;
-                }
+                resources = new Resource[4] { res1, res2, res3, res4 };
             }
-
-
-            if (recipe.GetRecipeType() == RecipeType.SubComponent)
+            else if (res3 != null)
             {
-                return CraftSubComponent(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                resources = new Resource[3] { res1, res2, res3 };
             }
-            else if (recipe.GetRecipeType() == RecipeType.Weapon)
+            else if (res2 != null)
             {
-                return CraftWeapon(character, recipe, res1, res2, res3, res4,component1, component2, component3, component4);
-            }
-            else if (recipe.GetRecipeType() == RecipeType.Armour)
-            {
-                return CraftArmour(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
-            }
-            else if (recipe.GetRecipeType() == RecipeType.Tool)
-            {
-                return CraftTool(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                resources = new Resource[2] { res1, res2 };
             }
             else
             {
-                return CraftItem(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                resources = new Resource[1] { res1 };
+            }
+
+            bool areResourcesMatching = true;
+            for (int i = 0; i < resources.Length; i++)
+            {
+                if (recipe.ResourceTypeLevels[i] == 0)
+                {
+                    if (recipe.ResourceOrders[i] != resources[i].GetResourceOrder())
+                    {
+                        areResourcesMatching = false;
+                        break;
+                    }
+                }
+                else if (recipe.ResourceTypeLevels[i] == 1)
+                {
+                    if (recipe.ResourceFamilies[i] != resources[i].GetResourceTemplate().Family)
+                    {
+                        areResourcesMatching = false;
+                        break;
+                    }
+                }
+                else if (recipe.ResourceTypeLevels[i] == 2)
+                {
+                    if (recipe.ResourceTypes[i] != resources[i].GetResourceType())
+                    {
+                        areResourcesMatching = false;
+                        break;
+                    }
+                }
+                else
+                {
+                    Debug.LogError("Invalid resource type level");
+                }
+            }            
+
+            if (areResourcesMatching)
+            {
+                if (recipe.GetRecipeType() == RecipeType.SubComponent)
+                {
+                    return CraftSubComponent(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                }
+                else if (recipe.GetRecipeType() == RecipeType.Weapon)
+                {
+                    return CraftWeapon(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                }
+                else if (recipe.GetRecipeType() == RecipeType.Armour)
+                {
+                    return CraftArmour(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                }
+                else if (recipe.GetRecipeType() == RecipeType.Tool)
+                {
+                    return CraftTool(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                }
+                else
+                {
+                    return CraftItem(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                }
             }
         }
         else
