@@ -9,24 +9,24 @@ public class Recipe : MonoBehaviour
     [SerializeField] private string recipeDescription;
     [SerializeField] private int recipeType;
 
+    [Header("Stat Distribution")]
+    [SerializeField] private int stat1;
+    [SerializeField] private int stat1Distribution;
+    [SerializeField] private int stat2;
+    [SerializeField] private int stat2Distribution;
+    [SerializeField] private int stat3;
+    [SerializeField] private int stat3Distribution;
+
     [Header("Resources")]
     [SerializeField] private ResourceType[] resourceTypes = new ResourceType[4];
     [SerializeField] private ResourceFamily[] resourceFamilies = new ResourceFamily[4];
     [SerializeField] private ResourceOrder[] resourceOrders = new ResourceOrder[4];
     [SerializeField] private int[] resourceAmounts = new int[4];
     [SerializeField] private int[] resourceTypeLevels = new int[4];
-    [SerializeField] private int[] resourceStat1 = new int[4];
-    [SerializeField] private int[] resourceStat1Dist = new int[4];
-    [SerializeField] private int[] resourceStat2 = new int[4];
-    [SerializeField] private int[] resourceStat2Dist = new int[4];
 
     [Header("Items")]
-    [SerializeField] private SubComponentTemplate[] subComponents = new SubComponentTemplate[4];
-    [SerializeField] private int[] componentAmounts = new int[4];
-    [SerializeField] private int[] subComponentStat1 = new int[4];
-    [SerializeField] private int[] subComponentStat1Dist = new int[4];
-    [SerializeField] private int[] subComponentStat2 = new int[4];
-    [SerializeField] private int[] subComponentStat2Dist = new int[4];
+    [SerializeField] private SubComponentTemplate[] subComponents = new SubComponentTemplate[8];
+    [SerializeField] private int[] componentAmounts = new int[8];
 
     [Header("Output")]
     [SerializeField] private ItemTemplate outputItem;
@@ -38,36 +38,48 @@ public class Recipe : MonoBehaviour
     public string RecipeDescription => recipeDescription;
     public int RecipeType => recipeType;
 
+    // Stat Distribution Properties
+    public int Stat1 => stat1;
+    public int Stat1Distribution => stat1Distribution;
+    public int Stat2 => stat2;
+    public int Stat2Distribution => stat2Distribution;
+    public int Stat3 => stat3;
+    public int Stat3Distribution => stat3Distribution;
+
     // Resource Properties
     public ResourceType[] ResourceTypes => resourceTypes;
     public ResourceFamily[] ResourceFamilies => resourceFamilies;
     public ResourceOrder[] ResourceOrders => resourceOrders;
     public int[] ResourceAmounts => resourceAmounts;
     public int[] ResourceTypeLevels => resourceTypeLevels;
-    public int[] ResourceStat1 => resourceStat1;
-    public int[] ResourceStat1Dist => resourceStat1Dist;
-    public int[] ResourceStat2 => resourceStat2;
-    public int[] ResourceStat2Dist => resourceStat2Dist;
 
     // SubComponent Properties
     public SubComponentTemplate[] SubComponents => subComponents;
     public int[] ComponentAmounts => componentAmounts;
-    public int[] SubComponentStat1 => subComponentStat1;
-    public int[] SubComponentStat1Dist => subComponentStat1Dist;
-    public int[] SubComponentStat2 => subComponentStat2;
-    public int[] SubComponentStat2Dist => subComponentStat2Dist;
 
     // Output Property
     public ItemTemplate OutputItem => outputItem;
     public SubComponentTemplate OutputSubComponent => outputSubComponent;
 
     // Updated Initialize method
-    public void Initialize(int id, string name, string description, int type, int[] resourceIDs,  int[] resourceAmnts, int[] resTypeLevels, int[] resStat1, int[] resStat1Dist, int[] resStat2, int[] resStat2Dist, SubComponentTemplate[] subComp, int[] compAmounts, int[] compStat1, int[] compStat1Dist, int[] compStat2, int[] compStat2Dist, ItemTemplate outputIt, SubComponentTemplate outputSub)
+    public void Initialize(int id, string name, string description, int type,
+                           int s1, int s1Dist, int s2, int s2Dist, int s3, int s3Dist,
+                           int[] resourceIDs, int[] resourceAmnts, int[] resTypeLevels,
+                           SubComponentTemplate[] subComp, int[] compAmounts,
+                           ItemTemplate outputIt, SubComponentTemplate outputSub)
     {
         recipeID = id;
         recipeName = name;
         recipeDescription = description;
         recipeType = type;
+
+        // Stat Distribution
+        stat1 = s1;
+        stat1Distribution = s1Dist;
+        stat2 = s2;
+        stat2Distribution = s2Dist;
+        stat3 = s3;
+        stat3Distribution = s3Dist;
 
         for (int i = 0; i < 4; i++)
         {
@@ -99,17 +111,9 @@ public class Recipe : MonoBehaviour
         }
         resourceAmounts = resourceAmnts ?? new int[4];
         resourceTypeLevels = resTypeLevels ?? new int[4];
-        resourceStat1 = resStat1 ?? new int[4];
-        resourceStat1Dist = resStat1Dist ?? new int[4];
-        resourceStat2 = resStat2 ?? new int[4];
-        resourceStat2Dist = resStat2Dist ?? new int[4];
 
-        subComponents = subComp ?? new SubComponentTemplate[4];
-        componentAmounts = compAmounts ?? new int[4];
-        subComponentStat1 = compStat1 ?? new int[4];
-        subComponentStat1Dist = compStat1Dist ?? new int[4];
-        subComponentStat2 = compStat2 ?? new int[4];
-        subComponentStat2Dist = compStat2Dist ?? new int[4];
+        subComponents = subComp ?? new SubComponentTemplate[8];
+        componentAmounts = compAmounts ?? new int[8];
 
         outputItem = outputIt;
         outputSubComponent = outputSub;

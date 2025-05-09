@@ -1,7 +1,6 @@
 using UnityEngine;
 using System.Threading;
 using System.Threading.Tasks;
-using static UnityEngine.Rendering.DebugUI;
 
 public class Crafter : MonoBehaviour
 {
@@ -14,7 +13,7 @@ public class Crafter : MonoBehaviour
         inventoryManager = InventoryManager.Instance;
     }
     
-    public object CraftRecipe(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public object CraftRecipe(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4, SubComponent component5, SubComponent component6, SubComponent component7, SubComponent component8)
     {
         if (recipe != null)
         {
@@ -36,7 +35,23 @@ public class Crafter : MonoBehaviour
             {
                 resources = new Resource[1] { res1 };
             }
-            if (component4 != null)
+            if (component8 != null)
+            {
+                components = new SubComponent[8] { component1, component2, component3, component4, component5, component6, component7, component8 };
+            }
+            else if (component7 != null)
+            {
+                components = new SubComponent[7] { component1, component2, component3, component4, component5, component6, component7 };
+            }
+            else if (component6 != null)
+            {
+                components = new SubComponent[6] { component1, component2, component3, component4, component5, component6 };
+            }
+            else if (component5 != null)
+            {
+                components = new SubComponent[5] { component1, component2, component3, component4, component5 };
+            }
+            else if (component4 != null)
             {
                 components = new SubComponent[4] { component1, component2, component3, component4 };
             }
@@ -58,23 +73,23 @@ public class Crafter : MonoBehaviour
             {
                 if (recipe.GetRecipeType() == RecipeType.SubComponent)
                 {
-                    return CraftSubComponent(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                    return CraftSubComponent(character, recipe, resources, components);
                 }
                 else if (recipe.GetRecipeType() == RecipeType.Weapon)
                 {
-                    return CraftWeapon(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                    return CraftWeapon(character, recipe, resources, components);
                 }
                 else if (recipe.GetRecipeType() == RecipeType.Armour)
                 {
-                    return CraftArmour(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                    return CraftArmour(character, recipe, resources, components);
                 }
                 else if (recipe.GetRecipeType() == RecipeType.Tool)
                 {
-                    return CraftTool(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                    return CraftTool(character, recipe, resources, components);
                 }
                 else
                 {
-                    return CraftItem(character, recipe, res1, res2, res3, res4, component1, component2, component3, component4);
+                    return CraftItem(character, recipe, resources, components);
                 }
             }
             else
@@ -90,121 +105,124 @@ public class Crafter : MonoBehaviour
         }
 
     }
-    public Item CraftItem(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public async Task<Item> CraftItem(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
+        int[] resValues = GetFinalStatValueArray(resources, components);
 
+        int stat1 = (resValues[recipe.Stat1] * recipe.Stat1Distribution) / 100;
+        int stat2 = (resValues[recipe.Stat2] * recipe.Stat2Distribution) / 100;
+        int stat3 = (resValues[recipe.Stat3] * recipe.Stat3Distribution) / 100;
 
-        return itemToReturn;
+        //TODO no idea what goes on here yet.
+
+        int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
+        itemToReturn.SetDurability(durability);
+
+        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        if (itemID > 0)
+        {
+            itemToReturn.SetItemID((int)itemID);
+            character.OnPickupItem(itemToReturn);
+            bool isSaved = await inventoryManager.AddItemToInventoryAsync(character.GetCharacterID(), (int)itemID, 0);
+            return itemToReturn;
+        }
+        else
+        {
+            Debug.LogError("Failed to save crafted Armour to database. Destroying instance.");
+            Destroy(itemToReturn.gameObject);
+            return null;
+        }
     }
-    public Item CraftWeapon(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public async Task<Item> CraftWeapon(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
+        int[] resValues = GetFinalStatValueArray(resources, components);
+
+        int stat1 = (resValues[recipe.Stat1] * recipe.Stat1Distribution) / 100; // 50%
+        int stat2 = (resValues[recipe.Stat2] * recipe.Stat2Distribution) / 100; // 50%
+        int stat3 = (resValues[recipe.Stat3] * recipe.Stat3Distribution) / 100; // 50%
+
+        int weaponDamage = (int)(itemTemplate.Damage * ((stat1 + stat2) / 1000));
+        int weaponSpeed = (int)(itemTemplate.Speed * ((stat1 + stat3) / 1000));
+        itemToReturn.SetDamage(weaponDamage);
+        itemToReturn.SetSpeed(weaponSpeed);
+
+        int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
+        itemToReturn.SetDurability(durability);
 
 
-        return itemToReturn;
+        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        if (itemID > 0)
+        {
+            itemToReturn.SetItemID((int)itemID);
+            character.OnPickupItem(itemToReturn);
+            bool isSaved = await inventoryManager.AddItemToInventoryAsync(character.GetCharacterID(), (int)itemID, 0);
+            return itemToReturn;
+        }
+        else
+        {
+            Debug.LogError("Failed to save crafted Armour to database. Destroying instance.");
+            Destroy(itemToReturn.gameObject);
+            return null;
+        }
     }
-    public Item CraftArmour(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public async Task<Item> CraftArmour(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
+        int[] resValues = GetFinalStatValueArray(resources, components);
 
+        int stat1 = (resValues[recipe.Stat1] * recipe.Stat1Distribution) / 100; // 50%
+        int stat2 = (resValues[recipe.Stat2] * recipe.Stat2Distribution) / 100; // 25%
+        int stat3 = (resValues[recipe.Stat3] * recipe.Stat3Distribution) / 100; // 25%
 
-        return itemToReturn;
+        int slashResist = (int)(itemTemplate.SlashResist * ((stat1 + stat2 + stat3) / 1000));
+        int thrustResist = (int)(itemTemplate.ThrustResist * ((stat1 + stat2 + stat3) / 1000));
+        int crushResist = (int)(itemTemplate.CrushResist * ((stat1 + stat2 + stat3) / 1000));
+        int heatResist = (int)(itemTemplate.HeatResist * ((stat1 + stat2 + stat3) / 1000));
+        int shockResist = (int)(itemTemplate.ShockResist * ((stat1 + stat2 + stat3) / 1000));
+        int coldResist = (int)(itemTemplate.ColdResist * ((stat1 + stat2 + stat3) / 1000));
+
+        itemToReturn.SetArmourResists(new int[] { slashResist, thrustResist, crushResist, heatResist, shockResist, coldResist });
+
+        int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
+        itemToReturn.SetDurability(durability);
+
+        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        if (itemID > 0)
+        {
+            itemToReturn.SetItemID((int)itemID);
+            character.OnPickupItem(itemToReturn);
+            bool isSaved = await inventoryManager.AddItemToInventoryAsync(character.GetCharacterID(), (int)itemID, 0);
+            return itemToReturn;
+        }
+        else
+        {
+            Debug.LogError("Failed to save crafted Armour to database. Destroying instance.");
+            Destroy(itemToReturn.gameObject);
+            return null;
+        }
     }
-    public async Task<Item> CraftTool(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public async Task<Item> CraftTool(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
+        int[] resValues = GetFinalStatValueArray(resources, components);
 
-        int resCount = 0;
-        if (res1 != null) resCount++;
-        if (res2 != null) resCount++;
-        if (res3 != null) resCount++;
-        if (res4 != null) resCount++;
-
-        int componentCount = 0;
-        if (component1 != null) componentCount++;
-        if (component2 != null) componentCount++;
-        if (component3 != null) componentCount++;
-        if (component4 != null) componentCount++;
-
-        int[] resValues = new int[resCount];
-        int[] subComponentValues = new int[componentCount];
-
-        if (recipe.ResourceStat1[0] > 0 && res1 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.ResourceStat1[0], res1, null);
-            int stat2 = GetStatByNumber(recipe.ResourceStat2[0], res1, null);
-
-            resValues[0] = ((stat1 * recipe.ResourceStat1Dist[0]) / 100) + ((stat2 * recipe.ResourceStat2Dist[0]) / 100);
-        }
-        if (recipe.ResourceStat1[1] > 0 && res2 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.ResourceStat1[1], res2, null);
-            int stat2 = GetStatByNumber(recipe.ResourceStat2[1], res2, null);
-
-            resValues[1] = ((stat1 * recipe.ResourceStat1Dist[1]) / 100) + ((stat2 * recipe.ResourceStat2Dist[1]) / 100);
-        }
-        if (recipe.ResourceStat1[2] > 0 && res3 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.ResourceStat1[2], res3, null);
-            int stat2 = GetStatByNumber(recipe.ResourceStat2[2], res3, null);
-
-            resValues[2] = ((stat1 * recipe.ResourceStat1Dist[2]) / 100) + ((stat2 * recipe.ResourceStat2Dist[2]) / 100);
-        }
-        if (recipe.ResourceStat1[3] > 0 && res4 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.ResourceStat1[3], res4, null);
-            int stat2 = GetStatByNumber(recipe.ResourceStat2[3], res4, null);
-
-            resValues[3] = ((stat1 * recipe.ResourceStat1Dist[3]) / 100) + ((stat2 * recipe.ResourceStat2Dist[3]) / 100);
-        }
-        if (recipe.SubComponentStat1[0] > 0 && component1 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.SubComponentStat1[0], null, component1);
-            int stat2 = GetStatByNumber(recipe.SubComponentStat2[0], null, component1);
-            subComponentValues[0] = ((stat1 * recipe.SubComponentStat1Dist[0]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[0]) / 100);
-        }
-        if (recipe.SubComponentStat1[1] > 0 && component2 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.SubComponentStat1[1], null, component2);
-            int stat2 = GetStatByNumber(recipe.SubComponentStat2[1], null, component2);
-            subComponentValues[1] = ((stat1 * recipe.SubComponentStat1Dist[1]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[1]) / 100);
-        }
-        if (recipe.SubComponentStat1[2] > 0 && component3 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.SubComponentStat1[2], null, component3);
-            int stat2 = GetStatByNumber(recipe.SubComponentStat2[2], null, component3);
-            subComponentValues[2] = ((stat1 * recipe.SubComponentStat1Dist[2]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[2]) / 100);
-        }
-        if (recipe.SubComponentStat1[3] > 0 && component4 != null)
-        {
-            int stat1 = GetStatByNumber(recipe.SubComponentStat1[3], null, component4);
-            int stat2 = GetStatByNumber(recipe.SubComponentStat2[3], null, component4);
-            subComponentValues[3] = ((stat1 * recipe.SubComponentStat1Dist[3]) / 100) + ((stat2 * recipe.SubComponentStat2Dist[3]) / 100);
-        }
-
-        int averageResValue = 0;
-        for (int i = 0; i < resValues.Length; i++)
-        {
-            averageResValue += resValues[i];
-        }
-        averageResValue /= resValues.Length;
-
-        int averageSubComponentValue = 0;
-        for (int i = 0; i < subComponentValues.Length; i++)
-        {
-            averageSubComponentValue += subComponentValues[i];
-        }
-        averageSubComponentValue /= subComponentValues.Length;
+        int stat1 = (resValues[recipe.Stat1] * recipe.Stat1Distribution) / 100; // 50%
+        int stat2 = (resValues[recipe.Stat2] * recipe.Stat2Distribution) / 100; // 25%
+        int stat3 = (resValues[recipe.Stat3] * recipe.Stat3Distribution) / 100; // 25%
 
 
-        int toolDamage = (int)(recipe.OutputItem.Damage * (averageResValue + averageSubComponentValue) / 200);
 
+        int toolDamage = (int)(itemTemplate.Damage * ((stat1 + stat2 + stat3) / 1000));
         itemToReturn.SetDamage(toolDamage);
+
+        int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
+        itemToReturn.SetDurability(durability);
 
         long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
         if (itemID > 0)
@@ -221,16 +239,117 @@ public class Crafter : MonoBehaviour
             return null;
         }
     }
-    public SubComponent CraftSubComponent(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4)
+    public async Task<SubComponent> CraftSubComponent(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
-        SubComponentTemplate itemTemplate = recipe.OutputSubComponent;
-        SubComponent subComponentToReturn = null;
+        SubComponentTemplate subCompTemplate = recipe.OutputSubComponent;
+        if (subCompTemplate == null)
+        {
+            Debug.LogError("Recipe OutputSubComponent template is null.");
+            return null;
+        }
+
+        SubComponent subComponentToReturn = Instantiate(itemManager.GetSubComponentPrefab());
+        if (subComponentToReturn == null)
+        {
+            Debug.LogError("Failed to instantiate SubComponent prefab.");
+            return null;
+        }
+        subComponentToReturn.Template = subCompTemplate;
+
+        int[] resValues = GetFinalStatValueArray(resources, components);
+
+        int finalQuality = resValues[0];
+        int finalToughness = resValues[1];
+        int finalStrength = resValues[2];
+        int finalDensity = resValues[3];
+        int finalAura = resValues[4];
+        int finalEnergy = resValues[5];
+        int finalProtein = resValues[6];
+        int finalCarbohydrate = resValues[7];
+        int finalFlavour = resValues[8];
 
 
-        return subComponentToReturn;
+        subComponentToReturn.Initialize(
+            0,
+            subCompTemplate.Name,
+            subCompTemplate.ComponentTemplateID,
+            (int)subCompTemplate.ComponentType,
+            finalQuality,
+            finalToughness,
+            finalStrength,
+            finalDensity,
+            finalAura,
+            finalEnergy,
+            finalProtein,
+            finalCarbohydrate,
+            finalFlavour
+        );
+        
+        long subComponentDbId = await itemManager.SaveNewSubComponentAsync(subComponentToReturn);
+        if (subComponentDbId > 0)
+        {
+            subComponentToReturn.SetSubComponentID((int)subComponentDbId);
+            return subComponentToReturn;
+        }
+        else
+        {
+            Debug.LogError("Failed to save crafted subcomponent to database. Destroying instance.");
+            Destroy(subComponentToReturn.gameObject);
+            return null;
+        }
     }
 
     #region Helpers
+    public int[] GetFinalStatValueArray(Resource[] resources, SubComponent[] components)
+    {
+        int resCount = resources.Length;
+        int componentCount = components.Length;
+
+        int totalQuality = 0;
+        int totalToughness = 0;
+        int totalStrength = 0;
+        int totalDensity = 0;
+        int totalAura = 0;
+        int totalEnergy = 0;
+        int totalProtein = 0;
+        int totalCarbohydrate = 0;
+        int totalFlavour = 0;
+
+        for (int i = 0; i < resources.Length; i++)
+        {
+            totalQuality += resources[i].Quality;
+            totalToughness += resources[i].Toughness;
+            totalStrength += resources[i].Strength;
+            totalDensity += resources[i].Density;
+            totalAura += resources[i].Aura;
+            totalEnergy += resources[i].Energy;
+            totalProtein += resources[i].Protein;
+            totalCarbohydrate += resources[i].Carbohydrate;
+            totalFlavour += resources[i].Flavour;
+        }
+        for (int i = 0; i < components.Length; i++)
+        {
+            totalQuality += components[i].Quality;
+            totalToughness += components[i].Toughness;
+            totalStrength += components[i].Strength;
+            totalDensity += components[i].Density;
+            totalAura += components[i].Aura;
+            totalEnergy += components[i].Energy;
+            totalProtein += components[i].Protein;
+            totalCarbohydrate += components[i].Carbohydrate;
+            totalFlavour += components[i].Flavour;
+        }
+        int finalQuality = totalQuality / (resCount + componentCount);
+        int finalToughness = totalToughness / (resCount + componentCount);
+        int finalStrength = totalStrength / (resCount + componentCount);
+        int finalDensity = totalDensity / (resCount + componentCount);
+        int finalAura = totalAura / (resCount + componentCount);
+        int finalEnergy = totalEnergy / (resCount + componentCount);
+        int finalProtein = totalProtein / (resCount + componentCount);
+        int finalCarbohydrate = totalCarbohydrate / (resCount + componentCount);
+        int finalFlavour = totalFlavour / (resCount + componentCount);
+        return new int[] { finalQuality, finalToughness, finalStrength, finalDensity, finalAura, finalEnergy, finalProtein, finalCarbohydrate, finalFlavour };
+    }
     public int GetStatByNumber(int num, Resource resource = null, SubComponent component = null)
     {
         if (resource == null && component == null)
@@ -317,7 +436,6 @@ public class Crafter : MonoBehaviour
             return statValueToReturn;
         }
     }
-
     public bool IsResourcesAndSubComponentsMatching(Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         for (int i = 0; i < resources.Length; i++)
@@ -367,6 +485,5 @@ public class Crafter : MonoBehaviour
             itemTemplate.IsStackable, itemTemplate.StackSizeMax, itemTemplate.Price);
         return item;
     }
-
     #endregion
 }

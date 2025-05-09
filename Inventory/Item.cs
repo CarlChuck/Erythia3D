@@ -84,6 +84,29 @@ public class Item : MonoBehaviour
     {
         Damage = damage;
     }
+    public void SetSpeed(int speed)
+    {
+        Speed = speed;
+    }
+    public void SetArmourResists(int[] armourResists)
+    {
+        if (armourResists.Length != 6)
+        {
+            Debug.LogError("Armour resist array must have exactly 6 elements.");
+            return;
+        }
+        SlashResist = armourResists[0];
+        ThrustResist = armourResists[1];
+        CrushResist = armourResists[2];
+        HeatResist = armourResists[3];
+        ShockResist = armourResists[4];
+        ColdResist = armourResists[5];
+    }
+    public void SetDurability(int dura)
+    {
+        Durability = dura;
+        MaxDurability = dura;
+    }
 }
 public enum ItemType
 {
