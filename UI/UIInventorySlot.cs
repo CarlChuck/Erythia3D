@@ -109,10 +109,10 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         }
         else if (subComponent != null && itemIconImage != null) // If no icon, maybe show a default or hide?
         { 
-             // Fallback? For now, hide if no specific icon
-             itemIconImage.sprite = null; 
-             itemIconImage.color = Color.clear;
-             itemIconImage.enabled = false;
+            // Fallback? For now, hide if no specific icon
+            itemIconImage.sprite = null; 
+            itemIconImage.color = Color.clear;
+            itemIconImage.enabled = false;
         }
         else if (itemIconImage != null)
         {
@@ -165,7 +165,7 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             {
                 // Make the item icon in *this* slot invisible during drag
                 itemIconImage.color = Color.clear;
-                 if (quantityText != null) quantityText.enabled = false; // Hide quantity too
+                if (quantityText != null) quantityText.enabled = false; // Hide quantity too
             }
         }
         else

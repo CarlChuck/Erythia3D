@@ -7,69 +7,50 @@ public class UIManager : MonoBehaviour
 {
     [Header("Player Reference")]
     [SerializeField] private PlayerCharacter playerCharacter;
+
     [Header("HUD Elements")]
-    [SerializeField] private Image healthBarImage;
-    [SerializeField] private Image manaBarImage;
-    [SerializeField] private TMP_Text healthText;
-    [SerializeField] private TMP_Text manaText;
-    [SerializeField] private TMP_Text healthTextMax;
-    [SerializeField] private TMP_Text manaTextMax;
+    [SerializeField] private UIHealthBar healthBar;
+
     [Header("Character Window Elements")]
-    [SerializeField] private GameObject characterWindowPanel;
+    [SerializeField] private UIInventoryPanel inventoryPanel;
     [SerializeField] private TMP_Text characterNameText;
     [SerializeField] private Transform statsContainer;
     [SerializeField] private GameObject statDisplayPrefab;
     [SerializeField] private GameObject UICanvas;
-
-    [Header("Other UI Panels")]
-    [SerializeField] private UIInventoryPanel inventoryPanel;
-
+    [SerializeField] private TMP_Text healthText;
+    [SerializeField] private TMP_Text healthTextMax;
+    [SerializeField] private TMP_Text manaText;
+    [SerializeField] private TMP_Text manaTextMax;
     private List<StatDisplayUI> statDisplays = new List<StatDisplayUI>();
+
+    [Header("UI Tabs")]
+    [SerializeField] private GameObject characterWindow;
+    [SerializeField] private GameObject skillsWindow;
+    [SerializeField] private GameObject craftingWindow;
+    [SerializeField] private GameObject rosterWindow;
+    [SerializeField] private GameObject socialWindow;
+
+
     private bool isInitialized = false;
 
 
-    void UpdateHUD()
-    {
-        if (!isInitialized || playerCharacter == null) return;
-
-        float currentHealth = playerCharacter.GetCurrentHealth();
-        float maxHealth = playerCharacter.GetMaxHealth();
-        float currentMana = playerCharacter.GetCurrentMana();
-        float maxMana = playerCharacter.GetMaxMana();
-
-        // Update Health Image Fill
-        if (healthBarImage != null)
-        {
-            // Ensure maxHealth is not zero to avoid division by zero
-            healthBarImage.fillAmount = (maxHealth > 0) ? Mathf.Clamp01(currentHealth / maxHealth) : 0f;
-        }
-
-        // Update Mana Image Fill
-        if (manaBarImage != null)
-        {
-            // Ensure maxMana is not zero
-            manaBarImage.fillAmount = (maxMana > 0) ? Mathf.Clamp01(currentMana / maxMana) : 0f;
-        }
-
-
-    }
-
+    #region Initialization
     public void SetupUI(PlayerCharacter targetPlayer)
     {
-        if (isInitialized) 
-        { 
-            CleanupBindings(); 
-        } 
-
+        if (isInitialized)
+        {
+            CleanupBindings();
+        }
+        CloseAllWindows();
         playerCharacter = targetPlayer;
         Inventory playerInventory = playerCharacter.GetInventory();
         if (playerCharacter == null)
         {
             Debug.LogError("UIManager: SetupUI called with null PlayerCharacter!");
             //Error handling
-            return; 
+            return;
         }
-         if (playerInventory == null)
+        if (playerInventory == null)
         {
             Debug.LogError($"UIManager: PlayerCharacter '{playerCharacter.GetCharacterName()}' is missing Inventory component!");
             return;
@@ -85,7 +66,6 @@ public class UIManager : MonoBehaviour
         if (inventoryPanel != null)
         {
             inventoryPanel.Setup(playerInventory);
-            inventoryPanel.gameObject.SetActive(false);
         }
         else
         {
@@ -94,14 +74,68 @@ public class UIManager : MonoBehaviour
 
         // Subscribe to events
         playerCharacter.OnVitalsChanged += UpdateHUD;
-        playerCharacter.OnStatsChanged += UpdateCharacterWindowStatsList; 
+        playerCharacter.OnStatsChanged += UpdateCharacterWindowStatsList;
 
-        if (characterWindowPanel != null) { characterWindowPanel.SetActive(false); }
+        if (characterWindow != null)
+        {
+            characterWindow.SetActive(false);
+        }
         isInitialized = true;
         this.enabled = true;
         Debug.Log("UIManager: Initialized and event bindings set.");
     }
+    private void SetupCharacterWindowStructure()
+    {
+        if (playerCharacter == null || statsContainer == null || statDisplayPrefab == null) return;
 
+        foreach (Transform child in statsContainer) 
+        { 
+            Destroy(child.gameObject); 
+        }
+        statDisplays.Clear();
+
+        List<Stat> stats = playerCharacter.GetAllStats();
+        if (stats == null) return;
+
+        foreach (Stat stat in stats)
+        {
+            if (stat == null) continue;
+            GameObject statInstance = Instantiate(statDisplayPrefab, statsContainer);
+            StatDisplayUI displayUI = statInstance.GetComponent<StatDisplayUI>();
+            if (displayUI != null)
+            {
+                // Just setup the link and the static name part
+                displayUI.Setup(stat.gameObject.name, stat);
+                statDisplays.Add(displayUI);
+            }
+            else
+            {
+                Destroy(statInstance);
+                Debug.LogError($"UIManager: StatDisplayPrefab is missing the StatDisplayUI script!");
+            }
+        }
+    }
+    #endregion
+
+    #region UI Updates
+    void UpdateHUD()
+    {
+        Debug.Log("UIManager: UpdateHUD called.");
+        if (playerCharacter == null) 
+        {
+            Debug.LogError("UIManager: UpdateHUD called but playerCharacter is null.");
+            return;
+        }
+        float currentHealth = playerCharacter.GetCurrentHealth();
+        float maxHealth = playerCharacter.GetMaxHealth();
+        float currentMana = playerCharacter.GetCurrentMana();
+        float maxMana = playerCharacter.GetMaxMana();
+        Debug.Log($"UIManager: Current Health: {currentHealth}, Max Health: {maxHealth}, Current Mana: {currentMana}, Max Mana: {maxMana}");
+        if (healthBar != null)
+        {
+            healthBar.UpdateDisplay(currentHealth, maxHealth, currentMana, maxMana);
+        }
+    }
     void UpdateCharacterWindowStatsList()
     {
         // Update Name first
@@ -110,28 +144,14 @@ public class UIManager : MonoBehaviour
             characterNameText.text = playerCharacter.GetCharacterName();
         }
 
-        // Update Optional Health Text
-        if (healthText != null)
-        {
             healthText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentHealth())}";
-        }
-        if (healthText != null)
-        {
             healthTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxHealth())}";
-        }
-
-        // Update Optional Mana Text
-        if (manaText != null)
-        {
             manaText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentMana())}";
-        }
-        if (manaText != null)
-        {
             manaTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxMana())}";
-        }
+
 
         // Only proceed with stats if initialized and window is active (or during setup)
-        if (!isInitialized || !characterWindowPanel.activeSelf)
+        if (!isInitialized || !characterWindow.activeSelf)
         {
             // If called during SetupUI, isInitialized might be false,
             // or window might be inactive, but we still want to update the internal state.
@@ -140,7 +160,7 @@ public class UIManager : MonoBehaviour
                 // If called during initial setup and structure is missing, rebuild.
                 SetupCharacterWindowStructure();
             }
-            else if (!characterWindowPanel.activeSelf && isInitialized)
+            else if (!characterWindow.activeSelf && isInitialized)
             {
                 // Don't update stat values if window is closed *after* initialization
                 // but DO update the name above regardless of window state.
@@ -165,80 +185,66 @@ public class UIManager : MonoBehaviour
         }
         Debug.Log("UIManager: Character window name and stats updated via OnStatsChanged event.");
     }
-
-    void SetupCharacterWindowStructure()
-    {
-        if (playerCharacter == null || statsContainer == null || statDisplayPrefab == null) return;
-
-        foreach (Transform child in statsContainer) { Destroy(child.gameObject); }
-        statDisplays.Clear();
-
-        List<Stat> stats = playerCharacter.GetAllStats();
-        if (stats == null) return;
-
-        foreach (Stat stat in stats)
-        {
-            if (stat == null) continue;
-            GameObject statInstance = Instantiate(statDisplayPrefab, statsContainer);
-            StatDisplayUI displayUI = statInstance.GetComponent<StatDisplayUI>();
-            if (displayUI != null)
-            {
-                // Just setup the link and the static name part
-                displayUI.Setup(stat.gameObject.name, stat);
-                statDisplays.Add(displayUI);
-            }
-            else
-            {
-                Destroy(statInstance);
-                Debug.LogError($"UIManager: StatDisplayPrefab is missing the StatDisplayUI script!");
-            }
-        }
-    }
+    #endregion
 
     public void ToggleCharacterWindow()
     {
-        if (characterWindowPanel == null) 
-        { 
-            return; 
-        }
-        bool isActive = !characterWindowPanel.activeSelf;
-        characterWindowPanel.SetActive(isActive);
-        
-        // Always hide tooltip when inventory is toggled
+        ToggleSpecificWindow(characterWindow, true);
+    }
+    public void ToggleSkillsWindow()
+    {
+        ToggleSpecificWindow(skillsWindow);
+    }
+    public void ToggleCraftingWindow()
+    {
+        ToggleSpecificWindow(craftingWindow);
+    }
+    public void ToggleRosterWindow()
+    {
+        ToggleSpecificWindow(rosterWindow);
+    }
+    public void ToggleSocialWindow()
+    {
+        ToggleSpecificWindow(socialWindow);
+    }
+
+
+    #region Helpers
+    private void CloseAllWindows()
+    {
+        if (characterWindow != null) characterWindow.SetActive(false);
+        if (skillsWindow != null) skillsWindow.SetActive(false);
+        if (craftingWindow != null) craftingWindow.SetActive(false);
+        if (rosterWindow != null) rosterWindow.SetActive(false);
+        if (socialWindow != null) socialWindow.SetActive(false);
+
         if (UITooltipManager.Instance != null)
         {
             UITooltipManager.Instance.RequestHideTooltip();
         }
-        if (isActive && isInitialized)
-        {
-            // Refresh name AND stats when opened
-            UpdateCharacterWindowStatsList();
-        }
     }
-
-    public void ToggleInventoryWindow()
+    private void ToggleSpecificWindow(GameObject windowToToggle, bool isCharacterWindow = false)
     {
-        if (inventoryPanel != null)
-        {
-            inventoryPanel.TogglePanel();
+        if (windowToToggle == null) return;
 
-            // Always hide tooltip when inventory is toggled
-            if (UITooltipManager.Instance != null)
+        bool wasActive = windowToToggle.activeSelf;
+
+        CloseAllWindows(); // Close all windows and the tooltip
+
+        if (!wasActive) // If the window was not active, open it
+        {
+            windowToToggle.SetActive(true);
+            if (isCharacterWindow && isInitialized)
             {
-                UITooltipManager.Instance.RequestHideTooltip();
+                UpdateCharacterWindowStatsList(); // Update stats only for the character window
             }
         }
-        else
-        {
-             Debug.LogWarning("UIManager: Cannot toggle inventory, UIInventoryPanel reference not set.");
-        }
+        // If it was active, CloseAllWindows() has already taken care of closing it.
     }
-
-    void OnDestroy()
+    private void OnDestroy()
     {
         CleanupBindings();
     }
-
     private void CleanupBindings()
     {
         if (playerCharacter != null && isInitialized)
@@ -249,7 +255,6 @@ public class UIManager : MonoBehaviour
         }
         isInitialized = false;
     }
-
     public void StartHUD()
     {
         if (UICanvas != null)
@@ -257,4 +262,5 @@ public class UIManager : MonoBehaviour
             UICanvas.SetActive(true);
         }
     }
+    #endregion
 }
