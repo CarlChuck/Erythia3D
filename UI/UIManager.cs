@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using UnityEngine.EventSystems; // Required for EventSystem access
 
 public class UIManager : MonoBehaviour
 {
@@ -23,15 +24,16 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TMP_Text manaTextMax;
     private List<StatDisplayUI> statDisplays = new List<StatDisplayUI>();
 
-    [Header("UI Tabs")]
+    [Header("UI Tabs & Windows")] // Renamed for clarity
+    [SerializeField] private GameObject topBar;
     [SerializeField] private GameObject characterWindow;
     [SerializeField] private GameObject skillsWindow;
     [SerializeField] private GameObject craftingWindow;
     [SerializeField] private GameObject rosterWindow;
     [SerializeField] private GameObject socialWindow;
 
-
     private bool isInitialized = false;
+    private GameObject currentlyOpenWindow = null; // Track the currently open main window
 
 
     #region Initialization
@@ -41,13 +43,12 @@ public class UIManager : MonoBehaviour
         {
             CleanupBindings();
         }
-        CloseAllWindows();
+        CloseAllWindowsAndTabs(); // Initial state: all closed
         playerCharacter = targetPlayer;
         Inventory playerInventory = playerCharacter.GetInventory();
         if (playerCharacter == null)
         {
             Debug.LogError("UIManager: SetupUI called with null PlayerCharacter!");
-            //Error handling
             return;
         }
         if (playerInventory == null)
@@ -56,13 +57,10 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // Initial UI population
-        SetupCharacterWindowStructure();    // Creates the stat entries
-        UpdateHUD();                        // Sets initial health/mana bars
-        // Initial stats AND name update now happens here:
+        SetupCharacterWindowStructure();
+        UpdateHUD();
         UpdateCharacterWindowStatsList();
 
-        // Setup Inventory Panel if reference exists
         if (inventoryPanel != null)
         {
             inventoryPanel.Setup(playerInventory);
@@ -72,21 +70,25 @@ public class UIManager : MonoBehaviour
             Debug.LogWarning("UIManager: UIInventoryPanel reference not set in Inspector.");
         }
 
-        // Subscribe to events
         playerCharacter.OnVitalsChanged += UpdateHUD;
         playerCharacter.OnStatsChanged += UpdateCharacterWindowStatsList;
 
-        if (characterWindow != null)
-        {
-            characterWindow.SetActive(false);
+        // Ensure character window is initially false, other windows handled by CloseAllWindowsAndTabs
+        if (characterWindow != null) 
+        { 
+            characterWindow.SetActive(false); 
         }
+
         isInitialized = true;
         this.enabled = true;
         Debug.Log("UIManager: Initialized and event bindings set.");
     }
     private void SetupCharacterWindowStructure()
     {
-        if (playerCharacter == null || statsContainer == null || statDisplayPrefab == null) return;
+        if (playerCharacter == null || statsContainer == null || statDisplayPrefab == null) 
+        { 
+            return; 
+        }
 
         foreach (Transform child in statsContainer) 
         { 
@@ -99,12 +101,14 @@ public class UIManager : MonoBehaviour
 
         foreach (Stat stat in stats)
         {
-            if (stat == null) continue;
+            if (stat == null) 
+            { 
+                continue; 
+            }
             GameObject statInstance = Instantiate(statDisplayPrefab, statsContainer);
             StatDisplayUI displayUI = statInstance.GetComponent<StatDisplayUI>();
             if (displayUI != null)
             {
-                // Just setup the link and the static name part
                 displayUI.Setup(stat.gameObject.name, stat);
                 statDisplays.Add(displayUI);
             }
@@ -144,103 +148,174 @@ public class UIManager : MonoBehaviour
             characterNameText.text = playerCharacter.GetCharacterName();
         }
 
-            healthText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentHealth())}";
-            healthTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxHealth())}";
-            manaText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentMana())}";
-            manaTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxMana())}";
+        if (healthText != null) 
+        { 
+            healthText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentHealth())}"; 
+        }
+        if (healthTextMax != null) 
+        { 
+            healthTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxHealth())}"; 
+        }
+        if (manaText != null) 
+        { 
+            manaText.text = $"{Mathf.CeilToInt(playerCharacter.GetCurrentMana())}"; 
+        }
+        if (manaTextMax != null) 
+        { 
+            manaTextMax.text = $"{Mathf.CeilToInt(playerCharacter.GetMaxMana())}"; 
+        }
 
+        if (!isInitialized) return; // Don't proceed if not initialized
 
-        // Only proceed with stats if initialized and window is active (or during setup)
-        if (!isInitialized || !characterWindow.activeSelf)
+        // Only update detailed stats if the character window is the currently open one.
+        if (currentlyOpenWindow != characterWindow && characterWindow != null && characterWindow.activeSelf)
         {
-            // If called during SetupUI, isInitialized might be false,
-            // or window might be inactive, but we still want to update the internal state.
-            if (!isInitialized && statDisplays.Count == 0 && playerCharacter != null && playerCharacter.GetAllStats()?.Count > 0)
-            {
-                // If called during initial setup and structure is missing, rebuild.
-                SetupCharacterWindowStructure();
-            }
-            else if (!characterWindow.activeSelf && isInitialized)
-            {
-                // Don't update stat values if window is closed *after* initialization
-                // but DO update the name above regardless of window state.
-                Debug.Log("UIManager: Character window closed, skipping stat value updates.");
-                return;
-            }
-
+            // This case might happen if characterWindow was left active but is not the 'currentlyOpenWindow'
+            // For safety, ensure stats are updated if it IS active.
+        }
+        else if (currentlyOpenWindow != characterWindow)
+        {
+            Debug.Log("UIManager: Character window not active, skipping detailed stat value updates.");
+            return;
         }
 
 
-        // Ensure structure exists if stats are expected
         if (statDisplays.Count == 0 && playerCharacter != null && playerCharacter.GetAllStats()?.Count > 0)
         {
             Debug.LogWarning("UIManager: UpdateCharacterWindowStatsList called but structure not set up. Rebuilding.");
-            SetupCharacterWindowStructure(); // Attempt recovery
+            SetupCharacterWindowStructure();
         }
 
-        // Update individual stat values
         foreach (StatDisplayUI display in statDisplays)
         {
             display.UpdateValue();
         }
-        Debug.Log("UIManager: Character window name and stats updated via OnStatsChanged event.");
+        Debug.Log("UIManager: Character window name and stats updated.");
     }
     #endregion
 
-    public void ToggleCharacterWindow()
+    public void RequestWindowToggle(TabWindowType windowType, UITabButton requestingButton)
     {
-        ToggleSpecificWindow(characterWindow, true);
-    }
-    public void ToggleSkillsWindow()
-    {
-        ToggleSpecificWindow(skillsWindow);
-    }
-    public void ToggleCraftingWindow()
-    {
-        ToggleSpecificWindow(craftingWindow);
-    }
-    public void ToggleRosterWindow()
-    {
-        ToggleSpecificWindow(rosterWindow);
-    }
-    public void ToggleSocialWindow()
-    {
-        ToggleSpecificWindow(socialWindow);
+        GameObject targetWindowGameObject = GetWindowObjectByType(windowType);
+        if (targetWindowGameObject == null && windowType != TabWindowType.None)
+        {
+            Debug.LogError($"UIManager: No window configured for TabWindowType.{windowType}");
+            return;
+        }
+
+        if (windowType == TabWindowType.None || (targetWindowGameObject != null && targetWindowGameObject == currentlyOpenWindow && targetWindowGameObject.activeSelf))
+        {
+            CloseAllWindowsAndTabs();
+        }
+        else if (targetWindowGameObject != null)
+        {
+            CloseAllWindowsAndTabsInternal();
+
+            targetWindowGameObject.SetActive(true);
+            currentlyOpenWindow = targetWindowGameObject;
+            if (topBar != null) 
+            { 
+                topBar.SetActive(true); 
+            }
+
+            // Handle window-specific updates
+            if (windowType == TabWindowType.Character && isInitialized)
+            {
+                UpdateCharacterWindowStatsList();
+            }
+
+            UITabButton tabToSelect = requestingButton ?? FindTabForWindowType(windowType);
+            UpdateAllTabLooks(tabToSelect);
+        }
     }
 
-
-    #region Helpers
-    private void CloseAllWindows()
+    private UITabButton FindTabForWindowType(TabWindowType windowType)
     {
-        if (characterWindow != null) characterWindow.SetActive(false);
-        if (skillsWindow != null) skillsWindow.SetActive(false);
-        if (craftingWindow != null) craftingWindow.SetActive(false);
-        if (rosterWindow != null) rosterWindow.SetActive(false);
-        if (socialWindow != null) socialWindow.SetActive(false);
+        if (UITabButton.AllRegisteredTabs == null) return null;
+        foreach (UITabButton tab in UITabButton.AllRegisteredTabs)
+        {
+            if (tab.AssociatedWindowType == windowType)
+            {
+                return tab;
+            }
+        }
+        return null;
+    }
+
+    private GameObject GetWindowObjectByType(TabWindowType windowType)
+    {
+        switch (windowType)
+        {
+            case TabWindowType.Character: 
+                return characterWindow;
+            case TabWindowType.Skills: 
+                return skillsWindow;
+            case TabWindowType.Crafting: 
+                return craftingWindow;
+            case TabWindowType.Roster: 
+                return rosterWindow;
+            case TabWindowType.Social: 
+                return socialWindow;
+            default: return null;
+        }
+    }
+
+    private void UpdateAllTabLooks(UITabButton selectedButton)
+    {
+        if (UITabButton.AllRegisteredTabs == null) 
+        { 
+            return; 
+        }
+        foreach (UITabButton tab in UITabButton.AllRegisteredTabs)
+        {
+            tab.SetSelectedLook(tab == selectedButton);
+        }
+    }
+    
+    // Closes all windows, top bar, and deselects all tabs visually and in EventSystem
+    private void CloseAllWindowsAndTabs()
+    {
+        CloseAllWindowsAndTabsInternal();
+        UpdateAllTabLooks(null); // Ensure all tabs are visually deselected
+
+    }
+
+    // Internal version that just closes windows and top bar
+    private void CloseAllWindowsAndTabsInternal()
+    {
+        if (characterWindow != null) 
+        { 
+            characterWindow.SetActive(false); 
+        }
+        if (skillsWindow != null) 
+        { 
+            skillsWindow.SetActive(false); 
+        }
+        if (craftingWindow != null) 
+        { 
+            craftingWindow.SetActive(false); 
+        }
+        if (rosterWindow != null) 
+        { 
+            rosterWindow.SetActive(false); 
+        }
+        if (socialWindow != null) 
+        { 
+            socialWindow.SetActive(false); 
+        }
+        if (topBar != null) 
+        { 
+            topBar.SetActive(false); 
+        }
+
+        currentlyOpenWindow = null;
 
         if (UITooltipManager.Instance != null)
         {
             UITooltipManager.Instance.RequestHideTooltip();
         }
     }
-    private void ToggleSpecificWindow(GameObject windowToToggle, bool isCharacterWindow = false)
-    {
-        if (windowToToggle == null) return;
 
-        bool wasActive = windowToToggle.activeSelf;
-
-        CloseAllWindows(); // Close all windows and the tooltip
-
-        if (!wasActive) // If the window was not active, open it
-        {
-            windowToToggle.SetActive(true);
-            if (isCharacterWindow && isInitialized)
-            {
-                UpdateCharacterWindowStatsList(); // Update stats only for the character window
-            }
-        }
-        // If it was active, CloseAllWindows() has already taken care of closing it.
-    }
     private void OnDestroy()
     {
         CleanupBindings();
@@ -250,7 +325,7 @@ public class UIManager : MonoBehaviour
         if (playerCharacter != null && isInitialized)
         {
             playerCharacter.OnVitalsChanged -= UpdateHUD;
-            playerCharacter.OnStatsChanged -= UpdateCharacterWindowStatsList; // Handles stats & name// 
+            playerCharacter.OnStatsChanged -= UpdateCharacterWindowStatsList;
             Debug.Log("UIManager: Event bindings removed.");
         }
         isInitialized = false;
@@ -262,5 +337,4 @@ public class UIManager : MonoBehaviour
             UICanvas.SetActive(true);
         }
     }
-    #endregion
 }

@@ -19,7 +19,13 @@ public class PlayerInputs : MonoBehaviour
 	private bool cursorWasLockedBeforeHold = false; // Track state for hold action
 	private Vector2 savedCursorPosition; // To restore cursor position
 
-	public void OnMove(InputValue value)
+	[SerializeField] private UITabButton characterWindowButton;
+    [SerializeField] private UITabButton skillsWindowButton;
+    [SerializeField] private UITabButton craftingWindowButton;
+    [SerializeField] private UITabButton rosterWindowButton;
+    [SerializeField] private UITabButton socialWindowButton;
+
+    public void OnMove(InputValue value)
 	{
 		MoveInput(value.Get<Vector2>());
 	}
@@ -46,10 +52,37 @@ public class PlayerInputs : MonoBehaviour
     {
         if (value.isPressed)
         {
-			// Open character window
-			PlayerManager.Instance.GetUIManager().ToggleCharacterWindow();
+			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Character, characterWindowButton);
         }
     }
+	public void OnSkillsWindow(InputValue value)
+	{
+		if (value.isPressed)
+		{
+			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Skills, skillsWindowButton);
+		}
+	}
+	public void OnCraftingWindow(InputValue value)
+	{
+		if (value.isPressed)
+		{
+			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Crafting, craftingWindowButton);
+		}
+	}
+	public void OnRosterWindow(InputValue value)
+	{
+		if (value.isPressed)
+		{
+			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Roster, rosterWindowButton);
+		}
+	}
+	public void OnSocialWindow(InputValue value)
+	{
+		if (value.isPressed)
+		{
+			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Social, socialWindowButton);
+		}
+	}
 	public void OnInteract(InputValue value)
 	{
         if (value.isPressed)

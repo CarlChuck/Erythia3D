@@ -9,6 +9,8 @@ public abstract class BaseManager : MonoBehaviour
     protected Task initializationTask;
     public event Action OnDataLoaded;
 
+    public Task InitializationTask => initializationTask;
+
     protected virtual void OnDestroy()
     {
         Destroy(this);
@@ -51,6 +53,18 @@ public abstract class BaseManager : MonoBehaviour
     {
         try
         {
+            if (DatabaseManager.Instance == null)
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager.Instance is null. Cannot ensure table '{tableName}' exists.");
+                return false;
+            }
+            await DatabaseManager.Instance.InitializationTask; // Wait for DatabaseManager to initialize
+            if (!DatabaseManager.Instance.GetIsInitialized())
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager failed to initialize. Cannot ensure table '{tableName}' exists.");
+                return false;
+            }
+
             bool exists = await DatabaseManager.Instance.TableExistsAsync(tableName);
             if (!exists)
             {
@@ -80,6 +94,18 @@ public abstract class BaseManager : MonoBehaviour
     {
         try
         {
+            if (DatabaseManager.Instance == null)
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager.Instance is null. Cannot save data to table '{tableName}'.");
+                return false;
+            }
+            await DatabaseManager.Instance.InitializationTask;
+            if (!DatabaseManager.Instance.GetIsInitialized())
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager failed to initialize. Cannot save data to table '{tableName}'.");
+                return false;
+            }
+
             bool success = await DatabaseManager.Instance.InsertDataAsync(tableName, values);
             if (!success)
             {
@@ -98,6 +124,18 @@ public abstract class BaseManager : MonoBehaviour
     {
         try
         {
+            if (DatabaseManager.Instance == null)
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager.Instance is null. Cannot update data in table '{tableName}'.");
+                return false;
+            }
+            await DatabaseManager.Instance.InitializationTask;
+            if (!DatabaseManager.Instance.GetIsInitialized())
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager failed to initialize. Cannot update data in table '{tableName}'.");
+                return false;
+            }
+
             bool success = await DatabaseManager.Instance.UpdateDataAsync(tableName, values, whereCondition, whereParams);
             if (!success)
             {
@@ -116,6 +154,18 @@ public abstract class BaseManager : MonoBehaviour
     {
         try
         {
+            if (DatabaseManager.Instance == null)
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager.Instance is null. Cannot delete data from table '{tableName}'.");
+                return false;
+            }
+            await DatabaseManager.Instance.InitializationTask;
+            if (!DatabaseManager.Instance.GetIsInitialized())
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager failed to initialize. Cannot delete data from table '{tableName}'.");
+                return false;
+            }
+
             bool success = await DatabaseManager.Instance.DeleteDataAsync(tableName, whereCondition, whereParams);
             if (!success)
             {
@@ -134,6 +184,18 @@ public abstract class BaseManager : MonoBehaviour
     {
         try
         {
+            if (DatabaseManager.Instance == null)
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager.Instance is null. Cannot execute query '{query}'.");
+                return new List<Dictionary<string, object>>();
+            }
+            await DatabaseManager.Instance.InitializationTask;
+            if (!DatabaseManager.Instance.GetIsInitialized())
+            {
+                Debug.LogError($"{GetType().Name}: DatabaseManager failed to initialize. Cannot execute query '{query}'.");
+                return new List<Dictionary<string, object>>();
+            }
+
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query, parameters);
             if (results == null)
             {

@@ -7,7 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Data.Common; // Required for DbDataReader
 
-public class DatabaseManager : MonoBehaviour
+public class DatabaseManager : BaseManager // Inherit from BaseManager
 {
     [Header("MySQL Connection Settings")]
     [SerializeField] private string server = "localhost";
@@ -23,11 +23,13 @@ public class DatabaseManager : MonoBehaviour
     #region Singleton
     public static DatabaseManager Instance;
 
-    private void Awake()
+    // Awake is now protected due to BaseManager
+    protected void Awake() // Changed to protected
     {
         if (Instance == null)
         {
             Instance = this;
+            // DontDestroyOnLoad(gameObject); // Optional: if you want it to persist across scenes
         }
         else if (Instance != this)
         {
@@ -35,12 +37,13 @@ public class DatabaseManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-        InitializeDatabaseConnectionString(); // Just prepare the string
+        StartInitialization(); // Call BaseManager's initialization starter
     }
     #endregion
 
-    private void InitializeDatabaseConnectionString()
+    protected override async Task InitializeAsync() // Implement BaseManager's abstract method
     {
+        Debug.Log("Initializing DatabaseManager...");
         try
         {
             MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
@@ -58,22 +61,27 @@ public class DatabaseManager : MonoBehaviour
                 ConvertZeroDateTime = true,
                 TreatTinyAsBoolean = true,
                 UseCompression = false,
-                // Important for async operations: Ensure pooling is enabled (default is true)
                 Pooling = true,
-                MinimumPoolSize = 0, // Adjust as needed
-                MaximumPoolSize = 100 // Adjust as needed
+                MinimumPoolSize = 0,
+                MaximumPoolSize = 100
             };
             connectionString = builder.ConnectionString;
             Debug.Log($"MySQL connection string configured for {server}:{port}/{database}");
+            isInitialized = true; // Set initialization status
+            NotifyDataLoaded(); // Notify if needed, though DBManager might not have "data" in the same sense
+            Debug.Log("DatabaseManager initialization complete.");
         }
         catch (Exception ex)
         {
             Debug.LogError($"Failed to build MySQL connection string: {ex.Message}");
-            // Consider disabling the component or setting an error state
-            enabled = false;
+            isInitialized = false; // Ensure isInitialized is false on failure
+            // The exception will be caught by BaseManager's ContinueWith block.
+            throw; // Re-throw to allow BaseManager to log it properly
         }
+        await Task.CompletedTask; // Standard practice for async methods that complete synchronously
     }
 
+    // Removed InitializeDatabaseConnectionString() as its logic is now in InitializeAsync()
 
     #region Asynchronous Methods
 

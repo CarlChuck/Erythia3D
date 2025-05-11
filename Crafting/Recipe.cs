@@ -8,6 +8,7 @@ public class Recipe : MonoBehaviour
     [SerializeField] private string recipeName;
     [SerializeField] private string recipeDescription;
     [SerializeField] private int recipeType;
+    [SerializeField] private int workbenchType;
 
     [Header("Stat Distribution")]
     [SerializeField] private int stat1;
@@ -37,6 +38,7 @@ public class Recipe : MonoBehaviour
     public string RecipeName => recipeName;
     public string RecipeDescription => recipeDescription;
     public int RecipeType => recipeType;
+    public int WorkbenchType => workbenchType;
 
     // Stat Distribution Properties
     public int Stat1 => stat1;
@@ -62,7 +64,7 @@ public class Recipe : MonoBehaviour
     public SubComponentTemplate OutputSubComponent => outputSubComponent;
 
     // Updated Initialize method
-    public void Initialize(int id, string name, string description, int type,
+    public void Initialize(int id, string name, string description, int type, int workbenchType,
                            int s1, int s1Dist, int s2, int s2Dist, int s3, int s3Dist,
                            int[] resourceIDs, int[] resourceAmnts, int[] resTypeLevels,
                            SubComponentTemplate[] subComp, int[] compAmounts,
@@ -72,6 +74,7 @@ public class Recipe : MonoBehaviour
         recipeName = name;
         recipeDescription = description;
         recipeType = type;
+        this.workbenchType = workbenchType;
 
         // Stat Distribution
         stat1 = s1;

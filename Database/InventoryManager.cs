@@ -10,9 +10,11 @@ public class InventoryManager : BaseManager
     private const string ResourceItemsTableName = "ResourceItems";
     private const string InventoryResourceItemsTableName = "InventoryResourceItems";
     private const string InventorySubComponentsTableName = "InventorySubComponents";
+    private const string OwnedWorkbenchesTableName = "OwnedWorkbenches";
     [SerializeField] private ResourceItem resourceItemPrefab; 
     [SerializeField] private Transform resourceItemParent;     
     private List<ResourceItem> resourceItems = new List<ResourceItem>();
+
     #region Singleton
     public static InventoryManager Instance;
 
@@ -31,12 +33,11 @@ public class InventoryManager : BaseManager
     }
     #endregion
 
+    #region Initialization
     private void Start()
     {
         StartInitialization();
     }
-
-    #region Initialization
     protected override async Task InitializeAsync()
     {
         try
@@ -62,8 +63,9 @@ public class InventoryManager : BaseManager
         bool resourceItemsTableOK = await EnsureTableExistsAsync(ResourceItemsTableName, GetResourceItemsTableDefinition());
         bool invResourceItemsTableOK = await EnsureTableExistsAsync(InventoryResourceItemsTableName, GetInventoryResourceItemsTableDefinition());
         bool subComponentsTableOK = await EnsureTableExistsAsync(InventorySubComponentsTableName, GetInventorySubComponentsTableDefinition());
+        bool ownedWorkbenchesTableOK = await EnsureTableExistsAsync(OwnedWorkbenchesTableName, GetOwnedWorkbenchesTableDefinition());
 
-        if (!inventoryItemsTableOK || !resourceItemsTableOK || !invResourceItemsTableOK || !subComponentsTableOK)
+        if (!inventoryItemsTableOK || !resourceItemsTableOK || !invResourceItemsTableOK || !subComponentsTableOK || !ownedWorkbenchesTableOK)
         {
             throw new Exception("Failed to initialize required inventory database tables async.");
         }
@@ -110,6 +112,15 @@ public class InventoryManager : BaseManager
             {"CharID", "INT"},
             {"SubComponentID", "INT"},
             {"SlotID", "INT"}
+        };
+    }
+    private Dictionary<string, string> GetOwnedWorkbenchesTableDefinition()
+    {
+        return new Dictionary<string, string>
+        {
+            {"OwnedWorkBenchID", "INT AUTO_INCREMENT PRIMARY KEY"},
+            {"AccountID", "INT"},
+            {"WorkBenchType", "INT"}
         };
     }
     private async Task LoadAndInstantiateAllResourceItemsAsync()
@@ -613,6 +624,92 @@ public class InventoryManager : BaseManager
     }
     #endregion
 
+    #region Owned Workbenches Methods
+    public async Task<List<Dictionary<string, object>>> GetAccountOwnedWorkbenchesAsync(int accountId)
+    {
+        if (accountId <= 0)
+        {
+            LogError("Invalid AccountID provided for GetAccountOwnedWorkbenchesAsync.");
+            return new List<Dictionary<string, object>>();
+        }
+
+        string query = $"SELECT * FROM `{OwnedWorkbenchesTableName}` WHERE AccountID = @AccountID";
+        Dictionary<string, object> parameters = new Dictionary<string, object> { { "@AccountID", accountId } };
+
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
+            LogInfo($"Retrieved {results.Count} owned workbenches for account {accountId}");
+            return results;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error retrieving owned workbenches for account {accountId}", ex);
+            return new List<Dictionary<string, object>>();
+        }
+    }
+    public async Task<bool> AddOwnedWorkbenchAsync(int accountId, int workbenchType)
+    {
+        if (accountId <= 0 || workbenchType <= 0) // Assuming workbenchType should be positive
+        {
+            LogError("Invalid parameters provided for AddOwnedWorkbenchAsync.");
+            return false;
+        }
+
+        bool typeExists = await CheckIfAccountHasWorkbenchTypeAsync(accountId, workbenchType);
+        if (typeExists) 
+        { 
+            LogWarning($"Account {accountId} already has a workbench of type {workbenchType}. Cannot add duplicate.");
+            return false; 
+        }
+
+        Dictionary<string, object> values = new Dictionary<string, object>
+        {
+            {"AccountID", accountId},
+            {"WorkBenchType", workbenchType}
+        };
+
+        try
+        {
+            bool success = await SaveDataAsync(OwnedWorkbenchesTableName, values); // This will generate OwnedWorkBenchID
+            LogInfo(success ? $"Added new workbench (type: {workbenchType}) for account {accountId}" : $"Failed to add new workbench for account {accountId}");
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception adding owned workbench for account {accountId}, type {workbenchType}", ex);
+            return false;
+        }
+    }
+    public async Task<bool> RemoveOwnedWorkbenchAsync(int accountId, int workbenchType)
+    {
+        if (accountId <= 0 || workbenchType <= 0)
+        {
+            LogError("Invalid AccountID or WorkBenchType provided for RemoveOwnedWorkbenchAsync.");
+            return false;
+        }
+
+        string whereCondition = "AccountID = @AccountID AND WorkBenchType = @WorkBenchType";
+        Dictionary<string, object> whereParams = new Dictionary<string, object> 
+        {
+            { "@AccountID", accountId },
+            { "@WorkBenchType", workbenchType }
+        };
+
+        try
+        {
+            bool success = await DeleteDataAsync(OwnedWorkbenchesTableName, whereCondition, whereParams);
+            LogInfo(success ? $"Removed owned workbench type {workbenchType} for account {accountId}" : $"Failed to remove owned workbench type {workbenchType} for account {accountId}");
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception removing owned workbench type {workbenchType} for account {accountId}", ex);
+            return false;
+        }
+    }
+    #endregion
+
     #region Helpers
     protected override void OnDestroy()
     {
@@ -683,6 +780,33 @@ public class InventoryManager : BaseManager
         {
             LogError($"Error checking if inventory subcomponent exists (CharID: {charId}, SubComponentID: {subComponentId})", ex);
             return true; // Assume it exists on error to prevent potential duplicates
+        }
+    }
+    private async Task<bool> CheckIfAccountHasWorkbenchTypeAsync(int accountId, int workbenchType)
+    {
+        if (accountId <= 0 || workbenchType <= 0)
+        {
+            LogError("Invalid AccountID or WorkBenchType provided for CheckIfAccountHasWorkbenchTypeAsync.");
+            return false; 
+        }
+
+        string query = $"SELECT COUNT(*) FROM `{OwnedWorkbenchesTableName}` WHERE AccountID = @AccountID AND WorkBenchType = @WorkBenchType";
+        Dictionary<string, object> parameters = new Dictionary<string, object> 
+        {
+            { "@AccountID", accountId },
+            { "@WorkBenchType", workbenchType }
+        };
+
+        try
+        {
+            object result = await DatabaseManager.Instance.ExecuteScalarAsync(query, parameters);
+            int count = result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            return count > 0;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error checking if account {accountId} has workbench type {workbenchType}", ex);
+            return true; // Assume it exists on error to prevent potential issues, or false depending on strictness
         }
     }
     #endregion

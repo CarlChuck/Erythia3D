@@ -10,6 +10,7 @@ public class CraftingManager : BaseManager
     [Header("Runtime Data")]
     private Dictionary<int, Recipe> recipesById = new Dictionary<int, Recipe>();
     private Dictionary<string, Recipe> recipesByName = new Dictionary<string, Recipe>();
+    private Dictionary<int, List<Recipe>> recipesByWorkbenchType = new Dictionary<int, List<Recipe>>();
 
     private const string RecipesTableName = "Recipes";
 
@@ -47,6 +48,7 @@ public class CraftingManager : BaseManager
             { "RecipeName", "VARCHAR(255)" },
             { "RecipeDescription", "TEXT" },
             { "RecipeType", "INT DEFAULT 0" },
+            { "WorkbenchType", "INT DEFAULT 0" },
 
             //Stat Distribution
             { "Stat1", "INT DEFAULT 0" },
@@ -125,9 +127,21 @@ public class CraftingManager : BaseManager
         // Clear existing recipe data
         recipesById.Clear();
         recipesByName.Clear();
+        recipesByWorkbenchType.Clear();
 
         // Load all recipes from the database
         await LoadRecipesAsync();
+
+        // Initialize WorkBenchManager with the loaded recipes grouped by workbench type
+        if (WorkBenchManager.Instance != null)
+        {
+            // Pass a new dictionary to avoid potential modification issues if WorkBenchManager stores the reference directly
+            WorkBenchManager.Instance.InitializeDefaultWorkBenchesFromRecipes(new Dictionary<int, List<Recipe>>(recipesByWorkbenchType));
+        }
+        else
+        {
+            Debug.LogWarning("WorkBenchManager.Instance is null. Cannot initialize default workbenches with recipes from CraftingManager.");
+        }
         
         isInitialized = true;
         NotifyDataLoaded();
@@ -158,6 +172,7 @@ public class CraftingManager : BaseManager
             string recipeName = SafeConvert.ToString(row, "RecipeName");
             string recipeDescription = SafeConvert.ToString(row, "RecipeDescription");
             int recipeType = SafeConvert.ToInt32(row, "RecipeType");
+            int workbenchType = SafeConvert.ToInt32(row, "WorkbenchType");
 
             // --- Stat Distribution ---
             int stat1 = SafeConvert.ToInt32(row, "Stat1");
@@ -217,7 +232,7 @@ public class CraftingManager : BaseManager
             Recipe recipe = recipeObj.GetComponent<Recipe>();
             if (recipe != null)
             {
-                recipe.Initialize(recipeID, recipeName, recipeDescription, recipeType,
+                recipe.Initialize(recipeID, recipeName, recipeDescription, recipeType, workbenchType,
                                   stat1, stat1Distribution, stat2, stat2Distribution, stat3, stat3Distribution,
                                   resourceID, requiredResourceAmounts, resourceTypeLevels,
                                   requiredComponents, componentAmounts,
@@ -226,6 +241,13 @@ public class CraftingManager : BaseManager
                 recipesById[recipeID] = recipe;
                 recipesByName[recipeName] = recipe;
                 recipeObj.name = $"Recipe_{recipeID}_{recipeName}";
+
+                // Populate recipesByWorkbenchType
+                if (!recipesByWorkbenchType.ContainsKey(workbenchType))
+                {
+                    recipesByWorkbenchType[workbenchType] = new List<Recipe>();
+                }
+                recipesByWorkbenchType[workbenchType].Add(recipe);
             }
             else
             {
@@ -248,6 +270,15 @@ public class CraftingManager : BaseManager
     {
         recipesByName.TryGetValue(recipeName, out Recipe recipe);
         return recipe;
+    }
+
+    public List<Recipe> GetRecipesByWorkbenchType(int workbenchType)
+    {
+        if (recipesByWorkbenchType.TryGetValue(workbenchType, out List<Recipe> recipeList))
+        {
+            return new List<Recipe>(recipeList); // Return a copy to prevent external modification
+        }
+        return new List<Recipe>(); // Return an empty list if type not found
     }
     #endregion
 }

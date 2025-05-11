@@ -24,9 +24,12 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private GameObject characterPrefab;
     [SerializeField] private GameObject mainCamera;
     [SerializeField] private UIManager uiManager;
+    [SerializeField] private WorkBench workBenchPrefab; // New prefab reference
 
+    private List<WorkBench> ownedWorkbenches = new List<WorkBench>(); // New list for owned workbenches
     private bool isInitialized = false; 
     private Task initializationTask; 
+    [SerializeField] private Transform workbenchParent;
 
     #region Singleton
     public static PlayerManager Instance { get; private set; }
@@ -305,6 +308,9 @@ public class PlayerManager : MonoBehaviour
 
         // Load inventory for all characters
         await LoadAllCharactersInventoryAsync();
+
+        // Load owned workbenches
+        await LoadOwnedWorkbenchesAsync();
     }
     private async Task LoadAllCharactersInventoryAsync()
     {
@@ -360,12 +366,6 @@ public class PlayerManager : MonoBehaviour
             Debug.LogError("ResourceManager instance is not available.");
             return;
         }
-        // Assuming SubComponentManager exists
-        // if (SubComponentManager.Instance == null)
-        // {
-        //     Debug.LogError("SubComponentManager instance is not available.");
-        //     return;
-        // }
 
         Debug.Log($"Starting inventory load for character: {character.GetCharacterName()} (ID: {charId})");
 
@@ -535,6 +535,77 @@ public class PlayerManager : MonoBehaviour
         {
             Debug.LogError($"Error during LoadCharacterInventoryAsync for character {charId}: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+    private async Task LoadOwnedWorkbenchesAsync()
+    {
+        if (accountID <= 0)
+        {
+            Debug.LogError("Cannot load owned workbenches: Invalid AccountID.");
+            return;
+        }
+        if (InventoryManager.Instance == null)
+        {
+            Debug.LogError("InventoryManager instance not available. Cannot load owned workbenches.");
+            return;
+        }
+        if (workBenchPrefab == null)
+        {
+            Debug.LogError("WorkBench Prefab is not assigned in PlayerManager. Cannot instantiate owned workbenches.");
+            return;
+        }
+        // Updated to use WorkBenchManager for recipes
+        if (WorkBenchManager.Instance == null) 
+        {
+            Debug.LogWarning("WorkBenchManager instance not available. Owned workbenches will be initialized without default recipes.");
+        }
+
+        Debug.Log($"Loading owned workbenches for AccountID: {accountID}");
+        ownedWorkbenches.Clear(); // Clear existing list before loading
+
+        List<Dictionary<string, object>> workbenchDataList = await InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync(accountID);
+
+        if (workbenchDataList == null)
+        {
+            Debug.LogError("Failed to retrieve owned workbenches data from InventoryManager.");
+            return;
+        }
+
+        Debug.Log($"Found {workbenchDataList.Count} owned workbench entries.");
+
+        foreach (var workbenchData in workbenchDataList)
+        {
+            if (!workbenchData.TryGetValue("WorkBenchType", out object typeObj) || typeObj == DBNull.Value)
+            {
+                Debug.LogWarning("Skipping owned workbench entry due to missing WorkBenchType.");
+                continue;
+            }
+            int workbenchType = Convert.ToInt32(typeObj);
+
+            WorkBench newWorkBenchInstance = Instantiate(workBenchPrefab, workbenchParent); // Instantiate as child of PlayerManager
+            newWorkBenchInstance.SetWorkbenchType(workbenchType);
+
+            if (WorkBenchManager.Instance != null)
+            {
+                WorkBench templateWorkBench = WorkBenchManager.Instance.GetWorkbenchByType(workbenchType);
+                if (templateWorkBench != null)
+                {
+                    newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes); // Get recipes from the template
+                    Debug.Log($"Initialized workbench type {workbenchType} with {templateWorkBench.Recipes.Count} recipes from WorkBenchManager.");
+                }
+                else
+                {
+                    Debug.LogWarning($"No template workbench found in WorkBenchManager for type {workbenchType}. Initializing with empty recipes.");
+                    newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list
+                }
+            }
+            else
+            {
+                 newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list if no WorkBenchManager
+            }
+            
+            ownedWorkbenches.Add(newWorkBenchInstance);
+        }
+        Debug.Log($"Finished loading {ownedWorkbenches.Count} owned workbenches.");
     }
     #endregion
 
@@ -731,7 +802,6 @@ public class PlayerManager : MonoBehaviour
             default: return ItemType.Other;
         }
     }
-
     private int GetSlotIndexForType(int slotId)
     {
         switch (slotId)
@@ -743,7 +813,6 @@ public class PlayerManager : MonoBehaviour
             default: return 0; // All other slots use index 0
         }
     }
-
     private void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
