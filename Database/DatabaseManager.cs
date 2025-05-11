@@ -37,7 +37,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
             Destroy(gameObject);
             return;
         }
-        StartInitialization(); // Call BaseManager's initialization starter
+        //StartInitialization(); // Call BaseManager's initialization starter
     }
     #endregion
 

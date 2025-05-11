@@ -40,6 +40,7 @@ public class ItemManager : BaseManager
         if (Instance == null)
         {
             Instance = this;
+            OnDataLoaded += PerformPostLoadActions; // Subscribe here as well
         }
         else if (Instance != this)
         {
@@ -47,6 +48,7 @@ public class ItemManager : BaseManager
             Destroy(gameObject);
             return;
         }
+        //StartInitialization(); // Call StartInitialization here
     }
     #endregion
 
@@ -192,13 +194,6 @@ public class ItemManager : BaseManager
     }
 
     #region InitializeLoading
-    private void Start()
-    {
-        // Kick off the asynchronous initialization
-        StartInitialization();
-        // Subscribe to completion event for post-load actions if needed
-        OnDataLoaded += PerformPostLoadActions;
-    }
     protected override async Task InitializeAsync()
     {
         // Clear runtime data first

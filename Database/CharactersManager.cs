@@ -33,14 +33,11 @@ public class CharactersManager : BaseManager
             Debug.LogWarning("Duplicate CharactersManager detected. Destroying self.");
             Destroy(gameObject);
             return;
-        }
+        }        
+        //StartInitialization();
     }
     #endregion
 
-    private void Start()
-    {
-        StartInitialization();
-    }
 
     #region Initialize
     protected override void OnDestroy()

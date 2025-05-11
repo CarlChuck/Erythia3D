@@ -24,14 +24,11 @@ public class AccountManager : BaseManager
             Debug.LogWarning("Duplicate AccountManager detected. Destroying self.");
             Destroy(gameObject);
             return;
-        }
+        }        
+        //StartInitialization();
     }
     #endregion
 
-    private void Start()
-    {
-        StartInitialization();
-    }
     public async Task<bool> CreateNewAccountAsync(string username, string password, string email, ulong steamId, string language, string ipAddress = "0.0.0.0")
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))

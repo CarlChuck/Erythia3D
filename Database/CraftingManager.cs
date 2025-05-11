@@ -28,15 +28,12 @@ public class CraftingManager : BaseManager
             Debug.LogWarning("Multiple CraftingManager instances detected. Destroying the new one.");
             Destroy(gameObject);
             return;
-        }
+        }        
+        //StartInitialization();
     }
     #endregion
 
     #region Initialize
-    private void Start()
-    {
-        StartInitialization();
-    }
     protected override async Task InitializeAsync()
     {
         Debug.Log("Initializing CraftingManager...");

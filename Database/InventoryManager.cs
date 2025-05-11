@@ -30,13 +30,14 @@ public class InventoryManager : BaseManager
             Destroy(gameObject);
             return;
         }
+        //StartInitialization();
     }
     #endregion
 
     #region Initialization
     private void Start()
     {
-        StartInitialization();
+
     }
     protected override async Task InitializeAsync()
     {

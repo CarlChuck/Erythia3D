@@ -49,13 +49,13 @@ public class ResourceManager : BaseManager
             Debug.LogWarning("Duplicate ResourceManager detected. Destroying self.");
             Destroy(gameObject);
             return;
-        }
+        }        
+        //StartInitialization();
     }
     #endregion
 
     private void Start()
     {
-        StartInitialization();
         OnDataLoaded += PerformPostLoadActions;
     }
 
