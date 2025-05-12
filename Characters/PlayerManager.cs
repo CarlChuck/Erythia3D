@@ -8,8 +8,8 @@ using System.Linq;
 public class PlayerManager : MonoBehaviour
 {
     [Header("Player Account Info")]
-    [SerializeField] private string accountName = "ainianu";
-    [SerializeField] private string email = "Aini@Erythia";
+    [SerializeField] private string accountName = "";
+    [SerializeField] private string email = "";
     private ulong steamID = 1; //TODO set in Awake()
     [SerializeField] private string familyName = "";
     [SerializeField] private string language = "en";
