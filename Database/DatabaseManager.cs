@@ -291,7 +291,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     }
 
     // Asynchronous Update
-    public async Task<bool> UpdateDataAsync(string tableName, Dictionary<string, object> values, string whereCondition, Dictionary<string, object> whereParams)
+    public async Task<bool> UpdateDataFinalAsync(string tableName, Dictionary<string, object> values, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
         {
@@ -315,7 +315,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     }
 
     // Asynchronous Delete
-    public async Task<bool> DeleteDataAsync(string tableName, string whereCondition, Dictionary<string, object> whereParams)
+    public async Task<bool> DeleteDataFinalAsync(string tableName, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
         {

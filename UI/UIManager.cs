@@ -10,6 +10,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private PlayerCharacter playerCharacter;
 
     [Header("HUD Elements")]
+    [SerializeField] private GameObject hudSection;
     [SerializeField] private UIHealthBar healthBar;
 
     [Header("Character Window Elements")]
@@ -17,14 +18,13 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TMP_Text characterNameText;
     [SerializeField] private Transform statsContainer;
     [SerializeField] private GameObject statDisplayPrefab;
-    [SerializeField] private GameObject UICanvas;
     [SerializeField] private TMP_Text healthText;
     [SerializeField] private TMP_Text healthTextMax;
     [SerializeField] private TMP_Text manaText;
     [SerializeField] private TMP_Text manaTextMax;
     private List<StatDisplayUI> statDisplays = new List<StatDisplayUI>();
 
-    [Header("UI Tabs & Windows")] // Renamed for clarity
+    [Header("UI Tabs & Windows")]
     [SerializeField] private GameObject topBar;
     [SerializeField] private GameObject characterWindow;
     [SerializeField] private GameObject skillsWindow;
@@ -37,6 +37,10 @@ public class UIManager : MonoBehaviour
 
 
     #region Initialization
+    private void Start()
+    {
+        hudSection.SetActive(false); // Start with HUD hidden
+    }
     public void SetupUI(PlayerCharacter targetPlayer)
     {
         if (isInitialized)
@@ -332,9 +336,9 @@ public class UIManager : MonoBehaviour
     }
     public void StartHUD()
     {
-        if (UICanvas != null)
+        if (hudSection != null)
         {
-            UICanvas.SetActive(true);
+            hudSection.SetActive(true);
         }
     }
 }

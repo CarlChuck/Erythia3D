@@ -3,6 +3,23 @@ using System.Threading.Tasks;
 
 public class InitializationManager : MonoBehaviour
 {
+    #region Singleton
+    public static InitializationManager Instance { get; private set; }
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Debug.LogWarning($"[InitializationManager] Duplicate instance found. Destroying {gameObject.name}.");
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+        // Optional: Keep the initialization manager across scene loads if needed
+        // DontDestroyOnLoad(gameObject);
+    }
+    #endregion
+
+    private bool isInitialized = false;
     async void Start()
     {
 
@@ -96,5 +113,11 @@ public class InitializationManager : MonoBehaviour
         Debug.Log("[InitializationManager] CraftingManager initialized successfully.");
 
         Debug.Log("[InitializationManager] All systems initialized successfully!");
+        isInitialized = true;
+    }
+
+    public bool GetIsInitialized()
+    {
+        return isInitialized;
     }
 }

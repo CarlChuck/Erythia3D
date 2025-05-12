@@ -53,8 +53,17 @@ public class PlayerManager : MonoBehaviour
         {
             playerCharacters = new List<PlayerCharacter>();
         }
+
+        // Wait for InitializationManager to complete
+        Debug.Log("[PlayerManager] Waiting for InitializationManager...");
+        while (InitializationManager.Instance == null || !InitializationManager.Instance.GetIsInitialized())
+        {
+            await Task.Yield(); // Wait for the next frame
+        }
+        Debug.Log("[PlayerManager] InitializationManager finished. Starting PlayerManager initialization.");
+
         initializationTask = InitializePlayerManagerAsync();
-        await initializationTask; 
+        await initializationTask;
     }
     private async Task InitializePlayerManagerAsync()
     {
@@ -872,6 +881,7 @@ public class PlayerManager : MonoBehaviour
         if (isInitialized && selectedPlayerCharacter != null)
         {
             uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
+            uiManager.StartHUD();
             Debug.Log("UIManager re-setup on scene load.");
         }
         else if (!isInitialized)

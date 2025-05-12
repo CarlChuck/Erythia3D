@@ -136,7 +136,7 @@ public abstract class BaseManager : MonoBehaviour
                 return false;
             }
 
-            bool success = await DatabaseManager.Instance.UpdateDataAsync(tableName, values, whereCondition, whereParams);
+            bool success = await DatabaseManager.Instance.UpdateDataFinalAsync(tableName, values, whereCondition, whereParams);
             if (!success)
             {
                 Debug.LogWarning($"Failed to update data in table '{tableName}'");
@@ -166,7 +166,7 @@ public abstract class BaseManager : MonoBehaviour
                 return false;
             }
 
-            bool success = await DatabaseManager.Instance.DeleteDataAsync(tableName, whereCondition, whereParams);
+            bool success = await DatabaseManager.Instance.DeleteDataFinalAsync(tableName, whereCondition, whereParams);
             if (!success)
             {
                 Debug.LogWarning($"Failed to delete data from table '{tableName}'");

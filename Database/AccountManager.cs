@@ -62,8 +62,30 @@ public class AccountManager : BaseManager
             if (!success)
             {
                 LogWarning($"Failed to insert new account for Username: {username}. Possible duplicate Username, Email, or SteamID?");
+                return false;
             }
-            return success;
+
+            // Account created, now retrieve it to get the AccountID
+            Dictionary<string, object> accountData = await GetAccountByUsernameAsync(username);
+            if (accountData != null && accountData.TryGetValue("AccountID", out object accountIdObj))
+            {
+                if (int.TryParse(accountIdObj.ToString(), out int newAccountId))
+                {
+                    LogInfo($"Account for '{username}' created successfully with AccountID: {newAccountId}.");
+                    await InventoryManager.Instance.AddOwnedWorkbenchAsync(newAccountId, 1);
+                    return true;
+                }
+                else
+                {
+                    LogError($"Account for '{username}' created, but failed to parse AccountID from database: {accountIdObj}");
+                    return false;
+                }
+            }
+            else
+            {
+                LogError($"Account for '{username}' created, but failed to retrieve details to get AccountID.");
+                return false;
+            }
         }
         catch (Exception ex)
         {
