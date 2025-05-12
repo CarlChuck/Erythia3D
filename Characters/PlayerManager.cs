@@ -7,18 +7,21 @@ using System.Linq;
 
 public class PlayerManager : MonoBehaviour
 {
+    [Header("Player Account Info")]
+    [SerializeField] private string accountName = "ainianu";
+    [SerializeField] private string email = "Aini@Erythia";
+    private ulong steamID = 1; //TODO set in Awake()
+    [SerializeField] private string familyName = "";
+    [SerializeField] private string language = "en";
+    [SerializeField] private string ipAddress = "0.0.0.0";
+
+    [Header("Player Character Info")]
     [SerializeField] private GameObject charListParent;
     [SerializeField] private GameObject playerArmature;
     [SerializeField] private GameObject playerFollowCam;
     [SerializeField] private List<PlayerCharacter> playerCharacters;
     [SerializeField] private PlayerCharacter selectedPlayerCharacter;
     private int accountID;
-    private string accountName = "ainianu";
-    private string email = "Aini@Erythia";
-    private ulong steamID = 1; //TODO set in Awake()
-    private string familyName = "";
-    private string language = "en";
-    private string ipAddress = "0.0.0.0";
     [SerializeField] private CharacterModelManager characterModelManager;
     [SerializeField] private ZoneManager currentZone;
     [SerializeField] private GameObject characterPrefab;
