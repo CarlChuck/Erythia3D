@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 using System.Threading.Tasks;
 using System;
 using System.Linq;
+using UnityEngine.TextCore.Text;
 
 public class PlayerManager : MonoBehaviour
 {
@@ -30,9 +31,12 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private WorkBench workBenchPrefab; // New prefab reference
 
     private List<WorkBench> ownedWorkbenches = new List<WorkBench>(); // New list for owned workbenches
+    [SerializeField] private Transform workbenchParent;
+    [SerializeField] private Inventory homeInventory;
+
+
     private bool isInitialized = false; 
     private Task initializationTask; 
-    [SerializeField] private Transform workbenchParent;
 
     #region Singleton
     public static PlayerManager Instance { get; private set; }
@@ -118,6 +122,7 @@ public class PlayerManager : MonoBehaviour
             }
         }
         OnCharactersLoaded();
+        await LoadAccountInventoryAsync();
     }
     private async Task<bool> LoginAsync()
     {
@@ -324,6 +329,10 @@ public class PlayerManager : MonoBehaviour
         // Load owned workbenches
         await LoadOwnedWorkbenchesAsync();
     }
+    private async void OnCharactersLoaded()
+    {
+        await LoadAllCharactersInventoryAsync();
+    }
     private async Task LoadAllCharactersInventoryAsync()
     {
         if (playerCharacters == null || playerCharacters.Count == 0)
@@ -337,12 +346,9 @@ public class PlayerManager : MonoBehaviour
             await LoadCharacterInventoryAsync(character);
         }
     }
-    private async void OnCharactersLoaded()
-    {
-        await LoadAllCharactersInventoryAsync();
-    }
     private async Task LoadCharacterInventoryAsync(PlayerCharacter character)
-    {
+    {        
+        #region Check for null references and some basic setup
         if (character == null)
         {
             Debug.LogError("Cannot load inventory for null character.");
@@ -373,11 +379,17 @@ public class PlayerManager : MonoBehaviour
             Debug.LogError("ItemManager instance is not available.");
             return;
         }
-         if (ResourceManager.Instance == null)
+        if (ResourceManager.Instance == null)
         {
             Debug.LogError("ResourceManager instance is not available.");
             return;
         }
+        if (InventoryManager.Instance == null)
+        {
+            Debug.LogError("InventoryManager instance is not available.");
+            return;
+        }
+        #endregion
 
         Debug.Log($"Starting inventory load for character: {character.GetCharacterName()} (ID: {charId})");
 
@@ -467,7 +479,6 @@ public class PlayerManager : MonoBehaviour
                 int resourceItemId = Convert.ToInt32(resourceItemIdObj);
                 int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
 
-                // ASSUMPTION: GetResourceItemInstanceById returns a fully populated ResourceItem
                 ResourceItem resourceItemInstance = InventoryManager.Instance.GetResourceItemById(resourceItemId);
                 if (resourceItemInstance == null)
                 {
@@ -475,7 +486,7 @@ public class PlayerManager : MonoBehaviour
                     continue;
                 }
 
-                if (slotId == 0) // Assuming resources only go into the bag for now
+                if (slotId == 0) 
                 {
                     Debug.Log($"Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemId}) to inventory bag.");
                     if (!inventory.AddResourceItem(resourceItemInstance))
@@ -495,7 +506,6 @@ public class PlayerManager : MonoBehaviour
             }
 
             // --- 3. Load Inventory SubComponents (Specific Instances in Bag Slots) ---
-             // IMPORTANT: This assumes SubComponentID links to a uniquely defined instance
             Debug.Log($"Loading InventorySubComponents for CharID: {charId}...");
             List<Dictionary<string, object>> inventorySubComponentsData = await InventoryManager.Instance.GetCharacterInventorySubComponentsAsync(charId);
             Debug.Log($"Found {inventorySubComponentsData.Count} InventorySubComponents entries.");
@@ -512,8 +522,6 @@ public class PlayerManager : MonoBehaviour
                 int subComponentId = Convert.ToInt32(subCompIdObj);
                 int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
 
-                 // ASSUMPTION: GetSubComponentInstanceById returns a fully populated SubComponent
-                 // Replace 'SubComponentManager' with your actual manager if different
                 SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subComponentId);
                 if (subComponentInstance == null)
                 {
@@ -546,6 +554,130 @@ public class PlayerManager : MonoBehaviour
         catch (Exception ex)
         {
             Debug.LogError($"Error during LoadCharacterInventoryAsync for character {charId}: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+    private async Task LoadAccountInventoryAsync()
+    {
+        #region Check for null references
+        if (accountID <= 0)
+        {
+            Debug.LogError("Cannot load account inventory: Invalid AccountID.");
+            return;
+        }
+        if (homeInventory == null)
+        {
+            Debug.LogError("Home Inventory reference is missing.");
+            return;
+        }
+        if (ItemManager.Instance == null)
+        {
+            Debug.LogError("ItemManager instance is not available.");
+            return;
+        }
+        if (ResourceManager.Instance == null)
+        {
+            Debug.LogError("ResourceManager instance is not available.");
+            return;
+        }
+        if (InventoryManager.Instance == null)
+        {
+            Debug.LogError("InventoryManager instance is not available.");
+            return;
+        }
+        #endregion
+        homeInventory.ClearInventory();
+
+        try
+        {   
+            // --- 1. Load Inventory Items (Equipment and Bag Items) ---
+            Debug.Log($"Loading account inventory items for AccountID: {accountID}");
+            List<Dictionary<string, object>> accountInventoryItemsData = await InventoryManager.Instance.GetAccountInventoryItemsAsync(accountID);
+            Debug.Log($"Found {accountInventoryItemsData.Count} AccountInventoryItems entries.");
+
+            foreach (var itemData in accountInventoryItemsData)
+            {
+                if (!itemData.TryGetValue("ItemID", out object itemIdObj) || itemIdObj == DBNull.Value)
+                {
+                    Debug.LogWarning($"Skipping account inventory item entry due to missing ItemID for AccountID: {accountID}");
+                    continue;
+                }
+
+                int itemId = Convert.ToInt32(itemIdObj);
+                Item itemInstance = ItemManager.Instance.GetItemInstanceById(itemId);
+                if (itemInstance == null)
+                {
+                    Debug.LogWarning($"Item with ID {itemId} not found via ItemManager for account inventory. Cannot load.");
+                    continue;
+                }
+
+                Debug.Log($"Adding item {itemInstance.ItemName} (ID: {itemId}) to home inventory.");
+                if (!homeInventory.AddItem(itemInstance))
+                {
+                    Debug.LogWarning($"Failed to add item {itemInstance.ItemName} (ID: {itemId}) to home inventory for account {accountID}. Bag might be full or item invalid.");
+                }
+            }
+
+            // --- 2. Load Account Inventory Resource Items ---
+            Debug.Log($"Loading account inventory resource items for AccountID: {accountID}");
+            List<Dictionary<string, object>> accountResourceItemsData = await InventoryManager.Instance.GetAccountInventoryResourceItemsAsync(accountID);
+            Debug.Log($"Found {accountResourceItemsData.Count} AccountInventoryResourceItems entries.");
+
+            foreach (var resourceItemData in accountResourceItemsData)
+            {
+                if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value)
+                {
+                    Debug.LogWarning($"Skipping account inventory resource item entry due to missing ResourceItemID for AccountID: {accountID}");
+                    continue;
+                }
+
+                int resourceItemId = Convert.ToInt32(resourceItemIdObj);
+                ResourceItem resourceItemInstance = InventoryManager.Instance.GetResourceItemById(resourceItemId);
+                if (resourceItemInstance == null)
+                {
+                    Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via InventoryManager for account inventory. Cannot load.");
+                    continue;
+                }
+
+                Debug.Log($"Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemId}) to home inventory.");
+                if (!homeInventory.AddResourceItem(resourceItemInstance))
+                {
+                    Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to home inventory for account {accountID}.");
+                }
+            }
+
+            // --- 3. Load Account Inventory SubComponents ---
+            Debug.Log($"Loading account inventory subcomponents for AccountID: {accountID}");
+            List<Dictionary<string, object>> accountSubComponentsData = await InventoryManager.Instance.GetAccountInventorySubComponentsAsync(accountID);
+            Debug.Log($"Found {accountSubComponentsData.Count} AccountInventorySubComponents entries.");
+
+            foreach (var subCompData in accountSubComponentsData)
+            {
+                if (!subCompData.TryGetValue("SubComponentID", out object subCompIdObj) || subCompIdObj == DBNull.Value)
+                {
+                    Debug.LogWarning($"Skipping account inventory subcomponent entry due to missing SubComponentID for AccountID: {accountID}");
+                    continue;
+                }
+
+                int subComponentId = Convert.ToInt32(subCompIdObj);
+                SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subComponentId);
+                if (subComponentInstance == null)
+                {
+                    Debug.LogWarning($"SubComponent instance with ID {subComponentId} not found via ItemManager for account inventory. Cannot load.");
+                    continue;
+                }
+
+                Debug.Log($"Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subComponentId}) to home inventory.");
+                if (!homeInventory.AddSubComponent(subComponentInstance))
+                {
+                    Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to home inventory for account {accountID}.");
+                }
+            }
+
+            Debug.Log($"Finished loading account inventory for AccountID: {accountID}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error loading account inventory: {ex.Message}\n{ex.StackTrace}");
         }
     }
     private async Task LoadOwnedWorkbenchesAsync()

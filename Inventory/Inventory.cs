@@ -10,6 +10,8 @@ public class Inventory : MonoBehaviour
     [SerializeField] private List<SubComponent> subComponents = new List<SubComponent>();
 
     public event Action OnInventoryChanged;
+
+    #region Setup
     public void SetupInventory()
     {
         SetBagSpace(20);
@@ -18,6 +20,7 @@ public class Inventory : MonoBehaviour
         subComponents.Clear();
         OnInventoryChanged?.Invoke(); // Initial update
     }
+    #endregion
     public void ClearInventory()
     {
         items.Clear();
@@ -59,7 +62,6 @@ public class Inventory : MonoBehaviour
         }
     }
 
-    // Try adding a SubComponent
     public bool AddSubComponent(SubComponent subComponent)
     {
         if (subComponent == null)
@@ -80,7 +82,6 @@ public class Inventory : MonoBehaviour
         return true;
     }
 
-    // Try removing a specific item instance
     public bool RemoveItem(Item item)
     {
         if (item == null) return false;
@@ -105,7 +106,6 @@ public class Inventory : MonoBehaviour
         return removed;
     }
 
-    // Try removing a specific SubComponent instance
     public bool RemoveSubComponent(SubComponent subComponent)
     {
         if (subComponent == null) return false;
@@ -118,14 +118,6 @@ public class Inventory : MonoBehaviour
         return removed;
     }
 
-    /// <summary>
-    /// Updates the stack size of a specific ResourceItem already in the inventory 
-    /// and triggers the OnInventoryChanged event.
-    /// </summary>
-    /// <param name="itemToUpdate">The ResourceItem instance within this inventory.</param>
-    /// <param name="amountToAdd">Positive amount to add.</param>
-    /// <param name="amountToRemove">Positive amount to remove.</param>
-    /// <returns>True if the item was found and updated, false otherwise.</returns>
     public bool UpdateResourceQuantity(ResourceItem itemToUpdate, int amountToAdd = 0, int amountToRemove = 0)
     {
         // Ensure the item actually belongs to this inventory list
@@ -145,22 +137,28 @@ public class Inventory : MonoBehaviour
         }
     }
 
-    // Get all items (useful for UI display)
+    public bool IsFull() 
+    { 
+        return items.Count + resourceItems.Count + subComponents.Count >= bagspace; 
+    }
+
+    #region Getters
+    public int GetBagSpace()
+    {
+        return bagspace;
+    }
     public List<Item> GetAllItems()
     {
         return items; // Return a copy if you want to prevent external modification: return new List<Item>(items);
     }
-
     public List<ResourceItem> GetAllResourceItems()
     {
         return resourceItems;
     }
-
     public List<SubComponent> GetAllSubComponents()
     {
         return subComponents;
     }
-
     public Item GetItem(int index)
     {
         if (index >= 0 && index < items.Count)
@@ -169,7 +167,6 @@ public class Inventory : MonoBehaviour
         }
         return null;
     }
-
     public ResourceItem GetResourceItem(int index)
     {
         if (index >= 0 && index < resourceItems.Count)
@@ -178,7 +175,6 @@ public class Inventory : MonoBehaviour
         }
         return null;
     }
-
     public SubComponent GetSubComponent(int index)
     {
         if (index >= 0 && index < subComponents.Count)
@@ -187,7 +183,6 @@ public class Inventory : MonoBehaviour
         }
         return null;
     }
-
     public Item GetItemByName(string itemName)
     {
         foreach (Item item in items)
@@ -199,12 +194,10 @@ public class Inventory : MonoBehaviour
         }
         return null;
     }
-
     public ResourceItem GetResourceItemByResource(Resource resource)
     {
         return resourceItems.Find(r => r.Resource == resource);
     }
-
     public int GetTotalWeight()
     {
         int totalWeight = 0;
@@ -224,19 +217,12 @@ public class Inventory : MonoBehaviour
         }
         return totalWeight;
     }
+    #endregion
 
+    #region Setters 
     public void SetBagSpace(int newBagSpace)
     {
         bagspace = newBagSpace;
     }
-
-    public int GetBagSpace()
-    {
-        return bagspace;
-    }
-
-    public bool IsFull() 
-    { 
-        return items.Count + resourceItems.Count + subComponents.Count >= bagspace; 
-    }
+    #endregion
 }
