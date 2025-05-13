@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class UICraftingTab : MonoBehaviour
 {
@@ -9,12 +10,36 @@ public class UICraftingTab : MonoBehaviour
     [SerializeField] private GameObject uiRecipePrefab;
 
     [SerializeField] private GameObject uiCraftingWindow;
+
+    private UIWorkBench currentWorkBench;
     #endregion
 
+    public void UpdateWorkBenchWindow() 
+    { 
+        if (PlayerManager.Instance != null)
+        {
+            List<WorkBench> workbenches = PlayerManager.Instance.GetOwnedWorkbenches();
+            if (workbenches != null)
+            {
+                foreach (WorkBench workbench in workbenches)
+                {
+                    GameObject workbenchObject = Instantiate(uiWorkBenchPrefab, uiWorkbenchesParent);
+                    UIWorkBench uiWorkBench = workbenchObject.GetComponent<UIWorkBench>();
+                    uiWorkBench.SetWorkbench(workbench);
+                }
+            }
+        }
+    }
 
+    public void UpdateRecipesWindow() 
+    { 
+    
+    }
 
+    public void SelectWorkBench(UIWorkBench workbench)
+    {
 
-
+    }
 
 
 }

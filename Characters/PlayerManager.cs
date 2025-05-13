@@ -783,6 +783,10 @@ public class PlayerManager : MonoBehaviour
         }
         return playerCharacters;
     }
+    public List<WorkBench> GetOwnedWorkbenches()
+    {
+        return ownedWorkbenches;
+    }
     #endregion
 
     #region Helpers
