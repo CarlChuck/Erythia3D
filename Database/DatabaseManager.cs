@@ -41,7 +41,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     }
     #endregion
 
-    protected override async Task InitializeAsync() // Implement BaseManager's abstract method
+    protected override async Task InitializeAsync() 
     {
         Debug.Log("Initializing DatabaseManager...");
         try
@@ -81,9 +81,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         await Task.CompletedTask; // Standard practice for async methods that complete synchronously
     }
 
-    // Removed InitializeDatabaseConnectionString() as its logic is now in InitializeAsync()
-
-    #region Asynchronous Methods
 
     // Executes a query asynchronously and returns the results as a list of dictionaries.
     public async Task<List<Dictionary<string, object>>> ExecuteQueryAsync(string commandText, Dictionary<string, object> parameters = null)
@@ -330,105 +327,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         }
     }
 
-    #endregion
 
-    #region Synchronous Methods (Refactored for Scoped Connections) - Keep if needed, but prefer async
-
-    public int ExecuteNonQuery(string commandText, Dictionary<string, object> parameters = null)
-    {
-        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
-        if (logQueries) Debug.Log($"Executing sync non-query: {commandText}");
-
-        using (var connection = new MySqlConnection(connectionString))
-        {
-            try
-            {
-                connection.Open(); // Sync open
-                using (var cmd = new MySqlCommand(commandText, connection))
-                {
-                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
-                    return cmd.ExecuteNonQuery(); // Sync execute
-                }
-            }
-            catch (Exception ex) { Debug.LogError($"Error in ExecuteNonQuery: {ex.Message}"); return -1; }
-        } // Connection disposed/closed
-    }
-
-    public object ExecuteScalar(string commandText, Dictionary<string, object> parameters = null)
-    {
-        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return null; }
-        if (logQueries) Debug.Log($"Executing sync scalar: {commandText}");
-
-        using (var connection = new MySqlConnection(connectionString))
-        {
-            try
-            {
-                connection.Open();
-                using (var cmd = new MySqlCommand(commandText, connection))
-                {
-                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
-                    return cmd.ExecuteScalar(); // Sync execute
-                }
-            }
-            catch (Exception ex) { Debug.LogError($"Error in ExecuteScalar: {ex.Message}"); return null; }
-        }
-    }
-
-    public DataTable ExecuteQuery(string commandText, Dictionary<string, object> parameters = null)
-    {
-        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return new DataTable(); }
-        if (logQueries) Debug.Log($"Executing sync query: {commandText}");
-
-        DataTable result = new DataTable();
-        using (var connection = new MySqlConnection(connectionString))
-        {
-            try
-            {
-                connection.Open();
-                using (var cmd = new MySqlCommand(commandText, connection))
-                {
-                    if (parameters != null) { foreach (var p in parameters) cmd.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value); }
-                    using (var adapter = new MySqlDataAdapter(cmd))
-                    {
-                        adapter.Fill(result);
-                    }
-                }
-            }
-            catch (Exception ex) { Debug.LogError($"Error in ExecuteQuery: {ex.Message}"); }
-        }
-        return result;
-    }
-
-    // You would refactor InsertData, UpdateData, DeleteData, TableExists, CreateTableIfNotExists
-    // similarly if you need synchronous versions, always using the scoped 'using (var connection = ...)' pattern.
-    // Example:
-    public bool TableExists(string tableName)
-    {
-        string query = $"SELECT 1 FROM information_schema.tables WHERE table_schema = @dbName AND table_name = @tableName LIMIT 1";
-        var parameters = new Dictionary<string, object> {
-            { "@dbName", database },
-            { "@tableName", tableName }
-        };
-        var result = ExecuteScalar(query, parameters);
-        return result != null && result != DBNull.Value;
-    }
-
-    public bool CreateTableIfNotExists(string tableName, Dictionary<string, string> columns)
-    {
-        try
-        {
-            string columnsDefinition = string.Join(", ", columns.Select(column => $"`{column.Key}` {column.Value}"));
-            string query = $"CREATE TABLE IF NOT EXISTS `{tableName}` ({columnsDefinition}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
-            int result = ExecuteNonQuery(query);
-            if (result >= 0) return TableExists(tableName); // Verify
-            return false;
-        }
-        catch (Exception ex) { Debug.LogError($"Error creating table sync: {tableName}\n{ex.Message}"); return false; }
-    }
-
-    //... Add synchronous versions of Insert, Update, Delete, GetLastInsertId using the scoped connection pattern if absolutely necessary ...
-
-    #endregion
     public string GetConnectionString()
     {
         return connectionString;

@@ -35,6 +35,7 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private Inventory homeInventory;
 
 
+
     private bool isInitialized = false; 
     private Task initializationTask; 
 
@@ -121,7 +122,7 @@ public class PlayerManager : MonoBehaviour
                 MenuManager.Instance.SetCharCreationButton(true); 
             }
         }
-        OnCharactersLoaded();
+        await LoadAllCharactersInventoryAsync();
         await LoadAccountInventoryAsync();
     }
     private async Task<bool> LoginAsync()
@@ -327,10 +328,128 @@ public class PlayerManager : MonoBehaviour
 
         // Load owned workbenches
         await LoadOwnedWorkbenchesAsync();
-    }
-    private async void OnCharactersLoaded()
+    } 
+    #endregion
+
+    public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
-        await LoadAllCharactersInventoryAsync();
+        if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
+        {
+            Debug.LogError("Character or Family Name cannot be empty");
+            // TODO: Show UI popup
+            return;
+        }
+
+        if (accountID <= 0)
+        {
+            Debug.LogError("Cannot create character: Invalid AccountID.");
+            return;
+        }
+
+        Debug.Log($"Attempting to create character: {characterName}");
+        // Use await with the async version
+        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(accountID, familyName, characterName, null, 1, charRace, charGender, charFace);
+
+        if (created)
+        {
+            Debug.Log("Character creation successful, reloading character list...");
+            // Reload the list asynchronously
+            await SetCharactersListAsync();
+            // Setup UI for the newly selected character (SetCharactersList should select the first one)
+            if (selectedPlayerCharacter != null && uiManager != null)
+            {
+                uiManager.SetupUI(selectedPlayerCharacter);
+            }
+        }
+        else
+        {
+            Debug.LogError($"Failed to create character: {characterName}");
+            // TODO: Show UI feedback for failure
+        }
+    }
+
+    #region Saving Methods
+    public async void SaveCharacter()
+    {
+        if (selectedPlayerCharacter == null)
+        {
+            Debug.LogWarning("Cannot save character - no character selected.");
+            return;
+        }
+        Debug.Log($"Saving character {selectedPlayerCharacter.GetCharacterName()} (ID: {selectedPlayerCharacter.GetCharacterID()})");
+        // Use the async version from CharactersManager
+        Transform transform = selectedPlayerCharacter.transform;
+
+        bool success = await CharactersManager.Instance.UpdateCharacterAsync(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetTitle(), 
+            (int)(transform.position.x * 100), (int)(transform.position.y * 100), (int)(transform.position.z * 100), selectedPlayerCharacter.GetCombatExp(), 
+            selectedPlayerCharacter.GetCraftingExp(), selectedPlayerCharacter.GetArcaneExp(), selectedPlayerCharacter.GetSpiritExp(), selectedPlayerCharacter.GetVeilExp());
+        if (!success)
+        {
+            Debug.LogError("Failed to save character data.");
+        }
+    }
+    public async void SaveItem(Item item) 
+    { 
+        
+    }
+    public async void SaveResourceItem(ResourceItem resourceItem)
+    {
+
+    }
+    public async void SaveSubComponent(SubComponent subComponent)
+    {
+
+    }
+    public async void SaveCharacterEquipment(PlayerCharacter character)
+    {
+
+    }
+    public async void SaveCharacterInventory(PlayerCharacter character)
+    {
+
+    }
+    public async void SaveAllInventories()
+    {
+
+    }
+    public async void SaveAccountInventory()
+    {
+
+    }
+    public async void SaveWorkbench()
+    {
+
+    }
+    #endregion
+
+    #region Loading Methods
+    public async void LoadCharacter()
+    {
+
+    }
+    public async void LoadItem()
+    {
+
+    }
+    public async void LoadResourceItem()
+    {
+
+    }
+    public async void LoadSubComponent()
+    {
+
+    }
+    public async void LoadCharacterEquipment()
+    {
+
+    }
+    public async void LoadCharacterInventory()
+    {
+
+    }
+    public async void LoadAccountInventory()
+    {
+
     }
     private async Task LoadAllCharactersInventoryAsync()
     {
@@ -346,13 +465,7 @@ public class PlayerManager : MonoBehaviour
         }
     }
     private async Task LoadCharacterInventoryAsync(PlayerCharacter character)
-    {        
-        #region Check for null references and some basic setup
-        if (character == null)
-        {
-            Debug.LogError("Cannot load inventory for null character.");
-            return;
-        }
+    {
 
         int charId = character.GetCharacterID();
         Inventory inventory = character.GetInventory();
@@ -369,32 +482,15 @@ public class PlayerManager : MonoBehaviour
             return;
         }
         if (equipment == null)
-        { 
+        {
             Debug.LogError($"EquipmentProfile component not found for character {character.GetCharacterName()} (ID: {charId}).");
             return;
         }
-        if (ItemManager.Instance == null)
-        {
-            Debug.LogError("ItemManager instance is not available.");
-            return;
-        }
-        if (ResourceManager.Instance == null)
-        {
-            Debug.LogError("ResourceManager instance is not available.");
-            return;
-        }
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("InventoryManager instance is not available.");
-            return;
-        }
-        #endregion
 
         Debug.Log($"Starting inventory load for character: {character.GetCharacterName()} (ID: {charId})");
 
-        // Clear existing inventory and equipment before loading
         inventory.ClearInventory();
-        equipment.ClearEquipmentProfile(); // Assuming an UnequipAll method exists
+        equipment.ClearEquipmentProfile();
 
         try
         {
@@ -415,7 +511,7 @@ public class PlayerManager : MonoBehaviour
                 int itemId = Convert.ToInt32(itemIdObj);
                 int slotId = Convert.ToInt32(slotIdObj);
 
-                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemId); // Assumes this creates/returns the specific instance
+                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemId);
                 if (itemInstance == null)
                 {
                     Debug.LogWarning($"Item with ID {itemId} not found via ItemManager. Cannot load.");
@@ -423,7 +519,7 @@ public class PlayerManager : MonoBehaviour
                 }
 
                 if (slotId > 0)
-                { 
+                {
                     // Equip Item
                     ItemType slotType = MapSlotIdToItemType(slotId);
                     if (slotType != ItemType.Other)
@@ -438,18 +534,16 @@ public class PlayerManager : MonoBehaviour
                         else
                         {
                             Debug.LogWarning($"Could not find EquipmentSlot for SlotID: {slotId} (Type: {slotType}, Index: {slotIndex}). Cannot equip {itemInstance.ItemName}.");
-                            // Optionally add to inventory bag as fallback?
-                            // inventory.AddItem(itemInstance);
+                            inventory.AddItem(itemInstance); //Put in bag as fallback
                         }
                     }
                     else
                     {
                         Debug.LogWarning($"Invalid SlotID {slotId} found in InventoryItems table for ItemID {itemId}. Cannot equip.");
-                        // Optionally add to inventory bag as fallback?
-                        // inventory.AddItem(itemInstance);
+                        inventory.AddItem(itemInstance); //Put in bag as fallback
                     }
                 }
-                else // slotId == 0 (or other designated bag slot identifier)
+                else
                 {
                     // Add to Inventory Bag
                     Debug.Log($"Adding item {itemInstance.ItemName} (ID: {itemId}) to inventory bag.");
@@ -468,7 +562,7 @@ public class PlayerManager : MonoBehaviour
 
             foreach (var resourceItemData in inventoryResourceItemsData)
             {
-                 if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value)
+                if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value)
                 {
                     Debug.LogWarning($"Skipping inventory resource item entry due to missing ResourceItemID for CharID: {charId}");
                     continue;
@@ -476,7 +570,7 @@ public class PlayerManager : MonoBehaviour
 
                 int resourceItemId = Convert.ToInt32(resourceItemIdObj);
 
-                ResourceItem resourceItemInstance = ItemManager.Instance.GetResourceItemById(resourceItemId);
+                ResourceItem resourceItemInstance = GetResourceItemById(resourceItemId);
                 if (resourceItemInstance == null)
                 {
                     Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via InventoryManager. Cannot load.");
@@ -502,7 +596,7 @@ public class PlayerManager : MonoBehaviour
                     Debug.LogWarning($"Skipping inventory subcomponent entry due to missing SubComponentID for CharID: {charId}");
                     continue;
                 }
-                
+
                 int subComponentId = Convert.ToInt32(subCompIdObj);
 
                 SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subComponentId);
@@ -515,11 +609,11 @@ public class PlayerManager : MonoBehaviour
                 Debug.Log($"Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subComponentId}) to inventory bag.");
                 if (!inventory.AddSubComponent(subComponentInstance))
                 {
-                     Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag for character {charId}.");
+                    Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag for character {charId}.");
                 }
             }
 
-             Debug.Log($"Finished inventory load for character: {character.GetCharacterName()} (ID: {charId})");
+            Debug.Log($"Finished inventory load for character: {character.GetCharacterName()} (ID: {charId})");
 
         }
         catch (Exception ex)
@@ -529,37 +623,10 @@ public class PlayerManager : MonoBehaviour
     }
     private async Task LoadAccountInventoryAsync()
     {
-        #region Check for null references
-        if (accountID <= 0)
-        {
-            Debug.LogError("Cannot load account inventory: Invalid AccountID.");
-            return;
-        }
-        if (homeInventory == null)
-        {
-            Debug.LogError("Home Inventory reference is missing.");
-            return;
-        }
-        if (ItemManager.Instance == null)
-        {
-            Debug.LogError("ItemManager instance is not available.");
-            return;
-        }
-        if (ResourceManager.Instance == null)
-        {
-            Debug.LogError("ResourceManager instance is not available.");
-            return;
-        }
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("InventoryManager instance is not available.");
-            return;
-        }
-        #endregion
         homeInventory.ClearInventory();
 
         try
-        {   
+        {
             // --- 1. Load Inventory Items (Equipment and Bag Items) ---
             Debug.Log($"Loading account inventory items for AccountID: {accountID}");
             List<Dictionary<string, object>> accountInventoryItemsData = await InventoryManager.Instance.GetAccountInventoryItemsAsync(accountID);
@@ -602,7 +669,7 @@ public class PlayerManager : MonoBehaviour
                 }
 
                 int resourceItemId = Convert.ToInt32(resourceItemIdObj);
-                ResourceItem resourceItemInstance = ItemManager.Instance.GetResourceItemById(resourceItemId);
+                ResourceItem resourceItemInstance = GetResourceItemById(resourceItemId);
                 if (resourceItemInstance == null)
                 {
                     Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via InventoryManager for account inventory. Cannot load.");
@@ -653,27 +720,6 @@ public class PlayerManager : MonoBehaviour
     }
     private async Task LoadOwnedWorkbenchesAsync()
     {
-        if (accountID <= 0)
-        {
-            Debug.LogError("Cannot load owned workbenches: Invalid AccountID.");
-            return;
-        }
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("InventoryManager instance not available. Cannot load owned workbenches.");
-            return;
-        }
-        if (workBenchPrefab == null)
-        {
-            Debug.LogError("WorkBench Prefab is not assigned in PlayerManager. Cannot instantiate owned workbenches.");
-            return;
-        }
-        // Updated to use WorkBenchManager for recipes
-        if (WorkBenchManager.Instance == null) 
-        {
-            Debug.LogWarning("WorkBenchManager instance not available. Owned workbenches will be initialized without default recipes.");
-        }
-
         Debug.Log($"Loading owned workbenches for AccountID: {accountID}");
         ownedWorkbenches.Clear(); // Clear existing list before loading
 
@@ -715,104 +761,16 @@ public class PlayerManager : MonoBehaviour
             }
             else
             {
-                 newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list if no WorkBenchManager
+                newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list if no WorkBenchManager
             }
-            
+
             ownedWorkbenches.Add(newWorkBenchInstance);
         }
         Debug.Log($"Finished loading {ownedWorkbenches.Count} owned workbenches.");
     }
+
+
     #endregion
-
-    public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
-    {
-        if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
-        {
-            Debug.LogError("Character or Family Name cannot be empty");
-            // TODO: Show UI popup
-            return;
-        }
-
-        if (accountID <= 0)
-        {
-            Debug.LogError("Cannot create character: Invalid AccountID.");
-            return;
-        }
-
-        Debug.Log($"Attempting to create character: {characterName}");
-        // Use await with the async version
-        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(accountID, familyName, characterName, null, 1, charRace, charGender, charFace);
-
-        if (created)
-        {
-            Debug.Log("Character creation successful, reloading character list...");
-            // Reload the list asynchronously
-            await SetCharactersListAsync();
-            // Setup UI for the newly selected character (SetCharactersList should select the first one)
-            if (selectedPlayerCharacter != null && uiManager != null)
-            {
-                uiManager.SetupUI(selectedPlayerCharacter);
-            }
-        }
-        else
-        {
-            Debug.LogError($"Failed to create character: {characterName}");
-            // TODO: Show UI feedback for failure
-        }
-    }
-
-    public async void SaveCharacter()
-    {
-        if (selectedPlayerCharacter == null)
-        {
-            Debug.LogWarning("Cannot save character - no character selected.");
-            return;
-        }
-        Debug.Log($"Saving character {selectedPlayerCharacter.GetCharacterName()} (ID: {selectedPlayerCharacter.GetCharacterID()})");
-        // Use the async version from CharactersManager
-        Transform transform = selectedPlayerCharacter.transform;
-
-        bool success = await CharactersManager.Instance.UpdateCharacterAsync(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetTitle(), 
-            (int)(transform.position.x * 100), (int)(transform.position.y * 100), (int)(transform.position.z * 100), selectedPlayerCharacter.GetCombatExp(), 
-            selectedPlayerCharacter.GetCraftingExp(), selectedPlayerCharacter.GetArcaneExp(), selectedPlayerCharacter.GetSpiritExp(), selectedPlayerCharacter.GetVeilExp());
-        if (!success)
-        {
-            Debug.LogError("Failed to save character data.");
-        }
-    }
-
-    public async void SaveItem(Item item) 
-    { 
-        
-    }
-    public async void SaveResourceItem(ResourceItem resourceItem)
-    {
-
-    }
-    public async void SaveSubComponent(SubComponent subComponent)
-    {
-
-    }
-    public async void SaveCharacterEquipment(PlayerCharacter character)
-    {
-
-    }
-    public async void SaveCharacterInventory(PlayerCharacter character)
-    {
-
-    }
-    public async void SaveAllInventories()
-    {
-
-    }
-    public async void SaveAccountInventory()
-    {
-
-    }
-    public async void SaveWorkbench()
-    {
-
-    }
 
     #region Setters
     public async Task SetSelectedCharacterAsync() // Changed to async
@@ -1059,6 +1017,11 @@ public class PlayerManager : MonoBehaviour
             Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
             // UI setup will happen when initialization completes
         }
+    }
+    private ResourceItem GetResourceItemById(int resourceItemId)
+    {
+        ResourceItem resourceItem = null; //TODO
+        return resourceItem;
     }
     #endregion
 }

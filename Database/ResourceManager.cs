@@ -15,7 +15,6 @@ public class ResourceManager : BaseManager
     private List<string> thirdPartOfName = new List<string> { "ton", "lee", "nex", "rus", "kus", "tus", "vus", "lys", "rex", "dus", "kas", "los", "tus", "vas", "gos", "nus", "vos", "kes", "das", "tus", "bane", "fade", "gore", "holt", "kane", "lane", "lyth", "mose", "naan", "pike", "rath", "roth", "ryn", "sank", "slade", "snod", "spar", "stadt", "stoke", "torn", "void", "wake", "wynn", "wyn", "xan", "yeld", "zell", "zorn", "zorv" };
     #endregion
 
-    // --- Table Names ---
     private const string ResourceTemplatesTableName = "ResourceTemplates";
     private const string ResourceInstancesTableName = "Resources";
 
@@ -23,12 +22,11 @@ public class ResourceManager : BaseManager
     [SerializeField] private Resource resourcePrefab;
     [SerializeField] private ResourceTemplate resourceTemplatePrefab;
 
-
     [Header("Parent Transforms")]
     [SerializeField] private Transform resourceInstancesParent;
     [SerializeField] private Transform resourceTemplatesParent;
 
-    [Header("Runtime Data (Loaded)")]
+    [Header("Runtime Data")]
     private List<ResourceTemplate> loadedTemplates = new List<ResourceTemplate>();
     private List<Resource> loadedResourceInstances = new List<Resource>();
     private Dictionary<int, ResourceTemplate> templatesById = new Dictionary<int, ResourceTemplate>();
@@ -37,12 +35,12 @@ public class ResourceManager : BaseManager
 
     #region Singleton
     public static ResourceManager Instance;
-
     protected void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
+            OnDataLoaded += PerformPostLoadActions;
         }
         else if (Instance != this)
         {
@@ -53,10 +51,180 @@ public class ResourceManager : BaseManager
     }
     #endregion
 
-    private void Start()
+    public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType type, ResourceSubType regionType)
     {
-        OnDataLoaded += PerformPostLoadActions;
+        if (!isInitialized)
+        {
+            LogError("ResourceManager not initialized. Cannot spawn resource.");
+            return null;
+        }
+
+        // 1. Find Template
+        ResourceTemplate template = loadedTemplates.FirstOrDefault(t => t.Type == type);
+
+        if (template == null)
+        {
+            LogError($"No ResourceTemplate found for type '{type}'. Cannot spawn resource.");
+            return null;
+        }
+
+        if (resourcePrefab == null)
+        {
+            LogError("Resource Prefab is not assigned! Cannot spawn resource.");
+            return null;
+        }
+
+        // 2. Instantiate Prefab
+        GameObject resourceGO = Instantiate(resourcePrefab.gameObject);
+        Resource newResource = resourceGO.GetComponent<Resource>();
+        if (newResource == null)
+        {
+            LogError("Failed to get Resource component from instantiated prefab. Destroying object.");
+            Destroy(resourceGO);
+            return null;
+        }
+
+        // 3. Parenting
+        if (resourceInstancesParent != null)
+        {
+            resourceGO.transform.SetParent(resourceInstancesParent, false);
+        }
+        else
+        {
+            LogWarning("resourceInstancesParent is not set. Spawned resource will be at root.");
+        }
+
+        // 4. Generate Name and Set Initial Values
+        string randomName = GenerateRandomResourceName();
+
+        // 5. Add Random Variation
+        int quality = ClampNumber(template.Quality + randomNumber.Next(-250, 251) + randomNumber.Next(-250, 251));
+        int toughness = ClampNumber(template.Toughness + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int strength = ClampNumber(template.Strength + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int density = ClampNumber(template.Density + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int aura = ClampNumber(template.Aura + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int energy = ClampNumber(template.Energy + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int protein = ClampNumber(template.Protein + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int flavour = ClampNumber(template.Flavour + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
+        int weight = template.Weight;
+        int value = GenerateValue(template);
+
+        // 6. Set Dates
+        DateTime startDate = DateTime.UtcNow;
+        int randomHours = randomNumber.Next(120, 217);
+        DateTime endDate = startDate.AddHours(randomHours);
+
+        // 7. Save to Database using a transaction
+        try
+        {
+            using (var connection = new MySqlConnection(DatabaseManager.Instance.GetConnectionString()))
+            {
+                await connection.OpenAsync();
+                using (var transaction = await connection.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        // Prepare the insert command
+                        Dictionary<string, object> valuesToSave = new Dictionary<string, object>
+                        {
+                            { "ResourceName", randomName },
+                            { "ResourceTemplateID", template.ResourceTemplateID },
+                            { "Type", (int)template.Type },
+                            { "SubType", (int)regionType },
+                            { "Quality", quality },
+                            { "Toughness", toughness },
+                            { "Strength", strength },
+                            { "Density", density },
+                            { "Aura", aura },
+                            { "Energy", energy },
+                            { "Protein", protein },
+                            { "Carbohydrate", carbohydrate },
+                            { "Flavour", flavour },
+                            { "Weight", weight },
+                            { "Value", value },
+                            { "StartDate", startDate },
+                            { "EndDate", endDate }
+                        };
+
+                        string columns = string.Join(", ", valuesToSave.Keys.Select(k => $"`{k}`"));
+                        string parameters = string.Join(", ", valuesToSave.Keys.Select(k => $"@{k}"));
+                        string query = $"INSERT INTO `{ResourceInstancesTableName}` ({columns}) VALUES ({parameters}); SELECT LAST_INSERT_ID();";
+
+                        using (var cmd = new MySqlCommand(query, connection, transaction))
+                        {
+                            foreach (var kvp in valuesToSave)
+                            {
+                                cmd.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? DBNull.Value);
+                            }
+
+                            // Execute the command and get the ID
+                            object result = await cmd.ExecuteScalarAsync();
+                            if (result != null && result != DBNull.Value)
+                            {
+                                long newId = Convert.ToInt64(result);
+                                if (newId > 0)
+                                {
+                                    // Commit the transaction
+                                    await transaction.CommitAsync();
+
+                                    // Set the resource data
+                                    newResource.SetResource(
+                                        (int)newId,
+                                        randomName,
+                                        template.ResourceTemplateID,
+                                        (int)template.Type,
+                                        (int)regionType,
+                                        quality,
+                                        toughness,
+                                        strength,
+                                        density,
+                                        aura,
+                                        energy,
+                                        protein,
+                                        carbohydrate,
+                                        flavour,
+                                        weight,
+                                        value,
+                                        startDate,
+                                        endDate
+                                    );
+                                    newResource.SetResourceTemplate(template);
+                                    loadedResourceInstances.Add(newResource);
+                                    resourcesById[newResource.ResourceSpawnID] = newResource;
+                                    LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
+                                    return newResource;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            LogError("Failed to get last insert ID after successful insert.");
+            Destroy(resourceGO);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Log the FULL exception details, including the inner exception if present
+            string fullErrorMessage = $"Exception during resource saving process. Destroying spawned object. Error: {ex.Message}\nType: {ex.GetType().FullName}\nStackTrace: {ex.StackTrace}";
+            if (ex.InnerException != null)
+            {
+                fullErrorMessage += $"\nInner Exception: {ex.InnerException.Message}\nInner Type: {ex.InnerException.GetType().FullName}\nInner StackTrace: {ex.InnerException.StackTrace}";
+            }
+            LogError(fullErrorMessage); // Use LogError which might already log stack trace
+
+            Destroy(resourceGO);
+            return null;
+        }
     }
+
 
     #region Initialization
     protected override async Task InitializeAsync()
@@ -195,238 +363,6 @@ public class ResourceManager : BaseManager
             return null; // Indicate failure
         }
     }
-    public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType type, ResourceSubType regionType)
-    {
-        if (!isInitialized)
-        {
-            LogError("ResourceManager not initialized. Cannot spawn resource.");
-            return null;
-        }
-
-        // 1. Find Template
-        ResourceTemplate template = loadedTemplates.FirstOrDefault(t => t.Type == type);
-
-        if (template == null)
-        {
-            LogError($"No ResourceTemplate found for type '{type}'. Cannot spawn resource.");
-            return null;
-        }
-
-        if (resourcePrefab == null)
-        {
-            LogError("Resource Prefab is not assigned! Cannot spawn resource.");
-            return null;
-        }
-
-        // 2. Instantiate Prefab
-        GameObject resourceGO = Instantiate(resourcePrefab.gameObject);
-        Resource newResource = resourceGO.GetComponent<Resource>();
-        if (newResource == null)
-        {
-            LogError("Failed to get Resource component from instantiated prefab. Destroying object.");
-            Destroy(resourceGO);
-            return null;
-        }
-
-        // 3. Parenting
-        if (resourceInstancesParent != null)
-        {
-            resourceGO.transform.SetParent(resourceInstancesParent, false);
-        }
-        else
-        {
-            LogWarning("resourceInstancesParent is not set. Spawned resource will be at root.");
-        }
-
-        // 4. Generate Name and Set Initial Values
-        string randomName = GenerateRandomResourceName();
-
-        // 5. Add Random Variation
-        int quality = ClampNumber(template.Quality + randomNumber.Next(-250, 251) + randomNumber.Next(-250, 251));
-        int toughness = ClampNumber(template.Toughness + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int strength = ClampNumber(template.Strength + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int density = ClampNumber(template.Density + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int aura = ClampNumber(template.Aura + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int energy = ClampNumber(template.Energy + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int protein = ClampNumber(template.Protein + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int carbohydrate = ClampNumber(template.Carbohydrate + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int flavour = ClampNumber(template.Flavour + randomNumber.Next(-100, 101) + randomNumber.Next(-100, 101));
-        int weight = template.Weight;
-        int value = GenerateValue(template); 
-
-        // 6. Set Dates
-        DateTime startDate = DateTime.UtcNow;
-        int randomHours = randomNumber.Next(120, 217);
-        DateTime endDate = startDate.AddHours(randomHours);
-
-        // 7. Save to Database using a transaction
-        try
-        {
-            using (var connection = new MySqlConnection(DatabaseManager.Instance.GetConnectionString()))
-            {
-                await connection.OpenAsync();
-                using (var transaction = await connection.BeginTransactionAsync())
-                {
-                    try
-                    {
-                        // Prepare the insert command
-                        Dictionary<string, object> valuesToSave = new Dictionary<string, object>
-                        {
-                            { "ResourceName", randomName },
-                            { "ResourceTemplateID", template.ResourceTemplateID },
-                            { "Type", (int)template.Type },
-                            { "SubType", (int)regionType },
-                            { "Quality", quality },
-                            { "Toughness", toughness },
-                            { "Strength", strength },
-                            { "Density", density },
-                            { "Aura", aura },
-                            { "Energy", energy },
-                            { "Protein", protein },
-                            { "Carbohydrate", carbohydrate },
-                            { "Flavour", flavour },
-                            { "Weight", weight },
-                            { "Value", value },
-                            { "StartDate", startDate },
-                            { "EndDate", endDate }
-                        };
-
-                        string columns = string.Join(", ", valuesToSave.Keys.Select(k => $"`{k}`"));
-                        string parameters = string.Join(", ", valuesToSave.Keys.Select(k => $"@{k}"));
-                        string query = $"INSERT INTO `{ResourceInstancesTableName}` ({columns}) VALUES ({parameters}); SELECT LAST_INSERT_ID();";
-
-                        using (var cmd = new MySqlCommand(query, connection, transaction))
-                        {
-                            foreach (var kvp in valuesToSave)
-                            {
-                                cmd.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? DBNull.Value);
-                            }
-
-                            // Execute the command and get the ID
-                            object result = await cmd.ExecuteScalarAsync();
-                            if (result != null && result != DBNull.Value)
-                            {
-                                long newId = Convert.ToInt64(result);
-                                if (newId > 0)
-                                {
-                                    // Commit the transaction
-                                    await transaction.CommitAsync();
-
-                                    // Set the resource data
-                                    newResource.SetResource(
-                                        (int)newId,
-                                        randomName,
-                                        template.ResourceTemplateID,
-                                        (int)template.Type,
-                                        (int)regionType,
-                                        quality,
-                                        toughness,
-                                        strength,
-                                        density,
-                                        aura,
-                                        energy,
-                                        protein,
-                                        carbohydrate,
-                                        flavour,
-                                        weight,
-                                        value,
-                                        startDate,
-                                        endDate
-                                    );
-                                    newResource.SetResourceTemplate(template);
-                                    loadedResourceInstances.Add(newResource);
-                                    resourcesById[newResource.ResourceSpawnID] = newResource;
-                                    LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
-                                    return newResource;
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        await transaction.RollbackAsync();
-                        throw;
-                    }
-                }
-            }
-
-            LogError("Failed to get last insert ID after successful insert.");
-            Destroy(resourceGO);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            // Log the FULL exception details, including the inner exception if present
-            string fullErrorMessage = $"Exception during resource saving process. Destroying spawned object. Error: {ex.Message}\nType: {ex.GetType().FullName}\nStackTrace: {ex.StackTrace}";
-            if (ex.InnerException != null)
-            {
-                fullErrorMessage += $"\nInner Exception: {ex.InnerException.Message}\nInner Type: {ex.InnerException.GetType().FullName}\nInner StackTrace: {ex.InnerException.StackTrace}";
-            }
-            LogError(fullErrorMessage); // Use LogError which might already log stack trace
-            
-            Destroy(resourceGO);
-            return null;
-        }
-    }
-    private void MapDictionaryToResourceTemplate(ResourceTemplate resourceTemplate, Dictionary<string, object> data)
-    {
-        try
-        {
-            resourceTemplate.SetResourceTemplate(
-                Convert.ToInt32(data["ResourceTemplateID"]),
-                data["TemplateName"] != DBNull.Value ? Convert.ToString(data["TemplateName"]) : "Unnamed Template",
-                data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
-                data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
-                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
-                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
-                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
-                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
-                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
-                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
-                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
-                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
-                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
-                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100000,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
-                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
-        }
-    }
-    private void MapDictionaryToResource(Resource resource, Dictionary<string, object> data)
-    {
-        try
-        {
-            resource.SetResource(
-                data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
-                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : "",
-                data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
-                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
-                data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
-                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
-                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
-                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
-                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
-                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
-                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
-                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
-                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
-                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
-                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
-                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0,
-                data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
-                data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
-            );
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
-        }
-    }
     private void PerformPostLoadActions()
     {
         LogInfo("Performing post-load actions (parenting objects)...");
@@ -541,7 +477,65 @@ public class ResourceManager : BaseManager
     #endregion
 
     #region Helpers
-
+    private void MapDictionaryToResourceTemplate(ResourceTemplate resourceTemplate, Dictionary<string, object> data)
+    {
+        try
+        {
+            resourceTemplate.SetResourceTemplate(
+                Convert.ToInt32(data["ResourceTemplateID"]),
+                data["TemplateName"] != DBNull.Value ? Convert.ToString(data["TemplateName"]) : "Unnamed Template",
+                data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
+                data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
+                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
+                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
+                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
+                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
+                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
+                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
+                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
+                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
+                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
+                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
+                data["StackSizeMax"] != DBNull.Value ? Convert.ToInt32(data["StackSizeMax"]) : 100000,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to ResourceTemplate: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+        }
+    }
+    private void MapDictionaryToResource(Resource resource, Dictionary<string, object> data)
+    {
+        try
+        {
+            resource.SetResource(
+                data["ResourceSpawnID"] != DBNull.Value ? Convert.ToInt32(data["ResourceSpawnID"]) : -1,
+                data["ResourceName"] != DBNull.Value ? Convert.ToString(data["ResourceName"]) : "",
+                data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
+                data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
+                data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
+                data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
+                data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
+                data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
+                data["Density"] != DBNull.Value ? Convert.ToInt32(data["Density"]) : 0,
+                data["Aura"] != DBNull.Value ? Convert.ToInt32(data["Aura"]) : 0,
+                data["Energy"] != DBNull.Value ? Convert.ToInt32(data["Energy"]) : 0,
+                data["Protein"] != DBNull.Value ? Convert.ToInt32(data["Protein"]) : 0,
+                data["Carbohydrate"] != DBNull.Value ? Convert.ToInt32(data["Carbohydrate"]) : 0,
+                data["Flavour"] != DBNull.Value ? Convert.ToInt32(data["Flavour"]) : 0,
+                data["Weight"] != DBNull.Value ? Convert.ToInt32(data["Weight"]) : 0,
+                data["Value"] != DBNull.Value ? Convert.ToInt32(data["Value"]) : 0,
+                data["StartDate"] != DBNull.Value ? Convert.ToDateTime(data["StartDate"]) : DateTime.MinValue,
+                data["EndDate"] != DBNull.Value ? Convert.ToDateTime(data["EndDate"]) : DateTime.MinValue
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to Resource: {ex.Message} - Data: {string.Join(", ", data.Select(kv => kv.Key + "=" + kv.Value))}");
+        }
+    }
     private int GenerateValue(ResourceTemplate resourceTemplate)
     {
         int prelimValue = resourceTemplate.Value;
@@ -605,10 +599,8 @@ public class ResourceManager : BaseManager
         OnDataLoaded -= PerformPostLoadActions;
         base.OnDestroy();
     }
-
     #endregion
 }
-
 public enum ResourceType
 {
     //Liquid
@@ -818,7 +810,6 @@ public enum ResourceType
     XaNut,
     Yumbi
 }
-
 public enum ResourceSubType
 {
     //Region
@@ -858,7 +849,6 @@ public enum ResourceSubType
     Wurm,
     Shark
 }
-
 public enum ResourceOrder
 {
     Liquid,
@@ -866,7 +856,6 @@ public enum ResourceOrder
     Animal,
     Plant,
 }
-
 public enum ResourceFamily
 {
     Water,

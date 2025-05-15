@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading; // For CancellationToken
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -11,26 +11,22 @@ public class ItemManager : BaseManager
     private const string ItemTemplatesTableName = "ItemTemplates";
     private const string SubComponentsTableName = "SubComponents";
     private const string SubComponentTemplatesTableName = "SubComponentTemplates";
-    private const string ResourceItemsTableName = "ResourceItems";
 
     [Header("Prefabs")]
     [SerializeField] private Item itemPrefab; 
     [SerializeField] private ItemTemplate itemTemplatePrefab;
     [SerializeField] private SubComponent subComponentPrefab;
     [SerializeField] private SubComponentTemplate subComponentTemplatePrefab;
-    [SerializeField] private ResourceItem resourceItemPrefab;
 
     [Header("Parent Transforms")]
     [SerializeField] private Transform itemsParent; 
     [SerializeField] private Transform itemTemplatesParent; 
     [SerializeField] private Transform subComponentTemplatesParent;
     [SerializeField] private Transform subComponentsParent;
-    [SerializeField] private Transform resourceItemParent;
 
     [Header("Runtime Data")]
     private List<ItemTemplate> itemTemplates = new List<ItemTemplate>();
     private List<Item> items = new List<Item>();
-    private List<ResourceItem> resourceItems = new List<ResourceItem>();
     private List<SubComponentTemplate> subComponentTemplates = new List<SubComponentTemplate>();
     private List<SubComponent> subComponents = new List<SubComponent>();
     private Dictionary<int, ItemTemplate> templatesById = new Dictionary<int, ItemTemplate>();
@@ -46,7 +42,6 @@ public class ItemManager : BaseManager
         if (Instance == null)
         {
             Instance = this;
-            OnDataLoaded += PerformPostLoadActions;
         }
         else if (Instance != this)
         {
@@ -57,147 +52,6 @@ public class ItemManager : BaseManager
     }
     #endregion
 
-    public async Task<Item> CreateItemAsync(ItemTemplate template)
-    {
-        if (template == null)
-        {
-            LogError("Cannot create item instance: Template is null");
-            return null;
-        }
-
-        // Create new item instance from prefab
-        GameObject itemObj = Instantiate(itemPrefab.gameObject);
-        Item newItem = itemObj.GetComponent<Item>();
-        if (newItem == null)
-        {
-            LogError("Failed to get Item component from prefab");
-            Destroy(itemObj);
-            return null;
-        }
-
-        // Copy all statistics from template to new item
-        newItem.SetItem(
-            0, // ItemID will be set by database
-            template.ItemTemplateID,
-            template.ItemName,
-            (int)template.Type,
-            template.MaxDurability, // Start with full durability
-            template.MaxDurability,
-            template.Damage,
-            template.Speed,
-            (int)template.WeaponType,
-            (int)template.Slot,
-            template.SlashResist,
-            template.ThrustResist,
-            template.CrushResist,
-            template.HeatResist,
-            template.ShockResist,
-            template.ColdResist,
-            template.MindResist,
-            template.CorruptResist,
-            template.Icon,
-            template.ColourHex,
-            (int)template.Weight,
-            template.Model,
-            template.IsStackable,
-            template.StackSizeMax,
-            template.Price
-        );
-
-        // Set the template reference
-        newItem.Template = template;
-
-        // Parent the item if a parent transform is specified
-        if (itemsParent != null)
-        {
-            itemObj.transform.SetParent(itemsParent, false);
-        }
-
-        // Save to database and get the new ItemID
-        long newItemId = await SaveNewItemAsync(newItem);
-        if (newItemId <= 0)
-        {
-            LogError("Failed to save new item instance to database");
-            Destroy(itemObj);
-            return null;
-        }
-
-        // Set the new ItemID
-        newItem.SetItemID((int)newItemId);
-
-        // Add to loaded instances and lookup dictionary
-        items.Add(newItem);
-        itemsById[newItem.ItemID] = newItem;
-
-        return newItem;
-    }
-    public async Task<SubComponent> CreateSubComponentAsync(SubComponentTemplate template, int quality = 0, int toughness = 0, int strength = 0, int density = 0, int aura = 0, int energy = 0, int protein = 0, int carbohydrate = 0, int flavour = 0)
-    {
-        if (template == null)
-        {
-            LogError("Cannot create sub-component instance: Template is null");
-            return null;
-        }
-        if (subComponentPrefab == null)
-        {
-             LogError("Cannot create sub-component instance: SubComponent Prefab is null");
-             return null;
-        }
-
-        // 1. Instantiate from prefab
-        SubComponent newSubComponent = Instantiate(subComponentPrefab);
-        if (newSubComponent == null)
-        {
-            LogError("Failed to instantiate SubComponent from prefab");
-            return null;
-        }
-
-        // 2. Initialize with template data and PASSED instance values
-        newSubComponent.Initialize(
-            0, // ID will be set by DB
-            template.Name, 
-            template.ComponentTemplateID,
-            template.ComponentType, // Copy type from template (could also be an argument if needed)
-            quality,      // Use passed argument
-            toughness,    // Use passed argument
-            strength,     // Use passed argument
-            density,      // Use passed argument
-            aura,         // Use passed argument
-            energy,       // Use passed argument
-            protein,      // Use passed argument
-            carbohydrate, // Use passed argument
-            flavour       // Use passed argument
-        );
-
-        // 3. Set template reference
-        newSubComponent.Template = template;
-        newSubComponent.gameObject.name = $"SubCompInst_NEW_{template.Name}";
-
-        // 4. Parent the instance if parent transform is specified
-        if (subComponentsParent != null)
-        {
-            newSubComponent.transform.SetParent(subComponentsParent, false);
-        }
-
-        // 5. Save to database and get the new ID
-        // SaveNewSubComponentAsync already reads the initialized values from the instance
-        long newId = await SaveNewSubComponentAsync(newSubComponent);
-        if (newId <= 0)
-        {
-            LogError("Failed to save new sub-component instance to database during creation.");
-            Destroy(newSubComponent.gameObject); // Clean up instantiated object
-            return null;
-        }
-
-        // ID is already set within SaveNewSubComponentAsync
-        // Rename with proper ID and final name
-        string finalName = string.IsNullOrEmpty(newSubComponent.Name) ? template.Name : newSubComponent.Name;
-        newSubComponent.gameObject.name = $"SubCompInst_{newSubComponent.SubComponentID}_{finalName}";
-
-        LogInfo($"Successfully created and saved SubComponent Instance ID: {newSubComponent.SubComponentID} from Template ID: {template.ComponentTemplateID}");
-        return newSubComponent;
-    }
-
     #region InitializeLoading
     protected override async Task InitializeAsync()
     {
@@ -207,7 +61,6 @@ public class ItemManager : BaseManager
         itemsById.Clear();
         subComponentTemplatesById.Clear();
         subComponentsById.Clear();
-        resourceItems.Clear();
 
         try
         {
@@ -270,12 +123,10 @@ public class ItemManager : BaseManager
                 isInitialized = false;
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
         }
-        await LoadAndInstantiateAllResourceItemsAsync();
     }
     private async Task EnsureItemTablesExistAsync()
     {
         LogInfo("Checking and initializing item & sub-component data tables async...");
-        bool resourceItemsTableOK = await EnsureTableExistsAsync(ResourceItemsTableName, GetResourceItemsTableDefinition());
         bool templateTableOK = await EnsureTableExistsAsync(ItemTemplatesTableName, GetItemTemplateTableDefinition());
         bool instanceTableOK = await EnsureTableExistsAsync(ItemInstancesTableName, GetItemTableDefinition());
         bool subCompTemplateTableOK = await EnsureTableExistsAsync(SubComponentTemplatesTableName, GetSubComponentTemplateTableDefinition());
@@ -290,20 +141,26 @@ public class ItemManager : BaseManager
     public async Task<List<ItemTemplate>> LoadAllItemTemplatesAsync()
     {
         List<ItemTemplate> templates = new List<ItemTemplate>();
-        if (itemTemplatePrefab == null) { LogError("ItemTemplate Prefab is not assigned!"); return null; }
 
         string query = $"SELECT * FROM `{ItemTemplatesTableName}`";
         LogInfo($"ItemManager executing query: {query}");
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { LogError($"Query failed for '{ItemTemplatesTableName}'."); return null; }
-            if (results.Count == 0) { LogWarning($"No results for '{ItemTemplatesTableName}'."); return templates; }
+            if (results == null) 
+            { 
+                LogError($"Query failed for '{ItemTemplatesTableName}'."); 
+                return null; 
+            }
+            if (results.Count == 0) 
+            { 
+                LogWarning($"No results for '{ItemTemplatesTableName}'."); 
+                return templates; 
+            }
 
             foreach (var rowData in results)
             {
-                ItemTemplate template = Instantiate(itemTemplatePrefab.gameObject).GetComponent<ItemTemplate>();
-                if (template == null) { LogError("Failed to get ItemTemplate component."); continue; }
+                ItemTemplate template = Instantiate(itemTemplatePrefab.gameObject, itemTemplatesParent).GetComponent<ItemTemplate>();
                 MapDictionaryToItemTemplate(template, rowData);
                 templates.Add(template);
             }
@@ -315,223 +172,105 @@ public class ItemManager : BaseManager
     public async Task<List<Item>> LoadAllItemInstancesAsync()
     {
         List<Item> instances = new List<Item>();
-        if (itemPrefab == null) { LogError("Item Prefab is not assigned!"); return null; }
 
         string query = $"SELECT * FROM `{ItemInstancesTableName}`"; // Query the instances table
         LogInfo($"ItemManager executing query: {query}");
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
-            if (results == null) { LogError($"Query failed for '{ItemInstancesTableName}'."); return null; }
-            if (results.Count == 0) { LogWarning($"No results for '{ItemInstancesTableName}'."); return instances; }
+            if (results == null) 
+            { 
+                LogError($"Query failed for '{ItemInstancesTableName}'."); 
+                return null; 
+            }
+            if (results.Count == 0) 
+            { 
+                LogWarning($"No results for '{ItemInstancesTableName}'."); 
+                return instances; 
+            }
 
             foreach (var rowData in results)
             {
-                Item instance = Instantiate(itemPrefab.gameObject).GetComponent<Item>();
-                if (instance == null) { LogError("Failed to get Item component."); continue; }
-                MapDictionaryToItem(instance, rowData); // Use instance mapping function
+                Item instance = Instantiate(itemPrefab.gameObject, itemsParent).GetComponent<Item>();
+                MapDictionaryToItem(instance, rowData);
                 instances.Add(instance);
             }
             LogInfo($"Loaded {instances.Count} item instance data rows.");
             return instances;
         }
-        catch (Exception ex) { LogError($"Error loading item instances: {ex.Message}"); return null; }
+        catch (Exception ex) 
+        { 
+            LogError($"Error loading item instances: {ex.Message}"); 
+            return null; 
+        }
     }
     private async Task<List<SubComponentTemplate>> LoadSubComponentTemplatesAsync()
     {
-        List<SubComponentTemplate> loadedList = new List<SubComponentTemplate>(); // Create local list
-        if (subComponentTemplatePrefab == null)
-        {
-            Debug.LogError("SubComponentTemplate Prefab is not assigned in ItemManager.");
-            return loadedList; // Return empty list on error
-        }
+        List<SubComponentTemplate> loadedList = new List<SubComponentTemplate>();
 
         string query = $"SELECT * FROM {SubComponentTemplatesTableName}";
-        var results = await QueryDataAsync(query);
-
-        if (results == null)
+        try
         {
-            Debug.LogError("Failed to load sub-component templates from database.");
-            return loadedList; // Return empty list on error
-        }
-         Debug.Log($"Loaded {results.Count} sub-component template rows from DB.");
+            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
+            if (results == null)
+            {
+                Debug.LogError("Failed to load sub-component templates from database.");
+                return loadedList; // Return empty list on error
+            }
+            if (results.Count == 0)
+            {
+                LogWarning($"No results for '{ItemInstancesTableName}'.");
+                return loadedList;
+            }
 
-        foreach (var row in results)
+            foreach (var row in results)
+            {
+                SubComponentTemplate template = Instantiate(subComponentTemplatePrefab.gameObject, subComponentTemplatesParent).GetComponent<SubComponentTemplate>();
+                MapDictionaryToSubComponentTemplate(template, row);
+                loadedList.Add(template);
+            }
+            LogInfo($"Finished processing sub-component templates. Returning {loadedList.Count} templates.");
+            return loadedList;
+        }
+        catch (Exception ex)
         {
-            int templateID = SafeConvert.ToInt32(row, "ComponentTemplateID");
-            string name = SafeConvert.ToString(row, "Name");
-            int componentType = SafeConvert.ToInt32(row, "ComponentType");
-            int icon = SafeConvert.ToInt32(row, "Icon");
-            string colour = SafeConvert.ToString(row, "Colour");
-            int weight = SafeConvert.ToInt32(row, "Weight");
-            bool stackable = SafeConvert.ToBoolean(row, "Stackable");
-            int stackSizeMax = SafeConvert.ToInt32(row, "StackSizeMax");
-            int price = SafeConvert.ToInt32(row, "Price");
-
-            SubComponentTemplate template = Instantiate(subComponentTemplatePrefab);
-
-            if (template != null)
-            {
-                template.Initialize(templateID, name, componentType, icon, colour, weight, stackable, stackSizeMax, price);
-                template.gameObject.name = $"SubComp_{templateID}_{name}";
-                loadedList.Add(template); // Add to the local list
-                // Removed: Populating dictionary and parenting here
-            }
-            else
-            {
-                Debug.LogError($"Failed to instantiate SubComponentTemplate component for ID {templateID}");
-            }
+            LogError($"Error loading subComponentTemplates: {ex.Message}");
+            return null;
         }
-         Debug.Log($"Finished processing sub-component templates. Returning {loadedList.Count} templates.");
-         return loadedList; // Return the populated list
     }
     private async Task<List<SubComponent>> LoadAllSubComponentsAsync()
     {
-        List<SubComponent> loadedList = new List<SubComponent>(); // Create local list
-        if (subComponentPrefab == null)
+        List<SubComponent> loadedList = new List<SubComponent>();
+
+        string query = $"SELECT * FROM {SubComponentsTableName}"; 
+        try
         {
-            Debug.LogError("SubComponent Prefab is not assigned in ItemManager.");
-            return loadedList; // Return empty list on error
-        }
-
-        string query = $"SELECT * FROM {SubComponentsTableName}";
-        var results = await QueryDataAsync(query);
-
-        if (results == null)
-        {
-            Debug.LogError("Failed to load sub-component instances from database.");
-            return loadedList; // Return empty list on error
-        }
-        Debug.Log($"Loaded {results.Count} sub-component instance rows from DB.");
-
-        foreach (var row in results)
-        {
-            int id = SafeConvert.ToInt32(row, "SubComponentID");
-            string name = SafeConvert.ToString(row, "Name");
-            int templateId = SafeConvert.ToInt32(row, "SubComponentTemplateID");
-            int componentType = SafeConvert.ToInt32(row, "ComponentType");
-            int quality = SafeConvert.ToInt32(row, "Quality");
-            int toughness = SafeConvert.ToInt32(row, "Toughness");
-            int strength = SafeConvert.ToInt32(row, "Strength");
-            int density = SafeConvert.ToInt32(row, "Density");
-            int aura = SafeConvert.ToInt32(row, "Aura");
-            int energy = SafeConvert.ToInt32(row, "Energy");
-            int protein = SafeConvert.ToInt32(row, "Protein");
-            int carbohydrate = SafeConvert.ToInt32(row, "Carbohydrate");
-            int flavour = SafeConvert.ToInt32(row, "Flavour");
-
-            SubComponent instance = Instantiate(subComponentPrefab);
-
-            if (instance != null)
+            List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
+            if (results == null)
             {
-                instance.Initialize(id, name, templateId, componentType, quality, toughness, strength, density, aura, energy, protein, carbohydrate, flavour);
-                instance.gameObject.name = $"SubCompInst_{id}_{name ?? "Unnamed"}";
-                loadedList.Add(instance); // Add to the local list
-                // Removed: Populating dictionary and parenting here
+                Debug.LogError("Failed to load sub-component templates from database.");
+                return loadedList; // Return empty list on error
             }
-            else
+            if (results.Count == 0)
             {
-                Debug.LogError($"Failed to instantiate SubComponent component for instance ID {id}");
-            }
-        }
-        Debug.Log($"Finished processing sub-component instances. Returning {loadedList.Count} instances.");
-        return loadedList; // Return the populated list
-    }
-    private async Task LoadAndInstantiateAllResourceItemsAsync()
-    {
-        LogInfo("Loading and instantiating all ResourceItems from database...");
-
-        if (resourceItemPrefab == null)
-        {
-            LogError("ResourceItem Prefab is not assigned in InventoryManager.");
-            return;
-        }
-        if (resourceItemParent == null)
-        {
-            LogWarning("ResourceItem Parent is not assigned in InventoryManager. Instantiating at root.");
-            // Optionally assign a default parent or handle this case as needed
-        }
-        if (ResourceManager.Instance == null)
-        {
-            LogError("ResourceManager instance not available. Cannot load Resource types.");
-            return;
-        }
-
-        string query = $"SELECT * FROM `{ResourceItemsTableName}`";
-        List<Dictionary<string, object>> results = await QueryDataAsync(query);
-
-        resourceItems.Clear(); // Clear list before loading
-
-        foreach (var row in results)
-        {
-            if (!row.TryGetValue("ResourceItemID", out object dbIdObj) || dbIdObj == DBNull.Value ||
-                !row.TryGetValue("ResourceID", out object resourceIdObj) || resourceIdObj == DBNull.Value ||
-                !row.TryGetValue("Quantity", out object quantityObj) || quantityObj == DBNull.Value)
-            {
-                LogWarning("Skipping ResourceItem row due to missing ID, ResourceID, or Quantity.");
-                continue;
+                LogWarning($"No results for '{ItemInstancesTableName}'.");
+                return loadedList;
             }
 
-            int resourceItemId = Convert.ToInt32(dbIdObj);
-            int resourceId = Convert.ToInt32(resourceIdObj);
-            int quantity = Convert.ToInt32(quantityObj);
-
-            // Get the base Resource definition
-            Resource resourceType = ResourceManager.Instance.GetResourceInstanceById(resourceId);
-            if (resourceType == null)
+            foreach (var row in results)
             {
-                LogWarning($"Resource type with ID {resourceId} not found in ResourceManager. Cannot instantiate ResourceItem ID: {resourceItemId}.");
-                continue;
+                SubComponent instance = Instantiate(subComponentPrefab.gameObject, subComponentsParent).GetComponent<SubComponent>();
+                MapDictionaryToSubComponent(instance, row);
+                loadedList.Add(instance);
             }
-
-            // Instantiate and initialize
-            ResourceItem newInstance = Instantiate(resourceItemPrefab, resourceItemParent); // Parent can be null
-            newInstance.Initialize(resourceType, quantity);
-            newInstance.SetDatabaseID(resourceItemId); // << IMPORTANT: Assumes this method exists on ResourceItem
-
-            resourceItems.Add(newInstance);
+            Debug.Log($"Finished processing sub-component instances. Returning {loadedList.Count} instances.");
+            return loadedList; // Return the populated list
         }
-
-        LogInfo($"Loaded and instantiated {resourceItems.Count} ResourceItems.");
-    }
-    private void PerformPostLoadActions()
-    {
-        LogInfo("Performing post-load actions (parenting objects)...");
-        // Parent Items
-        foreach (Item item in items) // Use the list
+        catch (Exception ex)
         {
-            if (item != null && item.gameObject != null && itemsParent != null && item.transform.parent == null)
-            {
-                item.transform.SetParent(itemsParent, false);
-            }
+            LogError($"Error loading subComponents: {ex.Message}");
+            return null;
         }
-        // Parent ItemTemplates
-        foreach (ItemTemplate template in itemTemplates) // Use the list
-        {
-            if (template != null && template.gameObject != null && itemTemplatesParent != null && template.transform.parent == null)
-            {
-                template.transform.SetParent(itemTemplatesParent, false);
-            }
-        }
-        // Parent SubComponentTemplates
-        foreach (var kvp in subComponentTemplatesById) // Iterate dictionary values
-        {
-            SubComponentTemplate template = kvp.Value;
-            if (template != null && template.gameObject != null && subComponentTemplatesParent != null && template.transform.parent == null)
-            {
-                template.transform.SetParent(subComponentTemplatesParent, false);
-            }
-        }
-        // Parent SubComponent Instances
-        foreach (var kvp in subComponentsById) // Iterate dictionary values
-        {
-            SubComponent instance = kvp.Value;
-            if (instance != null && instance.gameObject != null && subComponentsParent != null && instance.transform.parent == null)
-            {
-                instance.transform.SetParent(subComponentsParent, false);
-            }
-        }
-        LogInfo("Post-load actions complete.");
     }
     #endregion
 
@@ -619,35 +358,6 @@ public class ItemManager : BaseManager
             {"Flavour", "INT DEFAULT 0"}
         };
     }
-    private Dictionary<string, string> GetResourceItemsTableDefinition()
-    {
-        return new Dictionary<string, string>
-        {
-            {"ResourceItemID", "INT AUTO_INCREMENT PRIMARY KEY"},
-            {"CharID", "INT"},
-            {"ResourceID", "INT"},
-            {"Quantity", "INT DEFAULT 1"}
-        };
-    }
-    #endregion
-
-    #region GetPrefabs
-    public Item GetItemPrefab()
-    { 
-        return itemPrefab; 
-    }
-    public ItemTemplate GetItemTemplatePrefab()
-    { 
-        return itemTemplatePrefab; 
-    }
-    public SubComponentTemplate GetSubComponentTemplatePrefab()
-    {
-        return subComponentTemplatePrefab;
-    }
-    public SubComponent GetSubComponentPrefab()
-    {
-        return subComponentPrefab;
-    }
     #endregion
 
     #region GetInstances
@@ -686,15 +396,6 @@ public class ItemManager : BaseManager
         }
         subComponentsById.TryGetValue(instanceId, out SubComponent instance);
         return instance;
-    }
-    public ResourceItem GetResourceItemById(int resourceItemId)
-    {
-        if (resourceItems == null)
-        {
-            return null;
-        }
-
-        return resourceItems.FirstOrDefault(item => item != null && item.GetDatabaseID() == resourceItemId);
     }
     #endregion
 
@@ -915,6 +616,7 @@ public class ItemManager : BaseManager
                 if (newId > 0)
                 {
                     subComponentInstance.SetSubComponentID((int)newId); // Update object with DB ID
+                    subComponents.Add(subComponentInstance); // Add to runtime list
                     subComponentsById[subComponentInstance.SubComponentID] = subComponentInstance; // Add to lookup
                     LogInfo($"Saved new SubComponent Instance ID: {newId}");
                     return newId;
@@ -962,6 +664,7 @@ public class ItemManager : BaseManager
                 if (subComponentsById.TryGetValue(subComponentInstanceId, out SubComponent componentToRemove))
                 {
                     subComponentsById.Remove(subComponentInstanceId);
+                    subComponents.Remove(componentToRemove);
                     LogInfo($"Deleted SubComponent Instance ID: {subComponentInstanceId}");
 
                     // Destroy GameObject if it exists
@@ -992,191 +695,6 @@ public class ItemManager : BaseManager
     }
     #endregion
 
-    #region ResourceItem
-    public async Task<Dictionary<string, object>> GetResourceItemTotalAsync(int charId, int resourceId)
-    {
-        string query = $"SELECT * FROM `{ResourceItemsTableName}` WHERE CharID = @CharID AND ResourceID = @ResourceID LIMIT 1";
-        Dictionary<string, object> parameters = new Dictionary<string, object>
-        {
-            {"@CharID", charId},
-            {"@ResourceID", resourceId}
-        };
-
-        try
-        {
-            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            return results.Count > 0 ? results[0] : null;
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error checking for existing resource item total (CharID: {charId}, ResourceID: {resourceId})", ex);
-            return null;
-        }
-    }
-    public async Task<bool> AddOrUpdateResourceItemAsync(int charId, int resourceId, int quantityToAdd)
-    {
-        if (charId <= 0 || resourceId <= 0 || quantityToAdd == 0) // Allow negative quantityToAdd for removal
-        {
-            LogError("Invalid parameters provided for AddOrUpdateResourceItemTotalAsync.");
-            return false;
-        }
-
-        try
-        {
-            Dictionary<string, object> existingItem = await GetResourceItemTotalAsync(charId, resourceId);
-
-            if (existingItem != null)
-            {
-                // Item exists, update quantity
-                if (existingItem.TryGetValue("Quantity", out object currentQuantityObj) && int.TryParse(currentQuantityObj.ToString(), out int currentQuantity))
-                {
-                    int newQuantity = currentQuantity + quantityToAdd;
-                    if (newQuantity > 0)
-                    {
-                        // Update existing row
-                        return await UpdateResourceItemTotalQuantityAsync(charId, resourceId, newQuantity);
-                    }
-                    else
-                    {
-                        // Quantity is zero or less, remove the row
-                        return await RemoveResourceItemTotalAsync(charId, resourceId);
-                    }
-                }
-                else
-                {
-                    LogError($"Could not parse existing quantity for CharID: {charId}, ResourceID: {resourceId}. Existing data: {currentQuantityObj}");
-                    return false;
-                }
-            }
-            else if (quantityToAdd > 0)
-            {
-                // Item does not exist, and we are adding quantity, insert new record
-                Dictionary<string, object> values = new Dictionary<string, object>
-                {
-                    {"CharID", charId},
-                    {"ResourceID", resourceId},
-                    {"Quantity", quantityToAdd}
-                };
-                bool success = await SaveDataAsync(ResourceItemsTableName, values);
-                LogInfo(success ? $"Added new resource total {resourceId} (quantity: {quantityToAdd}) for character {charId}" : $"Failed to add new resource total {resourceId} for character {charId}");
-                return success;
-            }
-            else
-            {
-                // Item does not exist and quantityToAdd is not positive, nothing to do
-                LogInfo($"Attempted to remove quantity for non-existent resource total (CharID: {charId}, ResourceID: {resourceId}). No action taken.");
-                return true; // Operation is technically successful (state is as expected)
-            }
-        }
-        catch (Exception ex)
-        {
-            LogError($"Exception during AddOrUpdateResourceItemTotalAsync (CharID: {charId}, ResourceID: {resourceId})", ex);
-            return false;
-        }
-    }
-    public async Task<bool> UpdateResourceItemTotalQuantityAsync(int charId, int resourceId, int newQuantity)
-    {
-        if (charId <= 0 || resourceId <= 0 || newQuantity <= 0) // Should only update to positive quantity
-        {
-            LogError("Invalid parameters provided for UpdateResourceItemTotalQuantityAsync.");
-            return false;
-        }
-
-        Dictionary<string, object> values = new Dictionary<string, object> { { "Quantity", newQuantity } };
-        string whereCondition = "CharID = @CharID AND ResourceID = @ResourceID";
-        Dictionary<string, object> whereParams = new Dictionary<string, object> { { "@CharID", charId }, { "@ResourceID", resourceId } };
-
-        try
-        {
-            bool success = await UpdateDataAsync(ResourceItemsTableName, values, whereCondition, whereParams);
-            LogInfo(success ? $"Updated resource total {resourceId} quantity to {newQuantity} for character {charId}" : $"Failed to update resource total {resourceId} quantity for character {charId}");
-            return success;
-        }
-        catch (Exception ex)
-        {
-            LogError($"Exception updating resource item total quantity", ex);
-            return false;
-        }
-    }
-    public async Task<bool> RemoveResourceItemTotalAsync(int charId, int resourceItemId)
-    {
-        if (charId <= 0 || resourceItemId <= 0)
-        {
-            LogError("Invalid parameters provided for RemoveResourceItemTotalAsync.");
-            return false;
-        }
-
-        ResourceItem itemToRemoveFromCache = GetResourceItemById(resourceItemId);
-        if (itemToRemoveFromCache != null)
-        {
-            resourceItems.Remove(itemToRemoveFromCache);
-            if (itemToRemoveFromCache.gameObject != null)
-            {
-                Destroy(itemToRemoveFromCache.gameObject);
-            }
-            LogInfo($"Removed ResourceItem (TypeID: {resourceItemId}, CharID: {charId}) from local cache and destroyed GameObject.");
-        }
-        else
-        {
-            LogWarning($"ResourceItem (TypeID: {resourceItemId}, CharID: {charId}) not found in local cache for removal prior to DB delete.");
-        }
-
-        string whereCondition = "CharID = @CharID AND ResourceItemID = @ResourceItemID";
-        Dictionary<string, object> whereParams = new Dictionary<string, object> { { "@CharID", charId }, { "@ResourceItemID", resourceItemId } };
-
-        try
-        {
-            bool success = await DeleteDataAsync(ResourceItemsTableName, whereCondition, whereParams);
-            LogInfo(success ? $"Removed resource total {resourceItemId} for character {charId}" : $"Failed to remove resource total {resourceItemId} for character {charId}");
-            return success;
-        }
-        catch (Exception ex)
-        {
-            LogError($"Exception removing resource item total", ex);
-            return false;
-        }
-    }
-    public async Task<bool> DeleteResourceItemStackAsync(int resourceItemStackId)
-    {
-        if (resourceItemStackId <= 0)
-        {
-            LogError("Invalid ResourceItemID provided for DeleteResourceItemStackAsync.");
-            return false;
-        }
-
-        // Remove from local cache and destroy GameObject
-        ResourceItem itemToRemoveFromCache = GetResourceItemById(resourceItemStackId);
-        if (itemToRemoveFromCache != null)
-        {
-            resourceItems.Remove(itemToRemoveFromCache);
-            if (itemToRemoveFromCache.gameObject != null)
-            {
-                Destroy(itemToRemoveFromCache.gameObject);
-            }
-            LogInfo($"Removed ResourceItem stack (ID: {resourceItemStackId}) from local cache and destroyed GameObject.");
-        }
-        else
-        {
-            LogWarning($"ResourceItem stack (ID: {resourceItemStackId}) not found in local cache for removal prior to DB delete.");
-        }
-
-        string whereCondition = "ResourceItemID = @ResourceItemID";
-        Dictionary<string, object> whereParams = new Dictionary<string, object> { { "@ResourceItemID", resourceItemStackId } };
-
-        try
-        {
-            bool success = await DeleteDataAsync(ResourceItemsTableName, whereCondition, whereParams);
-            LogInfo(success ? $"Deleted resource item stack (ID: {resourceItemStackId}) from DB." : $"Failed to delete resource item stack (ID: {resourceItemStackId}) from DB.");
-            return success;
-        }
-        catch (Exception ex)
-        {
-            LogError($"Exception deleting resource item stack (ID: {resourceItemStackId})", ex);
-            return false;
-        }
-    }
-    #endregion
-
     #region Helpers
     private string DictToString(Dictionary<string, object> dict)
     {
@@ -1187,7 +705,6 @@ public class ItemManager : BaseManager
     {
         try
         {
-            // Use SafeConvert helper
             template.SetItemTemplate(
                 SafeConvert.ToInt32(data, "ItemTemplateID"), 
                 SafeConvert.ToString(data, "Name"),
@@ -1198,13 +715,18 @@ public class ItemManager : BaseManager
                 SafeConvert.ToSingle(data, "Speed", 1.0f),
                 SafeConvert.ToInt32(data, "WeaponType"),
                 SafeConvert.ToInt32(data, "SlotType"),
-                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
-                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
-                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
-                SafeConvert.ToInt32(data, "Icon"), // Use ToInt32
+                SafeConvert.ToSingle(data, "SlashResist"), 
+                SafeConvert.ToSingle(data, "ThrustResist"), 
+                SafeConvert.ToSingle(data, "CrushResist"),
+                SafeConvert.ToSingle(data, "HeatResist"), 
+                SafeConvert.ToSingle(data, "ShockResist"), 
+                SafeConvert.ToSingle(data, "ColdResist"),
+                SafeConvert.ToSingle(data, "MindResist"), 
+                SafeConvert.ToSingle(data, "CorruptResist"),
+                SafeConvert.ToInt32(data, "Icon"),
                 SafeConvert.ToString(data, "Colour", "#FFFFFF"),
                 SafeConvert.ToInt32(data, "Weight"),
-                SafeConvert.ToInt32(data, "Model"), // Use ToInt32
+                SafeConvert.ToInt32(data, "Model"),
                 SafeConvert.ToBoolean(data, "Stackable"), 
                 SafeConvert.ToInt32(data, "StackSizeMax", 1),
                 SafeConvert.ToInt32(data, "Price")
@@ -1231,9 +753,14 @@ public class ItemManager : BaseManager
                 SafeConvert.ToSingle(data, "Speed", 1.0f),
                 SafeConvert.ToInt32(data, "WeaponType"),
                 SafeConvert.ToInt32(data, "SlotType"),
-                SafeConvert.ToSingle(data, "SlashResist"), SafeConvert.ToSingle(data, "ThrustResist"), SafeConvert.ToSingle(data, "CrushResist"),
-                SafeConvert.ToSingle(data, "HeatResist"), SafeConvert.ToSingle(data, "ShockResist"), SafeConvert.ToSingle(data, "ColdResist"),
-                SafeConvert.ToSingle(data, "MindResist"), SafeConvert.ToSingle(data, "CorruptResist"),
+                SafeConvert.ToSingle(data, "SlashResist"), 
+                SafeConvert.ToSingle(data, "ThrustResist"), 
+                SafeConvert.ToSingle(data, "CrushResist"),
+                SafeConvert.ToSingle(data, "HeatResist"), 
+                SafeConvert.ToSingle(data, "ShockResist"), 
+                SafeConvert.ToSingle(data, "ColdResist"),
+                SafeConvert.ToSingle(data, "MindResist"), 
+                SafeConvert.ToSingle(data, "CorruptResist"),
                 SafeConvert.ToInt32(data, "Icon"), // Use ToInt32
                 SafeConvert.ToString(data, "Colour", "#FFFFFF"),
                 SafeConvert.ToInt32(data, "Weight"),
@@ -1246,6 +773,52 @@ public class ItemManager : BaseManager
         catch (Exception ex)
         {
             LogError($"Error mapping dictionary to Item Instance (ID: {data.GetValueOrDefault("ItemID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+        }
+    }
+    private void MapDictionaryToSubComponentTemplate(SubComponentTemplate subComponentTemplate, Dictionary<string, object> data)
+    {
+        try
+        {
+            subComponentTemplate.SetSubComponentTemplate(
+                SafeConvert.ToInt32(data, "ComponentTemplateID"),
+                SafeConvert.ToString(data, "Name"),
+                SafeConvert.ToInt32(data, "ComponentType"),
+                SafeConvert.ToInt32(data, "Icon"),
+                SafeConvert.ToString(data, "Colour", "#FFFFFF"),
+                SafeConvert.ToInt32(data, "Weight", 0),
+                SafeConvert.ToBoolean(data, "Stackable", false),
+                SafeConvert.ToInt32(data, "StackSizeMax", 1),
+                SafeConvert.ToInt32(data, "Price", 0)
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to SubComponentTemplate (ID: {data.GetValueOrDefault("ComponentTemplateID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
+        }
+    }
+    private void MapDictionaryToSubComponent(SubComponent subComponent, Dictionary<string, object> data)
+    {
+        try
+        {
+            subComponent.SetSubComponent(
+                SafeConvert.ToInt32(data, "SubComponentID"),
+                SafeConvert.ToString(data, "Name"),
+                SafeConvert.ToInt32(data, "SubComponentTemplateID"),
+                SafeConvert.ToInt32(data, "ComponentType", 0),
+                SafeConvert.ToInt32(data, "Quality", 0),
+                SafeConvert.ToInt32(data, "Toughness", 0),
+                SafeConvert.ToInt32(data, "Strength", 0),
+                SafeConvert.ToInt32(data, "Density", 0),
+                SafeConvert.ToInt32(data, "Aura", 0),
+                SafeConvert.ToInt32(data, "Energy", 0),
+                SafeConvert.ToInt32(data, "Protein", 0),
+                SafeConvert.ToInt32(data, "Carbohydrate", 0),
+                SafeConvert.ToInt32(data, "Flavour", 0)
+            );
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error mapping dictionary to SubComponent Instance (ID: {data.GetValueOrDefault("SubComponentID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
         }
     }
     private void LinkItemsToTemplates()
@@ -1264,27 +837,21 @@ public class ItemManager : BaseManager
     }
     private void LinkSubComponentsToTemplates()
     {
-        foreach (var kvp in subComponentsById)
+        foreach (var subComponent in subComponents)
         {
-            SubComponent instance = kvp.Value;
-            if (subComponentTemplatesById.TryGetValue(instance.SubComponentTemplateID, out SubComponentTemplate template))
+            if (subComponentTemplatesById.TryGetValue(subComponent.SubComponentTemplateID, out SubComponentTemplate template))
             {
-                instance.Template = template;
-                if (string.IsNullOrEmpty(instance.Name))
-                {
-                    // instance.Name = template.Name;
-                }
+                subComponent.Template = template;
             }
             else
             {
-                LogWarning($"SubComponent instance ID {instance.SubComponentID} has missing template reference (TemplateID: {instance.SubComponentTemplateID}).");
+                LogWarning($"SubComponent instance ID {subComponent.SubComponentID} has missing template reference (TemplateID: {subComponent.SubComponentTemplateID}).");
             }
         }
         LogInfo("Linked sub-component instances to templates.");
     }
     protected override void OnDestroy()
     {
-        OnDataLoaded -= PerformPostLoadActions;
         base.OnDestroy();
     }
     #endregion

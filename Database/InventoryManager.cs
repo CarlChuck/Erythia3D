@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using System;
-using System.Linq;
 
 public class InventoryManager : BaseManager
 {
@@ -16,7 +15,6 @@ public class InventoryManager : BaseManager
 
     #region Singleton
     public static InventoryManager Instance;
-
     protected void Awake()
     {
         if (Instance == null)
@@ -59,7 +57,7 @@ public class InventoryManager : BaseManager
         bool subComponentsTableOK = await EnsureTableExistsAsync(InventorySubComponentsTableName, GetInventorySubComponentsTableDefinition());
         bool accountInvItemsTableOK = await EnsureTableExistsAsync(AccountInventoryItemsTableName, GetAccountInvItemsTableDefinition());
         bool accountInvResourceItemsTableOK = await EnsureTableExistsAsync(AccountInventoryResourceItemsTableName, GetAccountInvResourceItemsTableDefinition());
-        bool accountInvsubComponentsTableOK = await EnsureTableExistsAsync(AccountInventorySubComponentsTableName, GetAccountInvSubComponentsTableDefinition());
+        bool accountInvSubComponentsTableOK = await EnsureTableExistsAsync(AccountInventorySubComponentsTableName, GetAccountInvSubComponentsTableDefinition());
         bool ownedWorkbenchesTableOK = await EnsureTableExistsAsync(OwnedWorkbenchesTableName, GetOwnedWorkbenchesTableDefinition());
 
         if (!inventoryItemsTableOK || !invResourceItemsTableOK || !subComponentsTableOK || !ownedWorkbenchesTableOK)
@@ -84,7 +82,8 @@ public class InventoryManager : BaseManager
         {
             {"InventoryResourceItemID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"CharID", "INT"},
-            {"ResourceItemID", "INT"}
+            {"ResourceItemID", "INT"},
+            {"Quantity", "INT"}
         };
     }
     private Dictionary<string, string> GetInventorySubComponentsTableDefinition()
@@ -111,7 +110,8 @@ public class InventoryManager : BaseManager
         {
             {"AccountInvResourceItemID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"AccountID", "INT"},
-            {"ResourceItemID", "INT"}
+            {"ResourceItemID", "INT"},
+            {"Quantity", "INT"}
         };
     }
     private Dictionary<string, string> GetAccountInvSubComponentsTableDefinition()
@@ -133,8 +133,6 @@ public class InventoryManager : BaseManager
         };
     }    
     #endregion
-
-
 
     #region Inventory Items Methods
     public async Task<List<Dictionary<string, object>>> GetCharacterInventoryItemsAsync(int charId)
@@ -168,14 +166,12 @@ public class InventoryManager : BaseManager
             return false;
         }
 
-        // --- Check if item already exists for this character --- 
         bool itemExists = await CheckIfInventoryItemExistsAsync(charId, itemId);
         if (itemExists)
         {
             LogWarning($"Item with ID {itemId} already exists in inventory for character {charId}. Cannot add duplicate.");
             return false;
         }
-        // -------
 
         Dictionary<string, object> values = new Dictionary<string, object>
         {
@@ -263,97 +259,88 @@ public class InventoryManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-    public async Task<bool> AddInventoryResourceItemAsync(int charId, int resourceItemIdToAdd)
+    public async Task<bool> AddInventoryResourceItemAsync(int charId, int resourceItemIdToAdd, int quantity)
     {
-        if (charId <= 0 || resourceItemIdToAdd <= 0)
+        if (charId <= 0 || resourceItemIdToAdd <= 0 || quantity <= 0)
         {
             LogError("Invalid parameters provided for AddInventoryResourceItemAsync.");
             return false;
         }
 
-        ResourceItem itemToAdd = ItemManager.Instance.GetResourceItemById(resourceItemIdToAdd);
-        if (itemToAdd == null)
+        bool resourceItemExists = await CheckIfInventoryResourceItemExistsAsync(charId, resourceItemIdToAdd);
+        if (resourceItemExists)
         {
-            LogError($"ResourceItem to add (ID: {resourceItemIdToAdd}) not found in cache. Cannot process.");
+            return await UpdateResourceItemAsync(charId, resourceItemIdToAdd, quantity);
+        }
+
+        Dictionary<string, object> linkedItemsParams = new Dictionary<string, object> 
+        { 
+            { "@CharID", charId },
+            { "@ResourceItemID", resourceItemIdToAdd },
+            { "@Quantity", quantity }
+        };
+        try
+        {
+            bool success = await SaveDataAsync(InventoryResourceItemsTableName, linkedItemsParams);
+            if (success)
+            {
+                LogInfo($"Added resource item {resourceItemIdToAdd} with quantity {quantity} for character {charId}");
+            }
+            else
+            {
+                LogWarning($"Failed to add resource item {resourceItemIdToAdd} for character {charId}");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception adding resourceItem to inventory", ex);
+            return false;
+        }
+    }
+    public async Task<bool> UpdateResourceItemAsync(int charId, int resourceItemIdToAdd, int quantity)
+    {
+        if (charId <= 0 || resourceItemIdToAdd <= 0 || quantity <= 0)
+        {
+            LogError("Invalid parameters provided for UpdateResourceItemAsync.");
             return false;
         }
 
-        // Get all ResourceItemIDs currently linked in InventoryResourceItems for this character
-        string linkedItemsQuery = $"SELECT ResourceItemID FROM `{InventoryResourceItemsTableName}` WHERE CharID = @CharID";
-        Dictionary<string, object> linkedItemsParams = new Dictionary<string, object> { { "@CharID", charId } };
-        List<Dictionary<string, object>> linkedItemsResult = await QueryDataAsync(linkedItemsQuery, linkedItemsParams);
-
-        List<int> currentlyLinkedIds = new List<int>();
-        if (linkedItemsResult != null)
+        bool resourceItemExists = await CheckIfInventoryResourceItemExistsAsync(charId, resourceItemIdToAdd);
+        if (!resourceItemExists)
         {
-            foreach (var row in linkedItemsResult)
-            {
-                if (row.TryGetValue("ResourceItemID", out object idObj) && idObj != DBNull.Value)
-                {
-                    currentlyLinkedIds.Add(Convert.ToInt32(idObj));
-                }
-            }
+            return await AddInventoryResourceItemAsync(charId, resourceItemIdToAdd, quantity);
         }
 
-        // Check for an existing *different* stack of the same resource type that is already linked
-        foreach (int linkedStackId in currentlyLinkedIds)
+        string whereCondition = "CharID = @CharID AND ResourceItemID = @ResourceItemID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
         {
-            if (linkedStackId == resourceItemIdToAdd) continue; // Don't compare with itself
+            {"@CharID", charId},
+            {"@ResourceItemID", resourceItemIdToAdd}
+        };
 
-            ResourceItem existingSlottedItem = ItemManager.Instance.GetResourceItemById(linkedStackId);
-            if (existingSlottedItem != null && existingSlottedItem.Resource.ResourceSpawnID == itemToAdd.Resource.ResourceSpawnID) // Same resource type
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "Quantity", quantity } 
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(InventoryResourceItemsTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
             {
-                LogInfo($"Found existing slotted stack (ID: {linkedStackId}) of same type (TypeID: {itemToAdd.Resource.ResourceSpawnID}) for CharID: {charId}. Merging quantities.");
-
-                int newStackSize = itemToAdd.CurrentStackSize + existingSlottedItem.CurrentStackSize;
-
-                // Update the existing slotted item's quantity in DB
-                bool updateSuccess = await ItemManager.Instance.UpdateResourceItemTotalQuantityAsync(charId, existingSlottedItem.Resource.ResourceSpawnID, newStackSize);
-                if (updateSuccess)
-                {
-                    // Update C# object for the existing slotted item
-                    existingSlottedItem.SetStackSize(newStackSize);
-                    LogInfo($"Updated quantity of existing stack ID {linkedStackId} to {newStackSize}.");
-
-                    // Delete the itemToAdd stack from DB and cache as it's now merged
-                    await ItemManager.Instance.DeleteResourceItemStackAsync(resourceItemIdToAdd); // Helper to delete from ResourceItems table and cache
-                    LogInfo($"Original stack ID {resourceItemIdToAdd} merged and deleted.");
-                    return true; // Merge successful
-                }
-                else
-                {
-                    LogError($"Failed to update quantity for existing stack ID {linkedStackId}. Merge aborted for stack {resourceItemIdToAdd}.");
-                    return false; // DB update failed
-                }
+                LogInfo($"Updated resource item {resourceItemIdToAdd} quantity to {quantity} for character {charId}");
             }
+            else
+            {
+                LogWarning($"Failed to update resource item {resourceItemIdToAdd} quantity for character {charId}");
+            }
+            return success;
         }
-
-        // If no merge occurred, link the itemToAdd if not already linked
-        bool alreadyLinked = await CheckIfInventoryResourceItemExistsAsync(charId, resourceItemIdToAdd);
-        if (!alreadyLinked)
+        catch (Exception ex)
         {
-            LogInfo($"No merge candidate found or itemToAdd is unique type for linked items. Linking stack ID {resourceItemIdToAdd} for CharID {charId}.");
-            Dictionary<string, object> values = new Dictionary<string, object>
-            {
-                {"CharID", charId},
-                {"ResourceItemID", resourceItemIdToAdd}
-            };
-            try
-            {
-                bool success = await SaveDataAsync(InventoryResourceItemsTableName, values);
-                LogInfo(success ? $"Linked resource item {resourceItemIdToAdd} to inventory for character {charId}" : $"Failed to link resource item {resourceItemIdToAdd} for character {charId}");
-                return success;
-            }
-            catch (Exception ex)
-            {
-                LogError($"Exception linking inventory resource item {resourceItemIdToAdd}", ex);
-                return false;
-            }
-        }
-        else
-        {
-            LogInfo($"ResourceItem stack ID {resourceItemIdToAdd} is already linked for CharID {charId}. No action taken.");
-            return true; // Already linked, consider it a success
+            LogError($"Exception updating resource item {resourceItemIdToAdd} in inventory for character {charId}", ex);
+            return false;
         }
     }
     public async Task<bool> RemoveInventoryResourceItemAsync(int charId, int resourceItemId)
@@ -374,7 +361,14 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(InventoryResourceItemsTableName, whereCondition, whereParams);
-            LogInfo(success ? $"Removed inventory resource item {resourceItemId} for character {charId}" : $"Failed to remove inventory resource item {resourceItemId} for character {charId}");
+            if (success)
+            {
+                LogInfo($"Removed resource item {resourceItemId} from inventory for character {charId}");
+            }
+            else
+            {
+                LogWarning($"Failed to remove resource item {resourceItemId} from inventory for character {charId}");
+            }
             return success;
         }
         catch (Exception ex)
@@ -417,19 +411,17 @@ public class InventoryManager : BaseManager
             return false;
         }
 
-        // --- Check if subcomponent instance already exists for this character ---
         bool subComponentExists = await CheckIfInventorySubComponentExistsAsync(charId, subComponentId);
         if (subComponentExists)
         {
             LogWarning($"SubComponent with ID {subComponentId} already exists in inventory for character {charId}. Cannot add duplicate.");
             return false;
         }
-        // --------
 
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"CharID", charId},
-            {"SubComponentID", subComponentId} // Link to the specific SubComponent instance ID
+            {"SubComponentID", subComponentId}
         };
 
         try
@@ -683,9 +675,9 @@ public class InventoryManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-    public async Task<bool> AddAccountInventoryResourceItemAsync(int accountId, int resourceItemId)
+    public async Task<bool> AddAccountInventoryResourceItemAsync(int accountId, int resourceItemId, int quantity)
     {
-        if (accountId <= 0 || resourceItemId <= 0)
+        if (accountId <= 0 || resourceItemId <= 0 || quantity <= 0)
         {
             LogError("Invalid parameters provided for AddAccountInventoryResourceItemAsync.");
             return false;
@@ -694,14 +686,14 @@ public class InventoryManager : BaseManager
         bool resourceItemExists = await CheckIfAccountInventoryResourceItemExistsAsync(accountId, resourceItemId);
         if (resourceItemExists)
         {
-            LogWarning($"ResourceItem with ID {resourceItemId} already exists in account inventory for account {accountId}. Cannot add duplicate.");
-            return false;
+            return await UpdateInventoryResourceItemAsync(accountId, resourceItemId, quantity);
         }
 
         Dictionary<string, object> values = new Dictionary<string, object>
         {
-            {"AccountID", accountId},
-            {"ResourceItemID", resourceItemId}
+            { "AccountID", accountId },
+            { "ResourceItemID", resourceItemId },
+            { "@Quantity", quantity }
         };
 
         try
@@ -720,6 +712,41 @@ public class InventoryManager : BaseManager
         catch (Exception ex)
         {
             LogError($"Exception adding resource item to account inventory", ex);
+            return false;
+        }
+    }
+    public async Task<bool> UpdateInventoryResourceItemAsync(int accntId, int resourceItemIdToAdd, int quantity)
+    {
+        if (accntId <= 0 || resourceItemIdToAdd <= 0 || quantity <= 0)
+        {
+            return await AddAccountInventoryResourceItemAsync(accntId, resourceItemIdToAdd, quantity);
+        }
+        string whereCondition = "AccountID = @AccountID AND ResourceItemID = @ResourceItemID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            {"@AccountID", accntId},
+            {"@ResourceItemID", resourceItemIdToAdd}
+        };
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "Quantity", quantity }
+        };
+        try
+        {
+            bool success = await UpdateDataAsync(AccountInventoryResourceItemsTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
+            {
+                LogInfo($"Updated resource item {resourceItemIdToAdd} quantity to {quantity} for account {accntId}");
+            }
+            else
+            {
+                LogWarning($"Failed to update resource item {resourceItemIdToAdd} quantity for account {accntId}");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating resource item {resourceItemIdToAdd} in inventory for account {accntId}", ex);
             return false;
         }
     }
@@ -863,10 +890,6 @@ public class InventoryManager : BaseManager
     protected override void OnDestroy()
     {
         base.OnDestroy();
-    }
-    public void SetBagSpace(int newBagSpace)
-    {
-        // Implementation of SetBagSpace method
     }
     private async Task<bool> CheckIfInventoryItemExistsAsync(int charId, int itemId)
     {

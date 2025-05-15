@@ -7,7 +7,7 @@ public class SubComponent : MonoBehaviour // Or just public class SubComponent
     public int SubComponentID { get; private set; }
     public string Name { get; private set; } // Optional: Can override template name
     public int SubComponentTemplateID { get; private set; }
-    [NonSerialized] public SubComponentTemplate Template; // Reference to the template
+    public SubComponentTemplate Template { get; set; }
     public int ComponentType { get; private set; } // Can potentially differ from template?
     public int Quality { get; private set; }
     public int Toughness { get; private set; }
@@ -20,7 +20,7 @@ public class SubComponent : MonoBehaviour // Or just public class SubComponent
     public int Flavour { get; private set; }
     public Sprite IconSprite { get; private set; }
 
-    public void Initialize(int id, string name, int templateId, int componentType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour)
+    public void SetSubComponent(int id, string name, int templateId, int componentType, int quality, int toughness, int strength, int density, int aura, int energy, int protein, int carbohydrate, int flavour)
     {
         SubComponentID = id;
         SubComponentTemplateID = templateId;

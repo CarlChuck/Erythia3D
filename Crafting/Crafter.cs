@@ -248,7 +248,7 @@ public class Crafter : MonoBehaviour
             return null;
         }
 
-        SubComponent subComponentToReturn = Instantiate(itemManager.GetSubComponentPrefab());
+        SubComponent subComponentToReturn = Instantiate(PrefabLibrary.Instance.GetSubComponentPrefab());
         if (subComponentToReturn == null)
         {
             Debug.LogError("Failed to instantiate SubComponent prefab.");
@@ -269,7 +269,7 @@ public class Crafter : MonoBehaviour
         int finalFlavour = resValues[8];
 
 
-        subComponentToReturn.Initialize(
+        subComponentToReturn.SetSubComponent(
             0,
             subCompTemplate.Name,
             subCompTemplate.ComponentTemplateID,
@@ -477,7 +477,7 @@ public class Crafter : MonoBehaviour
     }
     public Item MapTemplateToItem(ItemTemplate itemTemplate)
     {
-        Item item = Instantiate(itemManager.GetItemPrefab());
+        Item item = Instantiate(PrefabLibrary.Instance.GetItemPrefab());
         item.SetItem(0, itemTemplate.ItemTemplateID, itemTemplate.ItemName, (int)itemTemplate.Type, itemTemplate.MaxDurability, itemTemplate.MaxDurability, itemTemplate.Damage, itemTemplate.Speed, (int)itemTemplate.WeaponType,
             (int)itemTemplate.Slot, itemTemplate.SlashResist, itemTemplate.ThrustResist, itemTemplate.CrushResist, itemTemplate.HeatResist, itemTemplate.ShockResist, itemTemplate.ColdResist,
             itemTemplate.MindResist, itemTemplate.CorruptResist, itemTemplate.Icon, itemTemplate.ColourHex,

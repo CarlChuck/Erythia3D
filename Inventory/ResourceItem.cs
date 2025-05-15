@@ -12,12 +12,12 @@ public class ResourceItem : MonoBehaviour
 
     public Sprite IconSprite { get; private set; }
 
-    private int databaseID = 0; // Stores the ResourceItemID from the database
+    private int resourceItemID = 0; // Stores the ResourceItemID from the database
 
     public Resource Resource => resource;
     public int CurrentStackSize => currentStackSize;
 
-    public void Initialize(Resource resource, int quantity = 1)
+    public void SetResourceItem(Resource resource, int quantity = 1)
     {
         this.resource = resource;
         currentStackSize = quantity;
@@ -59,9 +59,9 @@ public class ResourceItem : MonoBehaviour
 
     public void SetDatabaseID(int id)
     {
-        if (databaseID == 0 && id > 0)
+        if (resourceItemID == 0 && id > 0)
         {
-            databaseID = id;
+            resourceItemID = id;
         }
         else if (id <= 0)
         {
@@ -69,13 +69,13 @@ public class ResourceItem : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"Attempted to change Database ID for ResourceItem '{resource?.ResourceName ?? "Unknown"}' from {databaseID} to {id}. This is usually not allowed.", this);
+            Debug.LogWarning($"Attempted to change Database ID for ResourceItem '{resource?.ResourceName ?? "Unknown"}' from {resourceItemID} to {id}. This is usually not allowed.", this);
         }
     }
 
     public int GetDatabaseID()
     {
-        return databaseID;
+        return resourceItemID;
     }
     public string GetDescription()
     {

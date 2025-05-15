@@ -14,7 +14,7 @@ public class SubComponentTemplate : MonoBehaviour // Or just `public class SubCo
     public int StackSizeMax { get; private set; }
     public int Price { get; private set; }
 
-    public void Initialize(int templateID, string name, int componentType, int icon, string colour, int weight, bool stackable, int stackSizeMax, int price)
+    public void SetSubComponentTemplate(int templateID, string name, int componentType, int icon, string colour, int weight, bool stackable, int stackSizeMax, int price)
     {
         ComponentTemplateID = templateID;
         Name = name;

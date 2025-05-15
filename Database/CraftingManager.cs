@@ -256,7 +256,6 @@ public class CraftingManager : BaseManager
     }
     #endregion
 
-
     #region Getters
     public Recipe GetRecipeByID(int recipeID)
     {
