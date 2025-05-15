@@ -25,7 +25,6 @@ public class AccountManager : BaseManager
             Destroy(gameObject);
             return;
         }        
-        //StartInitialization();
     }
     #endregion
 

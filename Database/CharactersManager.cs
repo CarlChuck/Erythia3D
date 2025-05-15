@@ -170,7 +170,7 @@ public class CharactersManager : BaseManager
     }
 
     #region Getters
-    public async Task<List<Dictionary<string, object>>> GetCharactersbyAccountIDAsync(int accountId)
+    public async Task<List<Dictionary<string, object>>> GetCharactersByAccountIDAsync(int accountId)
     {
         string query = $"SELECT * FROM `{CharacterDataTableName}` WHERE AccountID = @AccountID";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@AccountID", accountId } };

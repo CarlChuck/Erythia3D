@@ -42,6 +42,20 @@ public class ResourceItem : MonoBehaviour
         Weight = (float)(currentStackSize * resource.Weight) / 100;
         Price = resource.Value * CurrentStackSize;
     }
+    public void SetStackSize(int stackSize)
+    {
+        if (stackSize > StackSizeMax)
+        {
+            stackSize = StackSizeMax;
+        }
+        else if (stackSize < 0)
+        {
+            stackSize = 0;
+        }
+        currentStackSize = stackSize;
+        Weight = (float)(currentStackSize * resource.Weight) / 100;
+        Price = resource.Value * CurrentStackSize;
+    }
 
     public void SetDatabaseID(int id)
     {

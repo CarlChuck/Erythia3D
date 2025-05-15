@@ -24,7 +24,7 @@ public class ResourceManager : BaseManager
     [SerializeField] private ResourceTemplate resourceTemplatePrefab;
 
 
-    [Header("Parent Transforms (Optional)")]
+    [Header("Parent Transforms")]
     [SerializeField] private Transform resourceInstancesParent;
     [SerializeField] private Transform resourceTemplatesParent;
 
@@ -50,7 +50,6 @@ public class ResourceManager : BaseManager
             Destroy(gameObject);
             return;
         }        
-        //StartInitialization();
     }
     #endregion
 

@@ -120,7 +120,7 @@ public class Crafter : MonoBehaviour
         int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
         itemToReturn.SetDurability(durability);
 
-        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        long itemID = await itemManager.SaveNewItemAsync(itemToReturn);
         if (itemID > 0)
         {
             itemToReturn.SetItemID((int)itemID);
@@ -154,7 +154,7 @@ public class Crafter : MonoBehaviour
         itemToReturn.SetDurability(durability);
 
 
-        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        long itemID = await itemManager.SaveNewItemAsync(itemToReturn);
         if (itemID > 0)
         {
             itemToReturn.SetItemID((int)itemID);
@@ -191,7 +191,7 @@ public class Crafter : MonoBehaviour
         int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
         itemToReturn.SetDurability(durability);
 
-        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        long itemID = await itemManager.SaveNewItemAsync(itemToReturn);
         if (itemID > 0)
         {
             itemToReturn.SetItemID((int)itemID);
@@ -224,7 +224,7 @@ public class Crafter : MonoBehaviour
         int durability = (int)(itemTemplate.MaxDurability * (resValues[3] / 1000));
         itemToReturn.SetDurability(durability);
 
-        long itemID = await itemManager.SaveNewItemInstanceAsync(itemToReturn);
+        long itemID = await itemManager.SaveNewItemAsync(itemToReturn);
         if (itemID > 0)
         {
             itemToReturn.SetItemID((int)itemID);

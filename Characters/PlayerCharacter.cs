@@ -13,15 +13,25 @@ public class PlayerCharacter : StatBlock
     private int encumberence;
     private int characterID;
     private string characterTitle;
-    private int currentZone; 
-    
+    private int currentZone;
+
+    private int combatXp;
+    private int craftingXp;
+    private int arcaneXp;
+    private int spiritXp;
+    private int veilXp;
+
+    // Used for setting up the character's spawn location
+    private float yLoc;
+    private float xLoc;
+    private float zLoc;
+
     private Interactable currentInteractable; // Variable to store the interactable object
     private bool isOnGlobalCooldown = false; // Cooldown flag
 
     [SerializeField] private Camera mainCamera; // Cache the main camera
 
     #region Setup and Initialization
-
     public void AddModel(GameObject playerModel)
     {
         characterModel = playerModel;
@@ -35,14 +45,32 @@ public class PlayerCharacter : StatBlock
             characterModel.SetActive(isActive);
         }
     }
-    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, Camera newCamera)
+    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, Camera newCamera, int newXLoc = 0, int newYLoc = 0, int newZLoc = 0)
     {
         SetSpecies(CharactersManager.Instance.GetSpeciesByID(race));
+        //TODO add face
         SetGender(gender);
         SetCharacterName(newCharacterName);
         characterID = newCharacterID;
         characterTitle = title;
         currentZone = zoneID;
+        if (newYLoc != 0)
+        {
+            yLoc = (newYLoc / 100);
+        }
+        if (newXLoc != 0)
+        {
+            xLoc = (newXLoc / 100);
+        }
+        if (newZLoc != 0)
+        {
+            zLoc = (newZLoc / 100);
+        }
+        combatXp = combatxp;
+        craftingXp = craftingxp;
+        arcaneXp = arcaneexp;
+        spiritXp = spiritxp;
+        veilXp = veilexp;
         SetupStatBlock();
         SetUpInventory();
         SetUpEquipment();
@@ -66,7 +94,22 @@ public class PlayerCharacter : StatBlock
     {
         mainCamera = cameraToSet;
     }
-
+    public void SetupCharacterWithNewLoc(int newXLoc = 0, int newYLoc = 0, int newZLoc = 0)
+    {
+        if (newYLoc != 0)
+        {
+            yLoc = (newYLoc / 100);
+        }
+        if (newXLoc != 0)
+        {
+            xLoc = (newXLoc / 100);
+        }
+        if (newZLoc != 0)
+        {
+            zLoc = (newZLoc / 100);
+        }
+        transform.position = new Vector3(xLoc, yLoc, zLoc);
+    }
     #endregion
 
     public void InteractWithTarget()
@@ -171,7 +214,7 @@ public class PlayerCharacter : StatBlock
     {
         return encumberence;
     }
-    public string GetFamilyName()
+    public string GetTitle()
     {
         return characterTitle;
     }
@@ -179,9 +222,49 @@ public class PlayerCharacter : StatBlock
     {
         return inventory;
     }
+    public int GetCombatExp()
+    {
+        return combatXp;
+    }
+    public int GetCraftingExp()
+    {
+        return craftingXp;
+    }
+    public int GetArcaneExp()
+    {
+        return arcaneXp;
+    }
+    public int GetSpiritExp()
+    {
+        return spiritXp;
+    }
+    public int GetVeilExp()
+    {
+        return veilXp;
+    }
+
     #endregion
 
-    #region Item Pickup
+    #region Items
+    public void OnPickup(object obj)
+    {
+        if (obj is Item item)
+        {
+            OnPickupItem(item);
+        }
+        else if (obj is ResourceItem resourceItem)
+        {
+            OnPickupResourceItem(resourceItem);
+        }
+        else if (obj is SubComponent subComponent)
+        {
+            OnPickupSubComponent(subComponent);
+        }
+        else
+        {
+            Debug.LogWarning("Attempted to pick up an unsupported object type.");
+        }
+    }
     public void OnPickupItem(Item item)
     {
         if (item == null)
@@ -272,6 +355,93 @@ public class PlayerCharacter : StatBlock
                 Debug.Log($"Successfully added resource item to inventory");
             }
         }
+    }
+    public void OnRemoveItem(Item item)
+    {
+        if (item == null)
+        {
+            Debug.LogWarning("Attempted to remove null item");
+            return;
+        }
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+        inventory.RemoveItem(item);
+    }
+    public void OnRemoveSubComponent(SubComponent subComponent)
+    {
+        if (subComponent == null)
+        {
+            Debug.LogWarning("Attempted to remove null subcomponent");
+            return;
+        }
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+        inventory.RemoveSubComponent(subComponent);
+    }
+    public void OnRemoveResourceItem(ResourceItem resourceItem)
+    {
+        if (resourceItem == null)
+        {
+            Debug.LogWarning("Attempted to remove null resource item");
+            return;
+        }
+        if (inventory == null)
+        {
+            Debug.LogError("No inventory component found on character");
+            return;
+        }
+        inventory.RemoveResourceItem(resourceItem);
+    }
+    public void OnTransferItem(Item item, Inventory targetInventory)
+    {
+        if (item == null)
+        {
+            Debug.LogWarning("Attempted to transfer null item");
+            return;
+        }
+        if (targetInventory == null)
+        {
+            Debug.LogError("No inventory component to transfer to");
+            return;
+        }
+        inventory.RemoveItem(item);
+        targetInventory.AddItem(item);
+    }
+    public void OnTransferSubComponent(SubComponent subComponent, Inventory targetInventory)
+    {
+        if (subComponent == null)
+        {
+            Debug.LogWarning("Attempted to transfer null subcomponent");
+            return;
+        }
+        if (targetInventory == null)
+        {
+            Debug.LogError("No inventory component to transfer to");
+            return;
+        }
+        inventory.RemoveSubComponent(subComponent);
+        targetInventory.AddSubComponent(subComponent);
+    }
+    public void OnTransferResourceItem(ResourceItem resourceItem, Inventory targetInventory) 
+    {
+        if (resourceItem == null)
+        {
+            Debug.LogWarning("Attempted to transfer null resource item");
+            return;
+        }
+        if (targetInventory == null)
+        {
+            Debug.LogError("No inventory component to transfer to");
+            return;
+        }
+        inventory.RemoveResourceItem(resourceItem);
+        targetInventory.AddResourceItem(resourceItem);
     }
     #endregion
 

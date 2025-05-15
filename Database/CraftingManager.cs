@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class CraftingManager : BaseManager
 {
+    private const string RecipesTableName = "Recipes";
+
     [Header("Prefabs")]
     [SerializeField] private GameObject recipePrefab;
 
@@ -12,7 +14,6 @@ public class CraftingManager : BaseManager
     private Dictionary<string, Recipe> recipesByName = new Dictionary<string, Recipe>();
     private Dictionary<int, List<Recipe>> recipesByWorkbenchType = new Dictionary<int, List<Recipe>>();
 
-    private const string RecipesTableName = "Recipes";
 
     #region Singleton
     public static CraftingManager Instance;
@@ -29,7 +30,6 @@ public class CraftingManager : BaseManager
             Destroy(gameObject);
             return;
         }        
-        //StartInitialization();
     }
     #endregion
 

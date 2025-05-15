@@ -200,8 +200,7 @@ public class PlayerManager : MonoBehaviour
 
         ClearPlayerListExceptSelected();
 
-        // Use the async version from CharactersManager
-        List<Dictionary<string, object>> characterList = await CharactersManager.Instance.GetCharactersbyAccountIDAsync(accountID);
+        List<Dictionary<string, object>> characterList = await CharactersManager.Instance.GetCharactersByAccountIDAsync(accountID);
 
         if (characterList == null)
         {
@@ -283,7 +282,7 @@ public class PlayerManager : MonoBehaviour
             else { Debug.LogWarning($"Could not find character model for Race:{race} Gender:{gender}"); }
 
             Camera cameraToSet = mainCamera.GetComponent<Camera>();
-            newCharacter.SetUpCharacter(newCharacterName, newCharacterID, title, zoneID, race, face, gender, combatxp, craftingxp, arcaneexp, spiritxp, veilexp, cameraToSet);
+            newCharacter.SetUpCharacter(newCharacterName, newCharacterID, title, zoneID, race, face, gender, combatxp, craftingxp, arcaneexp, spiritxp, veilexp, cameraToSet, xLoc, yLoc, zLoc);
             playerCharacters.Add(newCharacter); // Add to the list
 
             // Set as selected if none currently selected
@@ -416,7 +415,7 @@ public class PlayerManager : MonoBehaviour
                 int itemId = Convert.ToInt32(itemIdObj);
                 int slotId = Convert.ToInt32(slotIdObj);
 
-                Item itemInstance = ItemManager.Instance.GetItemInstanceById(itemId); // Assumes this creates/returns the specific instance
+                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemId); // Assumes this creates/returns the specific instance
                 if (itemInstance == null)
                 {
                     Debug.LogWarning($"Item with ID {itemId} not found via ItemManager. Cannot load.");
@@ -469,39 +468,25 @@ public class PlayerManager : MonoBehaviour
 
             foreach (var resourceItemData in inventoryResourceItemsData)
             {
-                 if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value ||
-                    !resourceItemData.TryGetValue("SlotID", out object slotIdObj) || slotIdObj == DBNull.Value)
+                 if (!resourceItemData.TryGetValue("ResourceItemID", out object resourceItemIdObj) || resourceItemIdObj == DBNull.Value)
                 {
-                    Debug.LogWarning($"Skipping inventory resource item entry due to missing ResourceItemID or SlotID for CharID: {charId}");
+                    Debug.LogWarning($"Skipping inventory resource item entry due to missing ResourceItemID for CharID: {charId}");
                     continue;
                 }
 
                 int resourceItemId = Convert.ToInt32(resourceItemIdObj);
-                int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
 
-                ResourceItem resourceItemInstance = InventoryManager.Instance.GetResourceItemById(resourceItemId);
+                ResourceItem resourceItemInstance = ItemManager.Instance.GetResourceItemById(resourceItemId);
                 if (resourceItemInstance == null)
                 {
-                    Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via ResourceManager. Cannot load.");
+                    Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via InventoryManager. Cannot load.");
                     continue;
                 }
 
-                if (slotId == 0) 
+                Debug.Log($"Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemId}) to inventory bag.");
+                if (!inventory.AddResourceItem(resourceItemInstance))
                 {
-                    Debug.Log($"Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemId}) to inventory bag.");
-                    if (!inventory.AddResourceItem(resourceItemInstance))
-                    {
-                        Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to inventory bag for character {charId}.");
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning($"InventoryResourceItem instance (ID: {resourceItemId}) found with SlotID {slotId}. Equipping resources not currently supported. Adding to bag instead.");
-                    // Fallback to adding to bag
-                     if (!inventory.AddResourceItem(resourceItemInstance))
-                    {
-                        Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to inventory bag (fallback) for character {charId}.");
-                    }
+                    Debug.LogWarning($"Failed to add ResourceItem instance (ID: {resourceItemId}) to inventory bag for character {charId}.");
                 }
             }
 
@@ -512,39 +497,25 @@ public class PlayerManager : MonoBehaviour
 
             foreach (var subCompData in inventorySubComponentsData)
             {
-                if (!subCompData.TryGetValue("SubComponentID", out object subCompIdObj) || subCompIdObj == DBNull.Value ||
-                    !subCompData.TryGetValue("SlotID", out object slotIdObj) || slotIdObj == DBNull.Value)
+                if (!subCompData.TryGetValue("SubComponentID", out object subCompIdObj) || subCompIdObj == DBNull.Value)
                 {
-                    Debug.LogWarning($"Skipping inventory subcomponent entry due to missing SubComponentID or SlotID for CharID: {charId}");
+                    Debug.LogWarning($"Skipping inventory subcomponent entry due to missing SubComponentID for CharID: {charId}");
                     continue;
                 }
                 
                 int subComponentId = Convert.ToInt32(subCompIdObj);
-                int slotId = Convert.ToInt32(slotIdObj); // Currently assuming this is always 0 (bag slot)
 
                 SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subComponentId);
                 if (subComponentInstance == null)
                 {
-                    Debug.LogWarning($"SubComponent instance with ID {subComponentId} not found via SubComponentManager. Cannot load.");
+                    Debug.LogWarning($"SubComponent instance with ID {subComponentId} not found via ItemManager. Cannot load.");
                     continue;
                 }
 
-                if (slotId == 0) // Assuming subcomponents only go into the bag
+                Debug.Log($"Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subComponentId}) to inventory bag.");
+                if (!inventory.AddSubComponent(subComponentInstance))
                 {
-                    Debug.Log($"Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subComponentId}) to inventory bag.");
-                    if (!inventory.AddSubComponent(subComponentInstance))
-                    {
-                         Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag for character {charId}.");
-                    }
-                }
-                 else
-                {
-                    Debug.LogWarning($"InventorySubComponent instance (ID: {subComponentId}) found with SlotID {slotId}. Equipping subcomponents not currently supported. Adding to bag instead.");
-                    // Fallback to adding to bag
-                     if (!inventory.AddSubComponent(subComponentInstance))
-                    {
-                        Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag (fallback) for character {charId}.");
-                    }
+                     Debug.LogWarning($"Failed to add SubComponent instance (ID: {subComponentId}) to inventory bag for character {charId}.");
                 }
             }
 
@@ -603,7 +574,7 @@ public class PlayerManager : MonoBehaviour
                 }
 
                 int itemId = Convert.ToInt32(itemIdObj);
-                Item itemInstance = ItemManager.Instance.GetItemInstanceById(itemId);
+                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemId);
                 if (itemInstance == null)
                 {
                     Debug.LogWarning($"Item with ID {itemId} not found via ItemManager for account inventory. Cannot load.");
@@ -631,7 +602,7 @@ public class PlayerManager : MonoBehaviour
                 }
 
                 int resourceItemId = Convert.ToInt32(resourceItemIdObj);
-                ResourceItem resourceItemInstance = InventoryManager.Instance.GetResourceItemById(resourceItemId);
+                ResourceItem resourceItemInstance = ItemManager.Instance.GetResourceItemById(resourceItemId);
                 if (resourceItemInstance == null)
                 {
                     Debug.LogWarning($"ResourceItem instance with ID {resourceItemId} not found via InventoryManager for account inventory. Cannot load.");
@@ -790,6 +761,59 @@ public class PlayerManager : MonoBehaviour
         }
     }
 
+    public async void SaveCharacter()
+    {
+        if (selectedPlayerCharacter == null)
+        {
+            Debug.LogWarning("Cannot save character - no character selected.");
+            return;
+        }
+        Debug.Log($"Saving character {selectedPlayerCharacter.GetCharacterName()} (ID: {selectedPlayerCharacter.GetCharacterID()})");
+        // Use the async version from CharactersManager
+        Transform transform = selectedPlayerCharacter.transform;
+
+        bool success = await CharactersManager.Instance.UpdateCharacterAsync(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetTitle(), 
+            (int)(transform.position.x * 100), (int)(transform.position.y * 100), (int)(transform.position.z * 100), selectedPlayerCharacter.GetCombatExp(), 
+            selectedPlayerCharacter.GetCraftingExp(), selectedPlayerCharacter.GetArcaneExp(), selectedPlayerCharacter.GetSpiritExp(), selectedPlayerCharacter.GetVeilExp());
+        if (!success)
+        {
+            Debug.LogError("Failed to save character data.");
+        }
+    }
+
+    public async void SaveItem(Item item) 
+    { 
+        
+    }
+    public async void SaveResourceItem(ResourceItem resourceItem)
+    {
+
+    }
+    public async void SaveSubComponent(SubComponent subComponent)
+    {
+
+    }
+    public async void SaveCharacterEquipment(PlayerCharacter character)
+    {
+
+    }
+    public async void SaveCharacterInventory(PlayerCharacter character)
+    {
+
+    }
+    public async void SaveAllInventories()
+    {
+
+    }
+    public async void SaveAccountInventory()
+    {
+
+    }
+    public async void SaveWorkbench()
+    {
+
+    }
+
     #region Setters
     public async Task SetSelectedCharacterAsync() // Changed to async
     {
@@ -919,6 +943,10 @@ public class PlayerManager : MonoBehaviour
     {
         return ownedWorkbenches;
     }
+    public Inventory GetHomeInventory()
+    {
+        return homeInventory;
+    }
     #endregion
 
     #region Helpers
@@ -967,7 +995,10 @@ public class PlayerManager : MonoBehaviour
     }
     private void ClearPlayerListExceptSelected()
     {
-        if (playerCharacters == null) playerCharacters = new List<PlayerCharacter>();
+        if (playerCharacters == null) 
+        { 
+            playerCharacters = new List<PlayerCharacter>(); 
+        }
 
         // Use a temporary list to avoid issues while iterating and modifying
         List<PlayerCharacter> toRemove = new List<PlayerCharacter>();
