@@ -40,7 +40,6 @@ public class ResourceManager : BaseManager
         if (Instance == null)
         {
             Instance = this;
-            OnDataLoaded += PerformPostLoadActions;
         }
         else if (Instance != this)
         {
@@ -593,11 +592,6 @@ public class ResourceManager : BaseManager
                 LogWarning($"Resource instance '{resource.ResourceName}' (ID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
             }
         }
-    }
-    protected override void OnDestroy()
-    {
-        OnDataLoaded -= PerformPostLoadActions;
-        base.OnDestroy();
     }
     #endregion
 }

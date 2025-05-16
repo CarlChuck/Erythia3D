@@ -94,10 +94,7 @@ public class AccountManager : BaseManager
     }
 
     #region Initialize
-    protected override void OnDestroy()
-    {
-        base.OnDestroy();
-    }
+
     protected override async Task InitializeAsync()
     {
         try

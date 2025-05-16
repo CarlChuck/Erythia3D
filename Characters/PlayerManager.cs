@@ -1,17 +1,18 @@
 using System.Collections.Generic;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.Threading.Tasks;
 using System;
 using System.Linq;
-using UnityEngine.TextCore.Text;
 
-public class PlayerManager : MonoBehaviour
+public class PlayerManager : NetworkBehaviour
 {
     [Header("Player Account Info")]
     [SerializeField] private string accountName = "";
-    [SerializeField] private string email = "";
+    [SerializeField] private string email = ""; //No Idea if this is being used yet
     private ulong steamID = 1; //TODO set in Awake()
+    private int accountID;
     [SerializeField] private string familyName = "";
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
@@ -22,7 +23,6 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private GameObject playerFollowCam;
     [SerializeField] private List<PlayerCharacter> playerCharacters;
     [SerializeField] private PlayerCharacter selectedPlayerCharacter;
-    private int accountID;
     [SerializeField] private CharacterModelManager characterModelManager;
     [SerializeField] private ZoneManager currentZone;
     [SerializeField] private GameObject characterPrefab;
@@ -34,21 +34,43 @@ public class PlayerManager : MonoBehaviour
     [SerializeField] private Transform workbenchParent;
     [SerializeField] private Inventory homeInventory;
 
-
-
     private bool isInitialized = false; 
     private Task initializationTask; 
 
     #region Singleton
     public static PlayerManager Instance { get; private set; }
     private void Awake()
-    {        
-        if (Instance != null && Instance != this)
+    {
+        if (IsOwner) // Only the owner should set the primary instance if this is on a player prefab
         {
-            Destroy(gameObject); 
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogWarning($"Multiple PlayerManager instances owned by client. Destroying this one on GameObject: {gameObject.name}");
+                Destroy(gameObject); 
+                return;
+            }
+            Instance = this;
+        }
+        else if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsClient) // Non-owners should not run if this is on a player prefab
+        {
+            // If this PlayerManager is on a player prefab, non-owning clients should not initialize it as "their" manager.
+            // If PlayerManager is a scene object, this 'else if' might need different logic.
+            // For now, assuming it could be on a player prefab.
+            enabled = false; // Disable the component for non-owners to prevent Start() and other callbacks.
             return;
         }
-        Instance = this;
+        // If it's a host/server and not explicitly "owned" by a client in the traditional sense (e.g. scene object),
+        // it might still set itself as Instance if no owner has.
+        else if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this) // Catch-all for other non-owned duplicates on scene objects for example
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         SceneManager.sceneLoaded += OnSceneLoaded; 
         //TODO Steam Set ID
     }
@@ -57,6 +79,9 @@ public class PlayerManager : MonoBehaviour
     #region Initialization
     private async void Start()
     {
+        // If this component was disabled in Awake by a non-owner, Start should not proceed.
+        if (!enabled) return;
+
         if (playerCharacters == null)
         {
             playerCharacters = new List<PlayerCharacter>();
@@ -77,6 +102,11 @@ public class PlayerManager : MonoBehaviour
     {
         Debug.Log("PlayerManager Initialization Started...");
         isInitialized = false;
+
+        // Ensure this initialization is primarily for the owner or a local context.
+        // If operations here are meant to be authoritative, they should be routed through ServerRPCs.
+        // For client-side data loading and setup, IsOwner check might not be strictly needed here,
+        // but actions triggered by UI later should be.
 
         // 1. Perform Login Asynchronously
         Debug.Log("Performing login...");
@@ -333,6 +363,12 @@ public class PlayerManager : MonoBehaviour
 
     public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
+        if (!IsOwner)
+        {
+            Debug.LogWarning("OnCreateCharacter called, but this client is not the owner.");
+            return;
+        }
+
         if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
         {
             Debug.LogError("Character or Family Name cannot be empty");
@@ -368,9 +404,15 @@ public class PlayerManager : MonoBehaviour
         }
     }
 
-    #region Saving Methods
-    public async void SaveCharacter()
+    #region Save To Database
+    public async Task SaveCharacter()
     {
+        if (!IsOwner)
+        {
+            Debug.LogWarning("SaveCharacter called, but this client is not the owner.");
+            return;
+        }
+
         if (selectedPlayerCharacter == null)
         {
             Debug.LogWarning("Cannot save character - no character selected.");
@@ -388,66 +430,68 @@ public class PlayerManager : MonoBehaviour
             Debug.LogError("Failed to save character data.");
         }
     }
-    public async void SaveItem(Item item) 
+    public async Task SaveItem(Item item) 
     { 
         
     }
-    public async void SaveResourceItem(ResourceItem resourceItem)
+    public async Task SaveResourceItem(ResourceItem resourceItem)
     {
 
     }
-    public async void SaveSubComponent(SubComponent subComponent)
+    public async Task SaveSubComponent(SubComponent subComponent)
     {
 
     }
-    public async void SaveCharacterEquipment(PlayerCharacter character)
+    public async Task SaveCharacterEquipment(PlayerCharacter character)
     {
 
     }
-    public async void SaveCharacterInventory(PlayerCharacter character)
+    public async Task SaveCharacterInventory(PlayerCharacter character)
     {
 
     }
-    public async void SaveAllInventories()
+    public async Task SaveAccountInventory()
     {
 
     }
-    public async void SaveAccountInventory()
-    {
-
-    }
-    public async void SaveWorkbench()
+    public async Task SaveWorkbench()
     {
 
     }
     #endregion
 
-    #region Loading Methods
-    public async void LoadCharacter()
+    #region Load From Database
+    public async Task LoadCharacter()
     {
 
     }
-    public async void LoadItem()
+    public async Task<Item> LoadItem()
+    {
+        Item item = null;
+
+        return item;
+    }
+    public async Task<ResourceItem> LoadResourceItem()
+    {
+        ResourceItem resourceItem = null;
+
+        return resourceItem;
+    }
+    public async Task<SubComponent> LoadSubComponent()
+    {
+        SubComponent subComponent = null;
+
+        return subComponent;
+    }
+    public async Task LoadCharacterEquipment()
     {
 
     }
-    public async void LoadResourceItem()
+    public async Task LoadCharacterInventory()
     {
 
     }
-    public async void LoadSubComponent()
-    {
-
-    }
-    public async void LoadCharacterEquipment()
-    {
-
-    }
-    public async void LoadCharacterInventory()
-    {
-
-    }
-    public async void LoadAccountInventory()
+    public async Task LoadAccountInventory()
     {
 
     }
@@ -721,7 +765,7 @@ public class PlayerManager : MonoBehaviour
     private async Task LoadOwnedWorkbenchesAsync()
     {
         Debug.Log($"Loading owned workbenches for AccountID: {accountID}");
-        ownedWorkbenches.Clear(); // Clear existing list before loading
+        ownedWorkbenches.Clear();
 
         List<Dictionary<string, object>> workbenchDataList = await InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync(accountID);
 
@@ -742,7 +786,7 @@ public class PlayerManager : MonoBehaviour
             }
             int workbenchType = Convert.ToInt32(typeObj);
 
-            WorkBench newWorkBenchInstance = Instantiate(workBenchPrefab, workbenchParent); // Instantiate as child of PlayerManager
+            WorkBench newWorkBenchInstance = Instantiate(workBenchPrefab, workbenchParent);
             newWorkBenchInstance.SetWorkbenchType(workbenchType);
 
             if (WorkBenchManager.Instance != null)
@@ -750,7 +794,7 @@ public class PlayerManager : MonoBehaviour
                 WorkBench templateWorkBench = WorkBenchManager.Instance.GetWorkbenchByType(workbenchType);
                 if (templateWorkBench != null)
                 {
-                    newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes); // Get recipes from the template
+                    newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes);
                     Debug.Log($"Initialized workbench type {workbenchType} with {templateWorkBench.Recipes.Count} recipes from WorkBenchManager.");
                 }
                 else
@@ -761,7 +805,7 @@ public class PlayerManager : MonoBehaviour
             }
             else
             {
-                newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list if no WorkBenchManager
+                newWorkBenchInstance.InitializeRecipes(new List<Recipe>()); // Initialize with empty list
             }
 
             ownedWorkbenches.Add(newWorkBenchInstance);
@@ -769,12 +813,17 @@ public class PlayerManager : MonoBehaviour
         Debug.Log($"Finished loading {ownedWorkbenches.Count} owned workbenches.");
     }
 
-
     #endregion
 
     #region Setters
     public async Task SetSelectedCharacterAsync() // Changed to async
     {
+        if (!IsOwner)
+        {
+            Debug.LogWarning("SetSelectedCharacterAsync called, but this client is not the owner.");
+            return;
+        }
+
         if (selectedPlayerCharacter == null || accountID <= 0)
         {
             Debug.LogWarning("Cannot set selected character - no character selected or invalid account ID.");
@@ -987,6 +1036,8 @@ public class PlayerManager : MonoBehaviour
     }
     public void PlayerManagerControlSetActive(bool isActive)
     {
+        if (!IsOwner) return; // Only control camera/armature for the owned player
+
         if (mainCamera != null)
         {
             mainCamera.SetActive(isActive);
@@ -1003,19 +1054,23 @@ public class PlayerManager : MonoBehaviour
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         currentZone = FindFirstObjectByType<ZoneManager>();
-        SetWaypoint();
+        
+        if (IsOwner) // Waypoint setting and UI setup should be for the local player.
+        {
+            SetWaypoint();
 
-        // If UIManager needs the selected character, ensure it's ready first
-        if (isInitialized && selectedPlayerCharacter != null)
-        {
-            uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
-            uiManager.StartHUD();
-            Debug.Log("UIManager re-setup on scene load.");
-        }
-        else if (!isInitialized)
-        {
-            Debug.LogWarning("Scene loaded but PlayerManager not yet initialized.");
-            // UI setup will happen when initialization completes
+            // If UIManager needs the selected character, ensure it's ready first
+            if (isInitialized && selectedPlayerCharacter != null)
+            {
+                uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
+                uiManager.StartHUD();
+                Debug.Log("UIManager re-setup on scene load.");
+            }
+            else if (!isInitialized)
+            {
+                Debug.LogWarning("Scene loaded but PlayerManager not yet initialized for owner.");
+                // UI setup will happen when initialization completes
+            }
         }
     }
     private ResourceItem GetResourceItemById(int resourceItemId)

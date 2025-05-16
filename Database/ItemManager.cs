@@ -850,9 +850,5 @@ public class ItemManager : BaseManager
         }
         LogInfo("Linked sub-component instances to templates.");
     }
-    protected override void OnDestroy()
-    {
-        base.OnDestroy();
-    }
     #endregion
 }

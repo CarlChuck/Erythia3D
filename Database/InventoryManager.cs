@@ -887,10 +887,6 @@ public class InventoryManager : BaseManager
     #endregion
 
     #region Helpers
-    protected override void OnDestroy()
-    {
-        base.OnDestroy();
-    }
     private async Task<bool> CheckIfInventoryItemExistsAsync(int charId, int itemId)
     {
         string query = $"SELECT COUNT(*) FROM `{InventoryItemsTableName}` WHERE CharID = @CharID AND ItemID = @ItemID";

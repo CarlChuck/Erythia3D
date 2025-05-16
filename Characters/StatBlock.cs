@@ -1,9 +1,9 @@
-using NUnit.Framework;
+using Unity.Netcode;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
 
-public class StatBlock : MonoBehaviour
+public class StatBlock : NetworkBehaviour
 {
     private string characterName;
     public SpeciesTemplate species;

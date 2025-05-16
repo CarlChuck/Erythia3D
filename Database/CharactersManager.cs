@@ -34,16 +34,12 @@ public class CharactersManager : BaseManager
             Destroy(gameObject);
             return;
         }        
-        //StartInitialization();
     }
     #endregion
 
 
     #region Initialize
-    protected override void OnDestroy()
-    {
-        base.OnDestroy();
-    }
+
     protected override async Task InitializeAsync()
     {
         try

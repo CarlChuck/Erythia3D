@@ -1,20 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Unity.Netcode;
 using UnityEngine;
 
-public abstract class BaseManager : MonoBehaviour
+public abstract class BaseManager : NetworkBehaviour
 {
     protected bool isInitialized = false;
     protected Task initializationTask;
     public event Action OnDataLoaded;
 
     public Task InitializationTask => initializationTask;
-
-    protected virtual void OnDestroy()
-    {
-        Destroy(this);
-    }
 
 
     #region Initialization
