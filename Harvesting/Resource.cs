@@ -110,5 +110,16 @@ public class Resource : MonoBehaviour // Assuming INT stats to match ResourceSpa
     {           
         return resourceTemplate.Order;
     }
-
+    public bool IsResourceInDate()
+    {
+        DateTime currentDate = DateTime.Now;
+        if (currentDate >= StartDate && currentDate <= EndDate)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
 }

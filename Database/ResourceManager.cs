@@ -302,7 +302,7 @@ public class ResourceManager : BaseManager
             {
                 foreach (var rowData in results)
                 {
-                    Resource resource = Instantiate(resourcePrefab.gameObject).GetComponent<Resource>();
+                    Resource resource = Instantiate(resourcePrefab.gameObject, resourceInstancesParent).GetComponent<Resource>();
                     if (resource == null)
                     {
                         Debug.LogError("Failed to get Resource component.");
@@ -343,7 +343,7 @@ public class ResourceManager : BaseManager
 
             foreach (var rowData in results)
             {
-                ResourceTemplate template = Instantiate(resourceTemplatePrefab).GetComponent<ResourceTemplate>();
+                ResourceTemplate template = Instantiate(resourceTemplatePrefab.gameObject, resourceTemplatesParent).GetComponent<ResourceTemplate>();
                 if (template == null)
                 {
                     Debug.LogError("Failed to get ResourceTemplate component from instantiated prefab.");
@@ -361,27 +361,6 @@ public class ResourceManager : BaseManager
             Debug.LogError($"Error loading all resource templates from '{ResourceTemplatesTableName}': {ex.Message}");
             return null; // Indicate failure
         }
-    }
-    private void PerformPostLoadActions()
-    {
-        LogInfo("Performing post-load actions (parenting objects)...");
-        foreach (Resource resource in loadedResourceInstances)
-        {
-            if (resource != null && resource.gameObject != null && resourceInstancesParent != null)
-            {
-                resource.gameObject.transform.SetParent(resourceInstancesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed resource or missing parent."); }
-        }
-        foreach (ResourceTemplate template in loadedTemplates)
-        {
-            if (template != null && template.gameObject != null && resourceTemplatesParent != null)
-            {
-                template.gameObject.transform.SetParent(resourceTemplatesParent, false);
-            }
-            else { LogWarning("Skipping parenting for null/destroyed template or missing parent."); }
-        }
-        LogInfo("Post-load actions complete.");
     }
     #endregion
 

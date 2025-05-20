@@ -61,7 +61,7 @@ public class ZoneManager : MonoBehaviour
             if (allSpawned != null)
             {
                 // Use LINQ for cleaner filtering
-                regionResources = allSpawned.Where(resource => resource != null && resource.SubType == regionResourceType).ToList();
+                regionResources = allSpawned.Where(resource => resource != null && resource.SubType == regionResourceType && resource.IsResourceInDate()).ToList();
                 Debug.Log($"Populated regionResources with {regionResources.Count} resources matching subtype {regionResourceType}.");
             }
             else

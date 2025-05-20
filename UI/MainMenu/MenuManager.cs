@@ -37,7 +37,6 @@ public class MenuManager : MonoBehaviour
     void Start()
     {
         OnMainMenu();
-        playerManager.PlayerManagerControlSetActive(false);
         menuCamera.SetActive(true);
     }
 
@@ -172,4 +171,8 @@ public class MenuManager : MonoBehaviour
             createCharButton.SetActive(true);
         }
     }
+    public void SetPlayerManager(PlayerManager newPlayerManager)
+    {
+        playerManager = newPlayerManager;
+    }   
 }
