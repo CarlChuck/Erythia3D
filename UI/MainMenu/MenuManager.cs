@@ -1,8 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.Netcode;
+using Unity.VisualScripting;
 
 public class MenuManager : MonoBehaviour
 {
@@ -22,6 +25,10 @@ public class MenuManager : MonoBehaviour
     [SerializeField] private GameObject menuCamera;
     [SerializeField] private GameObject menuCanvas;
 
+    [SerializeField] private TMP_InputField accountNumberField;
+    [SerializeField] private TMP_InputField accountNameField;
+    [SerializeField] private TMP_InputField accountPasswordField;
+
     #region Singleton
     public static MenuManager Instance;
     private void Awake()
@@ -29,18 +36,64 @@ public class MenuManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
+            // DontDestroyOnLoad(gameObject); // Consider if MenuManager should persist across scenes
         }
-        menuCanvas.SetActive(true);
+        else if (Instance != this)
+        {
+            Debug.LogWarning("MenuManager Awake: Another instance found, destroying this one.");
+            Destroy(gameObject);
+            return;
+        }
+
+        // MenuManager is client-side, so UI and camera should generally be active.
+        // If NetworkManager is present and this somehow ends up on a dedicated server,
+        // specific server-only setup might be handled elsewhere or by disabling this component.
+        if (menuCanvas != null) 
+        {
+            menuCanvas.SetActive(true);
+        }
+        if (menuCamera != null) 
+        {
+            menuCamera.SetActive(true);
+        }
+        Debug.Log("MenuManager Awake: Ensuring UI and Camera are active for client.");
     }
     #endregion
 
     void Start()
     {
-        OnMainMenu();
-        menuCamera.SetActive(true);
+        if (playerManager == null)
+        {
+            playerManager = PlayerManager.Instance;
+        }
+        
+        if (menuCanvas != null && menuCanvas.activeSelf)
+        {
+            OnAccountLogin();
+        }
+
+        // No server-side subscriptions needed here anymore as this is client-focused.
+        // Player spawning is handled by ServerPlayerSpawner.cs on the server.
+        Debug.Log("MenuManager Start: Initialized for client-side UI management.");
+    }
+
+    private void OnDestroy()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            // If MenuManager had any client-specific NetworkManager subscriptions, they'd be here.
+        }
+        Debug.Log("MenuManager OnDestroy: Cleaned up client-side MenuManager.");
     }
 
     #region Panes
+    public void OnAccountLogin()
+    {
+        animator.SetBool("Menu", false);
+        animator.SetBool("Characters", false);
+        animator.SetBool("Settings", false);
+        animator.SetBool("Account", true);
+    }
     public void OnCreateButton()
     {
         animator.SetBool("Menu", false);
@@ -61,6 +114,7 @@ public class MenuManager : MonoBehaviour
         animator.SetBool("Menu", true);
         animator.SetBool("Characters", false);
         animator.SetBool("Settings", false);
+        animator.SetBool("Account", false);
     }
     public void OnExitButton()
     {
@@ -68,6 +122,65 @@ public class MenuManager : MonoBehaviour
     }
     #endregion
 
+    public async void OnLoginButton()
+    {
+        if (playerManager == null)
+        {
+            playerManager = PlayerManager.Instance;
+        }
+        string accountNumberText = accountNumberField.text.Trim();
+        string accountNameText = accountNameField.text.Trim();
+        string accountPasswordText = accountPasswordField.text.Trim();
+
+        int accountNumber = 0;
+        bool hasValidAccountNumber = int.TryParse(accountNumberText, out accountNumber) && accountNumber > 0;
+        bool hasValidAccountCredentials = !string.IsNullOrEmpty(accountNameText) && !string.IsNullOrEmpty(accountPasswordText);
+
+        if (!hasValidAccountNumber && !hasValidAccountCredentials)
+        {
+            Debug.LogError("Login failed: Please enter a valid account number or both account name and password.");
+            return;
+        }
+
+        if (hasValidAccountNumber)
+        {
+            playerManager.OnStartInitialization(accountNumber, 0, "");
+            OnMainMenu();
+            return;
+        }
+        else
+        {
+            // Check if account exists
+            var accountData = await AccountManager.Instance.GetAccountByUsernameAsync(accountNameText);
+            if (accountData == null)
+            {
+                Debug.LogError($"Login failed: No account found with username '{accountNameText}'.");
+                return;
+            }
+            // Verify password
+            bool passwordValid = await AccountManager.Instance.VerifyPasswordAsync(accountNameText, accountPasswordText);
+            if (!passwordValid)
+            {
+                Debug.LogError("Login failed: Incorrect password.");
+                return;
+            }
+            // Get AccountID
+            if (!accountData.TryGetValue("AccountID", out object accountIdObj) || accountIdObj == null)
+            {
+                Debug.LogError("Login failed: Could not retrieve AccountID from account data.");
+                return;
+            }
+            int accountId = 0;
+            if (!int.TryParse(accountIdObj.ToString(), out accountId) || accountId <= 0)
+            {
+                Debug.LogError("Login failed: Invalid AccountID retrieved from account data.");
+                return;
+            }
+            playerManager.OnStartInitialization(accountId, 0, accountNameText);
+            OnMainMenu();
+            return;
+        }
+    }
     public void OnCreateCharacter()
     {
         if (characterCreator.GetName() == "")

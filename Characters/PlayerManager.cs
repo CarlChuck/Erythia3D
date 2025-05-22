@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 using System.Threading.Tasks;
 using System;
 using System.Linq;
+using UnityEditor.Profiling.Memory.Experimental;
 
 public class PlayerManager : NetworkBehaviour
 {
@@ -49,6 +50,7 @@ public class PlayerManager : NetworkBehaviour
                 Destroy(gameObject); 
                 return;
             }
+            Debug.Log($"Setting PlayerManager instance for owner: {gameObject.name}");
             Instance = this;
         }
         else if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsClient) // Non-owners should not run if this is on a player prefab
@@ -77,24 +79,26 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Initialization
-    private async void Start()
+    private void Start()
     {
         // If this component was disabled in Awake by a non-owner, Start should not proceed.
-        if (!enabled) return;
+        if (!enabled) 
+        { 
+            return; 
+        }
 
         if (playerCharacters == null)
         {
             playerCharacters = new List<PlayerCharacter>();
         }
+    }
 
-        // Wait for InitializationManager to complete
-        Debug.Log("[PlayerManager] Waiting for InitializationManager...");
-        while (InitializationManager.Instance == null || !InitializationManager.Instance.GetIsInitialized())
-        {
-            await Task.Yield(); // Wait for the next frame
-        }
-        Debug.Log("[PlayerManager] InitializationManager finished. Starting PlayerManager initialization.");
-
+    //This is to be called when starting PlayerManager
+    public async void OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
+    {
+        accountID = newAccountID;
+        steamID = newSteamID;
+        accountName = newAccountName;
         initializationTask = InitializePlayerManagerAsync();
         await initializationTask;
     }
@@ -996,9 +1000,10 @@ public class PlayerManager : NetworkBehaviour
             default: return 0; // All other slots use index 0
         }
     }
-    private void OnDestroy()
+    public override void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
+        base.OnDestroy();
     }
     private void ClearPlayerListExceptSelected()
     {
