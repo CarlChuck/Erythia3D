@@ -3,6 +3,7 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System;
 using System.Threading;
+using Unity.Netcode;
 
 public class CharactersManager : BaseManager
 {
@@ -231,4 +232,76 @@ public class CharactersManager : BaseManager
         };
     }
     #endregion
+}
+
+[System.Serializable]
+public struct CharacterData : INetworkSerializable
+{
+    public int CharID;
+    public int AccountID;
+    public string FamilyName;
+    public string Name;
+    public string Title;
+    public int ZoneID;
+    public int XLoc;
+    public int YLoc;
+    public int ZLoc;
+    public int Race;
+    public int Gender;
+    public int Face;
+    public int CombatExp;
+    public int CraftingExp;
+    public int ArcaneExp;
+    public int SpiritExp;
+    public int VeilExp;
+    
+    // Species stats - populated from SpeciesTemplate
+    public int SpeciesStrength;
+    public int SpeciesDexterity;
+    public int SpeciesConstitution;
+    public int SpeciesIntelligence;
+    public int SpeciesSpirit;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref CharID);
+        serializer.SerializeValue(ref AccountID);
+        serializer.SerializeValue(ref FamilyName);
+        serializer.SerializeValue(ref Name);
+        serializer.SerializeValue(ref Title);
+        serializer.SerializeValue(ref ZoneID);
+        serializer.SerializeValue(ref XLoc);
+        serializer.SerializeValue(ref YLoc);
+        serializer.SerializeValue(ref ZLoc);
+        serializer.SerializeValue(ref Race);
+        serializer.SerializeValue(ref Gender);
+        serializer.SerializeValue(ref Face);
+        serializer.SerializeValue(ref CombatExp);
+        serializer.SerializeValue(ref CraftingExp);
+        serializer.SerializeValue(ref ArcaneExp);
+        serializer.SerializeValue(ref SpiritExp);
+        serializer.SerializeValue(ref VeilExp);
+        
+        // Serialize species stats
+        serializer.SerializeValue(ref SpeciesStrength);
+        serializer.SerializeValue(ref SpeciesDexterity);
+        serializer.SerializeValue(ref SpeciesConstitution);
+        serializer.SerializeValue(ref SpeciesIntelligence);
+        serializer.SerializeValue(ref SpeciesSpirit);
+    }
+}
+
+[System.Serializable]
+public struct CharacterListResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public CharacterData[] Characters;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref Characters);
+    }
 }

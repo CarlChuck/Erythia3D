@@ -40,6 +40,7 @@ public class UIManager : MonoBehaviour
     private void Start()
     {
         hudSection.SetActive(false); // Start with HUD hidden
+        CloseAllWindowsAndTabs(); // Ensure all windows are closed initially
     }
     public void SetupUI(PlayerCharacter targetPlayer)
     {

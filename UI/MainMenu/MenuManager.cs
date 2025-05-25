@@ -29,6 +29,8 @@ public class MenuManager : MonoBehaviour
     [SerializeField] private TMP_InputField accountNameField;
     [SerializeField] private TMP_InputField accountPasswordField;
 
+    [SerializeField] private GameObject starterPane;
+
     #region Singleton
     public static MenuManager Instance;
     private void Awake()
@@ -71,20 +73,8 @@ public class MenuManager : MonoBehaviour
         {
             OnAccountLogin();
         }
-
-        // No server-side subscriptions needed here anymore as this is client-focused.
-        // Player spawning is handled by ServerPlayerSpawner.cs on the server.
-        Debug.Log("MenuManager Start: Initialized for client-side UI management.");
     }
 
-    private void OnDestroy()
-    {
-        if (NetworkManager.Singleton != null)
-        {
-            // If MenuManager had any client-specific NetworkManager subscriptions, they'd be here.
-        }
-        Debug.Log("MenuManager OnDestroy: Cleaned up client-side MenuManager.");
-    }
 
     #region Panes
     public void OnAccountLogin()
@@ -215,6 +205,14 @@ public class MenuManager : MonoBehaviour
     public void OnOpenSettings()
     {
         //TODO open settings
+    }
+    public void OnStartClient()
+    {
+        starterPane.SetActive(false);
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.StartClient();
+        }
     }
     public void SetFamilyName(string familyName)
     {

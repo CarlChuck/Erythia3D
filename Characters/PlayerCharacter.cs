@@ -45,9 +45,17 @@ public class PlayerCharacter : StatBlock
             characterModel.SetActive(isActive);
         }
     }
-    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, Camera newCamera, int newXLoc = 0, int newYLoc = 0, int newZLoc = 0)
+    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, Camera newCamera, int newXLoc = 0, int newYLoc = 0, int newZLoc = 0, int speciesStrength = 10, int speciesDexterity = 10, int speciesConstitution = 10, int speciesIntelligence = 10, int speciesSpirit = 10)
     {
-        SetSpecies(CharactersManager.Instance.GetSpeciesByID(race));
+        // Create a temporary SpeciesTemplate with the provided stats
+        SpeciesTemplate tempSpecies = ScriptableObject.CreateInstance<SpeciesTemplate>();
+        tempSpecies.strength = speciesStrength;
+        tempSpecies.dexterity = speciesDexterity;
+        tempSpecies.constitution = speciesConstitution;
+        tempSpecies.intelligence = speciesIntelligence;
+        tempSpecies.spirit = speciesSpirit;
+        
+        SetSpecies(tempSpecies);
         //TODO add face
         SetGender(gender);
         SetCharacterName(newCharacterName);

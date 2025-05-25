@@ -5,6 +5,33 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+using Unity.Netcode;
+
+public enum LoginMethod
+{
+    None,
+    SteamID,
+    AccountID
+}
+
+[System.Serializable]
+public struct LoginResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public int AccountID;
+    public string AccountName;
+    public ulong SteamID;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref AccountID);
+        serializer.SerializeValue(ref AccountName);
+        serializer.SerializeValue(ref SteamID);
+    }
+}
 
 public class AccountManager : BaseManager
 {
@@ -232,6 +259,58 @@ public class AccountManager : BaseManager
             return null;
         }
     }
+    public async Task<Dictionary<string, object>> GetAccountByAccountIDAsync(int accountId)
+    {
+        if (accountId <= 0)
+        {
+            return null;
+        }
+        string query = "SELECT * FROM Accounts WHERE AccountID = @AccountID";
+        Dictionary<string, object> parameters = new Dictionary<string, object> { { "@AccountID", accountId } };
+
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
+
+            if (results.Count > 0)
+            {
+                return results[0]; // Return the first match found
+            }
+            else
+            {
+                LogWarning($"No account found with AccountID: {accountId}");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error retrieving account by AccountID", ex);
+            return null;
+        }
+    }
+
+    public LoginMethod DetermineLoginMethod(ulong steamId, int accountId)
+    {
+        if (steamId != 0 && accountId != 0)
+        {
+            LogWarning("Both SteamID and AccountID are provided. Prioritizing SteamID login.");
+            return LoginMethod.SteamID;
+        }
+        else if (steamId != 0)
+        {
+            return LoginMethod.SteamID;
+        }
+        else if (accountId != 0)
+        {
+            return LoginMethod.AccountID;
+        }
+        else
+        {
+            LogWarning("Neither SteamID nor AccountID provided. Cannot determine login method.");
+            return LoginMethod.None;
+        }
+    }
+
     private Dictionary<string, string> GetAccountTableDefinition()
     {
         return new Dictionary<string, string>

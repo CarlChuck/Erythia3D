@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using System;
+using Unity.Netcode;
 
 public class InventoryManager : BaseManager
 {
@@ -1042,4 +1043,107 @@ public class InventoryManager : BaseManager
     }
     
     #endregion
+}
+
+[System.Serializable]
+public struct InventoryItemData : INetworkSerializable
+{
+    public int ItemID;
+    public int SlotID;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref ItemID);
+        serializer.SerializeValue(ref SlotID);
+    }
+}
+
+[System.Serializable]
+public struct InventoryResourceItemData : INetworkSerializable
+{
+    public int ResourceItemID;
+    public int Quantity;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref ResourceItemID);
+        serializer.SerializeValue(ref Quantity);
+    }
+}
+
+[System.Serializable]
+public struct InventorySubComponentData : INetworkSerializable
+{
+    public int SubComponentID;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref SubComponentID);
+    }
+}
+
+[System.Serializable]
+public struct WorkbenchData : INetworkSerializable
+{
+    public int WorkBenchType;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref WorkBenchType);
+    }
+}
+
+[System.Serializable]
+public struct AccountInventoryResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public InventoryItemData[] Items;
+    public InventoryResourceItemData[] ResourceItems;
+    public InventorySubComponentData[] SubComponents;
+    public WorkbenchData[] Workbenches;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref Items);
+        serializer.SerializeValue(ref ResourceItems);
+        serializer.SerializeValue(ref SubComponents);
+        serializer.SerializeValue(ref Workbenches);
+    }
+}
+
+[System.Serializable]
+public struct CharacterInventoryResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public InventoryItemData[] Items;
+    public InventoryResourceItemData[] ResourceItems;
+    public InventorySubComponentData[] SubComponents;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref Items);
+        serializer.SerializeValue(ref ResourceItems);
+        serializer.SerializeValue(ref SubComponents);
+    }
+}
+
+[System.Serializable]
+public struct WorkbenchListResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public WorkbenchData[] Workbenches;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref Workbenches);
+    }
 }

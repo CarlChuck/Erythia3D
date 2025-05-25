@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
 
-public abstract class BaseManager : NetworkBehaviour
+public abstract class BaseManager : MonoBehaviour
 {
     protected bool isInitialized = false;
     protected Task initializationTask;
