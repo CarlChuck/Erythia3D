@@ -908,7 +908,7 @@ public class PlayerManager : NetworkBehaviour
     {
         if (currentZone != null)
         {
-            Transform waypoint = currentZone.GetWaypoint();
+            Transform waypoint = currentZone.GetMarketWaypoint();
             if (waypoint != null && controlledCharacter != null)
             {
                 controlledCharacter.transform.position = waypoint.position;
@@ -1052,16 +1052,22 @@ public class PlayerManager : NetworkBehaviour
     {
         switch (slotId)
         {
-            case 5: return 0; // First finger slot
-            case 6: return 1; // Second finger slot
-            case 20: return 0; // First ear slot
-            case 21: return 1; // Second ear slot
-            default: return 0; // All other slots use index 0
+            case 5: 
+                return 0; // First finger slot
+            case 6: 
+                return 1; // Second finger slot
+            case 20: 
+                return 0; // First ear slot
+            case 21: 
+                return 1; // Second ear slot
+            default: 
+                return 0; // All other slots use index 0
         }
     }
-    public void OnDestroy()
+    public override void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
+        base.OnDestroy();
     }
     private void ClearPlayerListExceptSelected()
     {

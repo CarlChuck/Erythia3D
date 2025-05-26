@@ -60,11 +60,11 @@ public class ServerBootstrap : MonoBehaviour
         #if UNITY_EDITOR
         Debug.Log("ServerBootstrap: Running in editor - should run server");
         return true;
-        #endif
-        
+        #else
         // For client builds without server flags
         Debug.Log("ServerBootstrap: No server conditions met - should not run server");
         return false;
+        #endif
     }
 
     public void InitializeServer()

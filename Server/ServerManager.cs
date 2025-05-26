@@ -61,7 +61,7 @@ public class ServerManager : NetworkBehaviour
             
             // Instead of sending ClientRpc directly, call back to PlayerManager on server
             Debug.Log($"ServerManager: Finding PlayerManager to send response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
@@ -103,7 +103,7 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager as well
             Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             foreach (PlayerManager pm in playerManagers)
             {
@@ -141,7 +141,7 @@ public class ServerManager : NetworkBehaviour
             
             // Find the PlayerManager that belongs to the client who sent the request
             Debug.Log($"ServerManager: Finding PlayerManager to send character list response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
@@ -182,7 +182,7 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager
             Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             foreach (PlayerManager pm in playerManagers)
             {
@@ -220,7 +220,7 @@ public class ServerManager : NetworkBehaviour
             
             // Find the PlayerManager that belongs to the client who sent the request
             Debug.Log($"ServerManager: Finding PlayerManager to send account inventory response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
@@ -264,7 +264,7 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager
             Debug.Log($"ServerManager: Finding PlayerManager to send account inventory error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             foreach (PlayerManager pm in playerManagers)
             {
@@ -300,7 +300,7 @@ public class ServerManager : NetworkBehaviour
             
             // Find the PlayerManager that belongs to the client who sent the request
             Debug.Log($"ServerManager: Finding PlayerManager to send character inventory response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
@@ -343,7 +343,7 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager
             Debug.Log($"ServerManager: Finding PlayerManager to send character inventory error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             foreach (PlayerManager pm in playerManagers)
             {
@@ -379,7 +379,7 @@ public class ServerManager : NetworkBehaviour
             
             // Find the PlayerManager that belongs to the client who sent the request
             Debug.Log($"ServerManager: Finding PlayerManager to send workbench list response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
@@ -420,7 +420,7 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager
             Debug.Log($"ServerManager: Finding PlayerManager to send workbench list error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsOfType<PlayerManager>();
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             foreach (PlayerManager pm in playerManagers)
             {
