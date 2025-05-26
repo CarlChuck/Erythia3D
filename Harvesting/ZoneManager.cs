@@ -1,15 +1,15 @@
 using System.Collections.Generic;
 using UnityEngine;
-using System.Threading.Tasks; // Add Task namespace
-using System.Linq; // Add Linq namespace
-using System; // For Exception
+using System.Threading.Tasks; 
+using System.Linq;
+using System;
 
 public class ZoneManager : MonoBehaviour
 {
     [SerializeField] private Transform marketWaypoint;
     [SerializeField] private List<ResourceNode> activeNodes = new List<ResourceNode>();
     [SerializeField] private ResourceSubType regionResourceType; // Set in Inspector
-    [SerializeField] private List<Resource> regionResources = new List<Resource>(); // List of resources for this region
+    [SerializeField] private List<Resource> regionResources = new List<Resource>(); 
     [SerializeField] private ResourceItem resourceItemPrefab;
 
     private bool isInitialized = false; 
@@ -17,30 +17,17 @@ public class ZoneManager : MonoBehaviour
     private async void Start()
     {
         isInitialized = false;
-        Debug.Log("ZoneManager Start: Waiting for ResourceManager initialization...");
 
-        // 1. Wait for ResourceManager to be ready
-        while (!ResourceManager.Instance.GetIsInitialized())
-        {
-            Debug.LogWarning("ZoneManager waiting for ResourceManager data to load...");
-            await Task.Yield(); // Wait a frame
-        }
-        Debug.Log("ResourceManager initialized. Proceeding with ZoneManager setup.");
-
-
-        // 2. Find and register nodes (synchronous part)
         ResourceNode[] nodes = FindObjectsByType<ResourceNode>(FindObjectsSortMode.None);
-        activeNodes.Clear(); // Clear list before registering
+        activeNodes.Clear();
         foreach (ResourceNode node in nodes)
         {
             RegisterNode(node);
         }
         Debug.Log($"Registered {activeNodes.Count} resource nodes.");
 
-        // 3. Populate region resources (synchronous, uses already loaded data)
-        PopulateRegionResources();
 
-        // 4. Assign resources to nodes asynchronously (might involve DB writes)
+        PopulateRegionResources();
         await AssignResourcesToNodesAsync();
 
         isInitialized = true;
