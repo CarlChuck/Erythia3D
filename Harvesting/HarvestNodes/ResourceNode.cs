@@ -34,7 +34,7 @@ public abstract class ResourceNode : Interactable
     [SerializeField] protected ResourceSubType resourceSubType; // Type that this node can drop - Set by ResourceNodeManager
 
     private bool isMouseOver = false;
-    private PlayerCharacter playerCharacter; // Reference to the player
+    //private PlayerCharacter playerCharacter; // Reference to the player
 
     protected virtual void Awake()
     {
@@ -49,11 +49,13 @@ public abstract class ResourceNode : Interactable
 
     protected virtual void Start()
     {
+        /*
         playerCharacter = FindFirstObjectByType<PlayerCharacter>();
         if (playerCharacter == null)
         {
             Debug.LogWarning("ResourceNode could not find PlayerCharacter in the scene.", this);
         }
+        */
 
         // Ensure outline is initially off when the game starts
         if (outlineToggle != null)
@@ -81,6 +83,7 @@ public abstract class ResourceNode : Interactable
 
     protected virtual void Update()
     {
+        /*
         // Handle outline visibility based on distance and mouse hover
         if (isMouseOver && playerCharacter != null && outlineToggle != null)
         {
@@ -93,6 +96,7 @@ public abstract class ResourceNode : Interactable
              // Ensure outline is off if mouse is not over
             outlineToggle.SetOutlineActive(false);
         }
+        */
     }
 
     public override void OnInteract(PlayerCharacter pCharacter)
