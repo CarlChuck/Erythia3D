@@ -102,25 +102,9 @@ public class PlayerCharacter : StatBlock
     {
         mainCamera = cameraToSet;
     }
-    public void SetupCharacterWithNewLoc(int newXLoc = 0, int newYLoc = 0, int newZLoc = 0)
-    {
-        if (newYLoc != 0)
-        {
-            yLoc = (newYLoc / 100);
-        }
-        if (newXLoc != 0)
-        {
-            xLoc = (newXLoc / 100);
-        }
-        if (newZLoc != 0)
-        {
-            zLoc = (newZLoc / 100);
-        }
-        transform.position = new Vector3(xLoc, yLoc, zLoc);
-    }
     #endregion
 
-    public void InteractWithTarget()
+    public void InteractWithTarget(Vector2 mousePosition)
     {
         // 1. Check if already on cooldown
         if (isOnGlobalCooldown)
@@ -136,7 +120,7 @@ public class PlayerCharacter : StatBlock
         }
 
         // Create a ray from the camera going through the mouse position
-        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = mainCamera.ScreenPointToRay(mousePosition);
 
         // Perform the raycast
         if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity)) // Raycast infinitely for now, distance check later
@@ -251,6 +235,124 @@ public class PlayerCharacter : StatBlock
         return veilXp;
     }
 
+    #endregion
+
+    #region Position Management
+    public void SetCharacterPosition(Vector3 newPosition, bool debugLog = false)
+    {
+        if (debugLog)
+        {
+            Debug.Log($"PlayerCharacter: SetCharacterPosition called - Current: {transform.position}, New: {newPosition}");
+        }
+
+        // Check for physics components that might interfere with positioning
+        Rigidbody rb = GetComponent<Rigidbody>();
+        CharacterController cc = GetComponent<CharacterController>();
+
+        if (cc != null && cc.enabled)
+        {
+            // Use CharacterController.Move for proper positioning
+            Vector3 offset = newPosition - transform.position;
+            cc.Move(offset);
+            
+            if (debugLog)
+            {
+                Debug.Log($"PlayerCharacter: Used CharacterController.Move - Final position: {transform.position}");
+            }
+        }
+        else if (rb != null && !rb.isKinematic)
+        {
+            // Use Rigidbody.MovePosition for physics-based positioning
+            rb.MovePosition(newPosition);
+            
+            if (debugLog)
+            {
+                Debug.Log($"PlayerCharacter: Used Rigidbody.MovePosition - Final position: {transform.position}");
+            }
+        }
+        else
+        {
+            // Direct transform positioning
+            transform.position = newPosition;
+            
+            if (debugLog)
+            {
+                Debug.Log($"PlayerCharacter: Used direct transform.position - Final position: {transform.position}");
+            }
+        }
+
+        // Verify the position was set correctly
+        if (debugLog)
+        {
+            float distance = Vector3.Distance(transform.position, newPosition);
+            if (distance > 0.1f)
+            {
+                Debug.LogWarning($"PlayerCharacter: Position mismatch! Expected: {newPosition}, Actual: {transform.position}, Distance: {distance}");
+            }
+            else
+            {
+                Debug.Log($"PlayerCharacter: Position set successfully within tolerance");
+            }
+        }
+    }
+
+    [System.Obsolete("Use SetCharacterPosition instead for better physics handling")]
+    public void SetupCharacterWithNewLoc(int newXLoc = 0, int newYLoc = 0, int newZLoc = 0)
+    {
+        Vector3 newPosition = Vector3.zero;
+        
+        if (newYLoc != 0)
+        {
+            yLoc = (newYLoc / 100f);
+            newPosition.y = yLoc;
+        }
+        if (newXLoc != 0)
+        {
+            xLoc = (newXLoc / 100f);
+            newPosition.x = xLoc;
+        }
+        if (newZLoc != 0)
+        {
+            zLoc = (newZLoc / 100f);
+            newPosition.z = zLoc;
+        }
+        
+        SetCharacterPosition(newPosition, true);
+    }
+
+    public void DebugCharacterPosition()
+    {
+        Debug.Log($"=== PlayerCharacter Position Debug ===");
+        Debug.Log($"Character Name: {GetCharacterName()}");
+        Debug.Log($"Character ID: {characterID}");
+        Debug.Log($"Current Position: {transform.position}");
+        Debug.Log($"Stored Location: ({xLoc}, {yLoc}, {zLoc})");
+        Debug.Log($"Current Zone: {currentZone}");
+        
+        // Check for physics components
+        Rigidbody rb = GetComponent<Rigidbody>();
+        CharacterController cc = GetComponent<CharacterController>();
+        
+        if (rb != null)
+        {
+            Debug.Log($"Rigidbody - isKinematic: {rb.isKinematic}, useGravity: {rb.useGravity}, velocity: {rb.linearVelocity}");
+        }
+        if (cc != null)
+        {
+            Debug.Log($"CharacterController - enabled: {cc.enabled}, isGrounded: {cc.isGrounded}");
+        }
+        
+        // Check for NetworkTransform
+        var networkTransform = GetComponent<Unity.Netcode.Components.NetworkTransform>();
+        if (networkTransform != null)
+        {
+            Debug.Log($"NetworkTransform found - enabled: {networkTransform.enabled}");
+        }
+        else
+        {
+            Debug.LogWarning("No NetworkTransform component found! Position changes may not synchronize across network.");
+        }
+    }
     #endregion
 
     #region Items
@@ -456,10 +558,10 @@ public class PlayerCharacter : StatBlock
     #region Helpers
     private IEnumerator InteractionCooldownCoroutine()
     {
-        isOnGlobalCooldown = true; // Set cooldown active
+        isOnGlobalCooldown = true;
         Debug.Log($"Interaction cooldown started ({interactionCooldownRate}s).");
-        yield return new WaitForSeconds(interactionCooldownRate); // Wait for the specified duration
-        isOnGlobalCooldown = false; // Reset cooldown flag
+        yield return new WaitForSeconds(interactionCooldownRate);
+        isOnGlobalCooldown = false;
         Debug.Log("Interaction cooldown finished.");
     }
     #endregion

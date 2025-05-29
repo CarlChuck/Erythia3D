@@ -196,11 +196,26 @@ public class MenuManager : MonoBehaviour
         playerManager.OnCreateCharacter(characterCreator.GetName(), characterCreator.GetRace(), characterCreator.GetGender(), characterCreator.GetFace());
         OnEnterWorld();
     }
-    public void OnEnterWorld()
+    public async void OnEnterWorld()
     {
-        menuCamera.SetActive(false);
-        playerManager.PlayerManagerControlSetActive(true);
-        SceneManager.LoadScene("IthoriaSouth"); //TODO change to the correct scene
+        try
+        {
+            menuCamera.SetActive(false);
+            playerManager.PlayerManagerControlSetActive(true);
+            
+            // Use the new zone loading system through PlayerManager
+            await playerManager.SetSelectedCharacterAsync();
+            
+            Debug.Log("MenuManager: Character zone loading completed");
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"MenuManager: Error in OnEnterWorld: {ex.Message}");
+            
+            // Fallback: Re-enable menu camera if zone loading fails
+            menuCamera.SetActive(true);
+            playerManager.PlayerManagerControlSetActive(false);
+        }
     }
     public void OnOpenSettings()
     {

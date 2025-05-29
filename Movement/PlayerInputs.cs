@@ -91,7 +91,9 @@ public class PlayerInputs : NetworkBehaviour
             var playerCharacter = PlayerManager.Instance?.GetSelectedPlayerCharacter();
             if (playerCharacter != null)
             {
-                playerCharacter.InteractWithTarget();
+                // Get mouse position using the new Input System
+                Vector2 mousePosition = Mouse.current.position.ReadValue();
+                playerCharacter.InteractWithTarget(mousePosition);
             }
         }
     }

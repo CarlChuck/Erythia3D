@@ -444,6 +444,173 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
+    #region Waypoint Communication
+    public async void ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
+    {
+        Debug.Log($"ServerManager: ProcessWaypointRequest ENTRY - characterID={characterID}, zoneName={zoneName}, senderClientId={senderClientId}");
+        
+        try
+        {
+            Debug.Log($"ServerManager: Calling ProcessWaypoint...");
+            WaypointResult result = await ProcessWaypoint(characterID, zoneName);
+            
+            Debug.Log($"ServerManager: ProcessWaypoint completed. Success={result.Success}, HasWaypoint={result.HasWaypoint}");
+            
+            // Find the PlayerManager that belongs to the client who sent the request
+            Debug.Log($"ServerManager: Finding PlayerManager to send waypoint response back to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
+            
+            bool responseSet = false;
+            foreach (PlayerManager pm in playerManagers)
+            {
+                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending waypoint response...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceiveWaypointResultClientRpc(result, clientRpcParams);
+                    Debug.Log($"ServerManager: Waypoint response sent via PlayerManager successfully");
+                    responseSet = true;
+                    break;
+                }
+            }
+            
+            if (!responseSet)
+            {
+                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send waypoint response!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during waypoint request: {ex.Message}\n{ex.StackTrace}");
+            WaypointResult errorResult = new WaypointResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during waypoint request: {ex.Message}",
+                WaypointPosition = Vector3.zero,
+                HasWaypoint = false,
+                ZoneName = zoneName
+            };
+            
+            // Send error response via PlayerManager
+            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            
+            foreach (PlayerManager pm in playerManagers)
+            {
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Sending waypoint error response via PlayerManager...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceiveWaypointResultClientRpc(errorResult, clientRpcParams);
+                    break;
+                }
+            }
+        }
+        
+        Debug.Log($"ServerManager: ProcessWaypointRequest completed");
+    }
+    #endregion
+
+    #region Player Zone Information Communication
+    public async void ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
+    {
+        Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");
+        
+        try
+        {
+            Debug.Log($"ServerManager: Calling ProcessPlayerZoneInfo...");
+            PlayerZoneInfoResult result = await ProcessPlayerZoneInfo(characterID);
+            
+            Debug.Log($"ServerManager: ProcessPlayerZoneInfo completed. Success={result.Success}, ZoneName={result.ZoneInfo.ZoneName}");
+            
+            // Find the PlayerManager that belongs to the client who sent the request
+            Debug.Log($"ServerManager: Finding PlayerManager to send player zone info response back to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
+            
+            bool responseSet = false;
+            foreach (PlayerManager pm in playerManagers)
+            {
+                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending player zone info response...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceivePlayerZoneInfoClientRpc(result, clientRpcParams);
+                    Debug.Log($"ServerManager: Player zone info response sent via PlayerManager successfully");
+                    responseSet = true;
+                    break;
+                }
+            }
+            
+            if (!responseSet)
+            {
+                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send player zone info response!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during player zone info request: {ex.Message}\n{ex.StackTrace}");
+            PlayerZoneInfoResult errorResult = new PlayerZoneInfoResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during player zone info request: {ex.Message}",
+                ZoneInfo = new PlayerZoneInfo
+                {
+                    CharacterID = characterID,
+                    ZoneID = 1,
+                    ZoneName = "IthoriaSouth",
+                    SpawnPosition = null,
+                    RequiresMarketWaypoint = true
+                }
+            };
+            
+            // Send error response via PlayerManager
+            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            
+            foreach (PlayerManager pm in playerManagers)
+            {
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Sending player zone info error response via PlayerManager...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceivePlayerZoneInfoClientRpc(errorResult, clientRpcParams);
+                    break;
+                }
+            }
+        }
+        
+        Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest completed");
+    }
+    #endregion
+
     #region Server-Side Character Logic
     private async Task<CharacterListResult> ProcessCharacterList(int accountID)
     {
@@ -948,7 +1115,413 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
+    #region Business Logic
+    
+    /// <summary>
+    /// Process waypoint request by coordinating with WorldManager and ZoneManager
+    /// </summary>
+    private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
+    {
+        Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");
+        
+        if (!IsServer)
+        {
+            Debug.LogError("ProcessWaypoint called on client! This should only run on server.");
+            return new WaypointResult 
+            { 
+                Success = false, 
+                ErrorMessage = "Server-side method called on client", 
+                WaypointPosition = Vector3.zero,
+                HasWaypoint = false,
+                ZoneName = zoneName
+            };
+        }
+
+        try
+        {
+            // Debug: Check if WorldManager is available
+            if (WorldManager.Instance == null)
+            {
+                Debug.LogError("ServerManager: WorldManager.Instance is null!");
+                return new WaypointResult 
+                { 
+                    Success = false, 
+                    ErrorMessage = "WorldManager not available", 
+                    WaypointPosition = Vector3.zero,
+                    HasWaypoint = false,
+                    ZoneName = zoneName
+                };
+            }
+
+            Debug.Log($"ServerManager: WorldManager found, requesting waypoint for zone '{zoneName}'...");
+
+            // Debug: Check active ZoneManagers
+            var activeZoneManagers = WorldManager.Instance.GetAllZoneManagers();
+            Debug.Log($"ServerManager: WorldManager reports {activeZoneManagers.Count} active ZoneManagers:");
+            foreach (var kvp in activeZoneManagers)
+            {
+                Debug.Log($"ServerManager: - Zone '{kvp.Key}': {(kvp.Value != null ? "Valid ZoneManager" : "NULL ZoneManager")}");
+                if (kvp.Value != null)
+                {
+                    Debug.Log($"ServerManager: - Zone '{kvp.Key}' has MarketWaypoint: {kvp.Value.HasMarketWaypoint()}");
+                }
+            }
+
+            // Get MarketWaypoint position from WorldManager
+            Vector3? waypointPosition = WorldManager.Instance.GetMarketWaypointPosition(zoneName);
+            
+            if (waypointPosition.HasValue)
+            {
+                Debug.Log($"ServerManager: Successfully retrieved waypoint position {waypointPosition.Value} for zone '{zoneName}'");
+                return new WaypointResult 
+                { 
+                    Success = true, 
+                    ErrorMessage = "", 
+                    WaypointPosition = waypointPosition.Value,
+                    HasWaypoint = true,
+                    ZoneName = zoneName
+                };
+            }
+            else
+            {
+                Debug.LogWarning($"ServerManager: No MarketWaypoint found for zone '{zoneName}'");
+                return new WaypointResult 
+                { 
+                    Success = true, 
+                    ErrorMessage = $"No MarketWaypoint found in zone '{zoneName}'", 
+                    WaypointPosition = Vector3.zero,
+                    HasWaypoint = false,
+                    ZoneName = zoneName
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during ProcessWaypoint: {ex.Message}\n{ex.StackTrace}");
+            return new WaypointResult 
+            { 
+                Success = false, 
+                ErrorMessage = $"Server error processing waypoint: {ex.Message}", 
+                WaypointPosition = Vector3.zero,
+                HasWaypoint = false,
+                ZoneName = zoneName
+            };
+        }
+    }
+    
     // Add other server-specific functionality here as needed
     // Future: Character creation, inventory sync, etc.
+    #endregion
+
+    #region Player Zone Information Logic
+    private async Task<PlayerZoneInfoResult> ProcessPlayerZoneInfo(int characterID)
+    {
+        Debug.Log($"ServerManager: ProcessPlayerZoneInfo ENTRY - characterID={characterID}");
+        
+        if (!IsServer)
+        {
+            Debug.LogError("ProcessPlayerZoneInfo called on client! This should only run on server.");
+            return new PlayerZoneInfoResult { Success = false, ErrorMessage = "Server-side method called on client", ZoneInfo = new PlayerZoneInfo { CharacterID = characterID, ZoneID = 1, ZoneName = "IthoriaSouth", SpawnPosition = null, RequiresMarketWaypoint = true } };
+        }
+
+        try
+        {
+            // Step 1: Get character's zone from database
+            string zoneName = await GetCharacterZoneScene(characterID);
+            
+            // Step 2: Get character's spawn position from database
+            Vector3? spawnPosition = await GetCharacterSpawnPosition(characterID, zoneName);
+            
+            // Step 3: Get zone configuration
+            ZoneConfiguration? config = null;
+            if (WorldManager.Instance != null)
+            {
+                config = WorldManager.Instance.GetZoneConfiguration(zoneName);
+            }
+            int zoneID = config?.ZoneID ?? 1; // Default to zone 1
+
+            PlayerZoneInfo zoneInfo = new PlayerZoneInfo
+            {
+                CharacterID = characterID,
+                ZoneID = zoneID,
+                ZoneName = zoneName,
+                SpawnPosition = spawnPosition,
+                RequiresMarketWaypoint = !spawnPosition.HasValue
+            };
+
+            Debug.Log($"ServerManager: Successfully retrieved player zone information for character {characterID} - Zone: {zoneName}, RequiresWaypoint: {zoneInfo.RequiresMarketWaypoint}");
+            return new PlayerZoneInfoResult { Success = true, ErrorMessage = "", ZoneInfo = zoneInfo };
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during ProcessPlayerZoneInfo: {ex.Message}\n{ex.StackTrace}");
+            return new PlayerZoneInfoResult { Success = false, ErrorMessage = $"Server error retrieving player zone information: {ex.Message}", ZoneInfo = new PlayerZoneInfo { CharacterID = characterID, ZoneID = 1, ZoneName = "IthoriaSouth", SpawnPosition = null, RequiresMarketWaypoint = true } };
+        }
+    }
+
+    private async Task<string> GetCharacterZoneScene(int characterID)
+    {
+        if (CharactersManager.Instance == null)
+        {
+            Debug.LogError("ServerManager: CharactersManager.Instance is null!");
+            return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
+        }
+
+        try
+        {
+            // Get character's stored location from database
+            Dictionary<string, object> locationData = await CharactersManager.Instance.GetCharacterLocationAsync(characterID);
+            
+            if (locationData != null && locationData.ContainsKey("ZoneID"))
+            {
+                int storedZoneID = Convert.ToInt32(locationData["ZoneID"]);
+                
+                // Get scene name from WorldManager configuration
+                string sceneName = "IthoriaSouth"; // Default
+                if (WorldManager.Instance != null)
+                {
+                    sceneName = WorldManager.Instance.GetSceneNameForZone(storedZoneID);
+                }
+                
+                Debug.Log($"ServerManager: Character {characterID} should load zone '{sceneName}' (ZoneID: {storedZoneID})");
+                return sceneName;
+            }
+            else
+            {
+                // No location data found, use default
+                Debug.LogWarning($"ServerManager: No location data found for character {characterID}, using default zone");
+                return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Error getting character zone for CharID {characterID}: {ex.Message}");
+            return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
+        }
+    }
+
+    private async Task<Vector3?> GetCharacterSpawnPosition(int characterID, string zoneName)
+    {
+        if (CharactersManager.Instance == null)
+        {
+            Debug.LogError("ServerManager: CharactersManager.Instance is null!");
+            return null;
+        }
+
+        try
+        {
+            // Get character's stored location from database
+            Dictionary<string, object> locationData = await CharactersManager.Instance.GetCharacterLocationAsync(characterID);
+            
+            if (locationData != null)
+            {
+                int xLoc = Convert.ToInt32(locationData["XLoc"]);
+                int yLoc = Convert.ToInt32(locationData["YLoc"]);
+                int zLoc = Convert.ToInt32(locationData["ZLoc"]);
+                
+                // Check if position is default (0,0,0) - requires MarketWaypoint fallback
+                if (CharactersManager.Instance.IsDefaultLocation(xLoc, yLoc, zLoc))
+                {
+                    Debug.Log($"ServerManager: Character {characterID} has default position (0,0,0), will use MarketWaypoint");
+                    return null; // Null indicates MarketWaypoint should be used
+                }
+                else
+                {
+                    Vector3 storedPosition = new Vector3(xLoc, yLoc, zLoc);
+                    Debug.Log($"ServerManager: Character {characterID} should spawn at stored position {storedPosition}");
+                    return storedPosition;
+                }
+            }
+            else
+            {
+                // No location data found, use MarketWaypoint
+                Debug.LogWarning($"ServerManager: No location data found for character {characterID}, will use MarketWaypoint");
+                return null; // Null indicates MarketWaypoint should be used
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Error getting character spawn position for CharID {characterID}: {ex.Message}");
+            return null; // Fallback to MarketWaypoint on error
+        }
+    }
+    #endregion
+
+    #region Server Zone Loading Communication
+    public async void ProcessServerLoadZoneRequest(string zoneName, ulong senderClientId)
+    {
+        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest ENTRY - zoneName={zoneName}, senderClientId={senderClientId}");
+        
+        try
+        {
+            Debug.Log($"ServerManager: Calling ProcessServerLoadZone...");
+            ServerZoneLoadResult result = await ProcessServerLoadZone(zoneName);
+            
+            Debug.Log($"ServerManager: ProcessServerLoadZone completed. Success={result.Success}");
+            
+            // Find the PlayerManager that belongs to the client who sent the request
+            Debug.Log($"ServerManager: Finding PlayerManager to send server zone load response back to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
+            
+            bool responseSet = false;
+            foreach (PlayerManager pm in playerManagers)
+            {
+                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending server zone load response...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceiveServerLoadZoneResultClientRpc(result, clientRpcParams);
+                    Debug.Log($"ServerManager: Server zone load response sent via PlayerManager successfully");
+                    responseSet = true;
+                    break;
+                }
+            }
+            
+            if (!responseSet)
+            {
+                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send server zone load response!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during server zone load request: {ex.Message}\n{ex.StackTrace}");
+            ServerZoneLoadResult errorResult = new ServerZoneLoadResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during zone load request: {ex.Message}"
+            };
+            
+            // Send error response via PlayerManager
+            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
+            
+            foreach (PlayerManager pm in playerManagers)
+            {
+                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                {
+                    Debug.Log($"ServerManager: Sending server zone load error response via PlayerManager...");
+                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams
+                        {
+                            TargetClientIds = new ulong[] { senderClientId }
+                        }
+                    };
+                    pm.ReceiveServerLoadZoneResultClientRpc(errorResult, clientRpcParams);
+                    break;
+                }
+            }
+        }
+        
+        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest completed");
+    }
+    #endregion
+
+    #region Server Zone Loading Logic
+    private async Task<ServerZoneLoadResult> ProcessServerLoadZone(string zoneName)
+    {
+        Debug.Log($"ServerManager: ProcessServerLoadZone ENTRY - zoneName={zoneName}");
+        
+        if (!IsServer)
+        {
+            Debug.LogError("ProcessServerLoadZone called on client! This should only run on server.");
+            return new ServerZoneLoadResult { Success = false, ErrorMessage = "Server-side method called on client" };
+        }
+
+        try
+        {
+            // Check if PersistentSceneManager is available
+            if (PersistentSceneManager.Instance == null)
+            {
+                Debug.LogError("ServerManager: PersistentSceneManager.Instance is null!");
+                return new ServerZoneLoadResult { Success = false, ErrorMessage = "PersistentSceneManager not available on server" };
+            }
+
+            // Check if zone is already loaded on server
+            if (PersistentSceneManager.Instance.IsZoneLoaded(zoneName))
+            {
+                Debug.Log($"ServerManager: Zone '{zoneName}' is already loaded on server");
+                return new ServerZoneLoadResult { Success = true, ErrorMessage = "" };
+            }
+
+            Debug.Log($"ServerManager: Loading zone '{zoneName}' on server...");
+
+            // Use TaskCompletionSource to wait for server zone loading
+            var loadCompletionSource = new TaskCompletionSource<bool>();
+            
+            PersistentSceneManager.Instance.LoadZone(zoneName, (success) =>
+            {
+                Debug.Log($"ServerManager: Server zone load callback - Zone: {zoneName}, Success: {success}");
+                loadCompletionSource.SetResult(success);
+            });
+
+            // Wait for zone loading to complete with timeout
+            bool loadSuccess = await loadCompletionSource.Task;
+
+            if (loadSuccess)
+            {
+                Debug.Log($"ServerManager: Successfully loaded zone '{zoneName}' on server");
+                
+                // Additional delay to ensure WorldManager has time to spawn ZoneManager
+                await Task.Delay(1000);
+                
+                Debug.Log($"ServerManager: Zone '{zoneName}' fully initialized on server");
+                return new ServerZoneLoadResult { Success = true, ErrorMessage = "" };
+            }
+            else
+            {
+                Debug.LogError($"ServerManager: Failed to load zone '{zoneName}' on server");
+                return new ServerZoneLoadResult { Success = false, ErrorMessage = $"Failed to load zone '{zoneName}' on server" };
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during ProcessServerLoadZone: {ex.Message}\n{ex.StackTrace}");
+            return new ServerZoneLoadResult { Success = false, ErrorMessage = $"Server error loading zone: {ex.Message}" };
+        }
+    }
+    #endregion
+}
+
+/// <summary>
+/// Player zone information result structure for server-client communication
+/// </summary>
+[System.Serializable]
+public struct PlayerZoneInfoResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public PlayerZoneInfo ZoneInfo;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref ZoneInfo);
+    }
+}
+
+/// <summary>
+/// Server zone loading result structure for server-client communication
+/// </summary>
+[System.Serializable]
+public struct ServerZoneLoadResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+    }
 }
 

@@ -152,6 +152,18 @@ public class ZoneManager : NetworkBehaviour
         // Discover MarketWaypoint in the scene
         DiscoverMarketWaypoint();
 
+        // If waypoint discovery failed or found temporary, try again with delay
+        if (marketWaypoint == null || marketWaypoint.name.Contains("Temporary"))
+        {
+            if (Application.isEditor || Debug.isDebugBuild)
+            {
+                Debug.Log($"ZoneManager: Initial waypoint discovery incomplete, scheduling retry for zone '{zoneName}'");
+            }
+            
+            // Try rediscovery after additional delay
+            _ = TryRediscoverMarketWaypointAsync();
+        }
+
         // Discover and register ResourceNodes
         ResourceNode[] nodes = FindObjectsByType<ResourceNode>(FindObjectsSortMode.None);
         activeNodes.Clear();
@@ -169,7 +181,12 @@ public class ZoneManager : NetworkBehaviour
 
     private void DiscoverMarketWaypoint()
     {
-        // Find MarketWaypoint by name (each scene should have one with this exact name)
+        if (Application.isEditor || Debug.isDebugBuild)
+        {
+            Debug.Log($"ZoneManager: Starting MarketWaypoint discovery for zone '{zoneName}'");
+        }
+
+        // Strategy 1: Standard GameObject.Find
         GameObject waypointObject = GameObject.Find("MarketWaypoint");
         
         if (waypointObject != null)
@@ -178,14 +195,102 @@ public class ZoneManager : NetworkBehaviour
             
             if (Application.isEditor || Debug.isDebugBuild)
             {
-                Debug.Log($"ZoneManager: Found MarketWaypoint at position {marketWaypoint.position} in zone '{zoneName}'");
+                Debug.Log($"ZoneManager: Found MarketWaypoint via GameObject.Find at position {marketWaypoint.position} in zone '{zoneName}'");
+            }
+            return;
+        }
+
+        // Strategy 2: Find by type (in case naming is slightly different)
+        if (Application.isEditor || Debug.isDebugBuild)
+        {
+            Debug.Log($"ZoneManager: GameObject.Find failed, trying FindObjectsByType strategy...");
+        }
+
+        // Look for any GameObject with "waypoint" in the name (case insensitive)
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        foreach (GameObject obj in allObjects)
+        {
+            if (obj.name.ToLower().Contains("marketwaypoint") || obj.name.ToLower().Contains("market_waypoint"))
+            {
+                marketWaypoint = obj.transform;
+                
+                if (Application.isEditor || Debug.isDebugBuild)
+                {
+                    Debug.Log($"ZoneManager: Found MarketWaypoint via name search: '{obj.name}' at position {marketWaypoint.position} in zone '{zoneName}'");
+                }
+                return;
             }
         }
-        else
+
+        // Strategy 3: Check if there's a Transform component specifically
+        Transform[] allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+        foreach (Transform t in allTransforms)
         {
-            Debug.LogWarning($"ZoneManager: MarketWaypoint not found in zone '{zoneName}'. This zone may not have a market waypoint.");
-            marketWaypoint = null;
+            if (t.name == "MarketWaypoint")
+            {
+                marketWaypoint = t;
+                
+                if (Application.isEditor || Debug.isDebugBuild)
+                {
+                    Debug.Log($"ZoneManager: Found MarketWaypoint via Transform search at position {marketWaypoint.position} in zone '{zoneName}'");
+                }
+                return;
+            }
         }
+
+        // Strategy 4: Debug - print all available GameObjects to help diagnose
+        if (Application.isEditor || Debug.isDebugBuild)
+        {
+            Debug.LogWarning($"ZoneManager: MarketWaypoint not found in zone '{zoneName}'. Listing all GameObjects:");
+            int count = 0;
+            foreach (GameObject obj in allObjects)
+            {
+                if (obj.name.ToLower().Contains("waypoint") || obj.name.ToLower().Contains("market"))
+                {
+                    Debug.Log($"ZoneManager: Found waypoint-related object: '{obj.name}' at {obj.transform.position}");
+                    count++;
+                }
+            }
+            Debug.Log($"ZoneManager: Found {count} waypoint-related objects. Total GameObjects in scene: {allObjects.Length}");
+        }
+
+        // If all strategies fail, create temporary waypoint
+        Debug.LogWarning($"ZoneManager: All waypoint discovery strategies failed for zone '{zoneName}'. Creating temporary waypoint at origin.");
+        CreateTemporaryMarketWaypoint();
+    }
+
+    /// <summary>
+    /// Try to rediscover MarketWaypoint with delay (for cases where scene loading is still in progress)
+    /// </summary>
+    private async Task TryRediscoverMarketWaypointAsync()
+    {
+        // Wait a bit more for scene to fully load
+        await Task.Delay(500);
+        
+        if (marketWaypoint == null || marketWaypoint.name.Contains("Temporary"))
+        {
+            if (Application.isEditor || Debug.isDebugBuild)
+            {
+                Debug.Log($"ZoneManager: Attempting to rediscover MarketWaypoint for zone '{zoneName}'");
+            }
+            
+            DiscoverMarketWaypoint();
+        }
+    }
+
+    /// <summary>
+    /// Create a temporary MarketWaypoint for testing when none exists in the scene
+    /// </summary>
+    private void CreateTemporaryMarketWaypoint()
+    {
+        GameObject tempWaypoint = new GameObject("MarketWaypoint_Temporary");
+        tempWaypoint.transform.position = Vector3.zero;
+        
+        // Add a simple marker component or tag if needed
+        marketWaypoint = tempWaypoint.transform;
+        
+        Debug.Log($"ZoneManager: Created temporary MarketWaypoint at {marketWaypoint.position} in zone '{zoneName}'");
+        Debug.LogWarning($"ZoneManager: This is a temporary waypoint! Please add a proper 'MarketWaypoint' GameObject to the '{zoneName}' scene.");
     }
 
     private void NotifyInitializationComplete()

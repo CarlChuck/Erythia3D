@@ -36,6 +36,7 @@ public class PlayerManager : NetworkBehaviour
     [SerializeField] private Transform workbenchParent;
     [SerializeField] private Inventory homeInventory;
 
+    [SerializeField] private bool debugMode = true; // Debug mode for zone loading messages
     private bool isInitialized = false; 
     private Task initializationTask; 
 
@@ -56,6 +57,18 @@ public class PlayerManager : NetworkBehaviour
     // Fields for handling workbench responses
     private bool workbenchListReceived = false;
     private WorkbenchListResult currentWorkbenchListResult;
+
+    // Fields for handling waypoint responses
+    private bool waypointResultReceived = false;
+    private WaypointResult currentWaypointResult;
+
+    // Fields for handling player zone info responses
+    private bool playerZoneInfoResultReceived = false;
+    private PlayerZoneInfoResult currentPlayerZoneInfoResult;
+
+    // Fields for handling server zone load responses
+    private bool serverZoneLoadResultReceived = false;
+    private ServerZoneLoadResult currentServerZoneLoadResult;
 
     #region Singleton
     public static PlayerManager Instance { get; private set; }
@@ -445,7 +458,7 @@ public class PlayerManager : NetworkBehaviour
     {
         if (playerArmaturePrefab != null)
         {
-            controlledCharacter = Instantiate(playerArmaturePrefab, transform); // Instantiate armature
+            controlledCharacter = Instantiate(playerArmaturePrefab);
         }
         else 
         { 
@@ -889,41 +902,469 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Setters
-    public async Task SetSelectedCharacterAsync() // Changed to async
+    public async Task SetSelectedCharacterAsync() 
     {
-        if (selectedPlayerCharacter == null || accountID <= 0)
+        try
         {
-            Debug.LogWarning("Cannot set selected character - no character selected or invalid account ID.");
-            return;
+            if (selectedPlayerCharacter == null)
+            {
+                Debug.LogError("PlayerManager: Cannot set selected character - no character selected");
+                return;
+            }
+
+            int characterID = selectedPlayerCharacter.GetCharacterID();
+            
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Setting selected character {characterID}, determining appropriate zone...");
+            }
+
+            // Step 1: Get player zone information from WorldManager
+            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoAsync(characterID);
+            
+            if (string.IsNullOrEmpty(zoneInfo.ZoneName))
+            {
+                Debug.LogError($"PlayerManager: Failed to determine zone for character {characterID}");
+                return;
+            }
+
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Character {characterID} should be in zone '{zoneInfo.ZoneName}' (ZoneID: {zoneInfo.ZoneID})");
+            }
+
+            // Step 2: Load the appropriate zone scene
+            await LoadCharacterZoneAsync(zoneInfo);
+
+            // Step 3: Set up character spawn position
+            await SetupCharacterSpawnAsync(zoneInfo);
+
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Successfully set selected character {characterID} in zone '{zoneInfo.ZoneName}'");
+            }
         }
-        Debug.Log($"Setting last played character for Account {accountID} to CharID {selectedPlayerCharacter.GetCharacterID()}");
-        // Use the async helper version from AccountManager
-        bool success = await AccountManager.Instance.SetAccountLastPlayedCharacterAsync(accountID, selectedPlayerCharacter.GetCharacterID());
-        if (!success)
+        catch (Exception ex)
         {
-            Debug.LogError("Failed to update last played character in database.");
+            Debug.LogError($"PlayerManager: Error in SetSelectedCharacterAsync: {ex.Message}");
         }
     }
-    private void SetWaypoint()
+
+    private async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
     {
-        if (currentZone != null)
+        try
         {
-            Transform waypoint = currentZone.GetMarketWaypoint();
-            if (waypoint != null && controlledCharacter != null)
+            if (debugMode)
             {
-                controlledCharacter.transform.position = waypoint.position;
-                controlledCharacter.transform.rotation = waypoint.rotation;
+                Debug.Log($"PlayerManager: Requesting zone info for character {characterID} via RPC...");
+            }
+
+            // Wait for server response with a timeout
+            playerZoneInfoResultReceived = false;
+            currentPlayerZoneInfoResult = default;
+            
+            // Send RPC to server-side PlayerManager which will call ServerManager
+            RequestPlayerZoneInfoServerRpc(characterID);
+            
+            // Wait for response with timeout
+            float timeout = 10f; // 10 seconds timeout
+            float elapsed = 0f;
+            while (!playerZoneInfoResultReceived && elapsed < timeout)
+            {
+                await Task.Delay(100); // Wait 100ms
+                elapsed += 0.1f;
+            }
+            
+            if (!playerZoneInfoResultReceived)
+            {
+                Debug.LogError($"PlayerManager: Player zone info request timed out for character {characterID}");
+                
+                // Return fallback zone info
+                return new PlayerZoneInfo
+                {
+                    CharacterID = characterID,
+                    ZoneID = 1,
+                    ZoneName = "IthoriaSouth",
+                    SpawnPosition = null,
+                    RequiresMarketWaypoint = true
+                };
+            }
+            
+            if (currentPlayerZoneInfoResult.Success)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Received zone info - Zone: {currentPlayerZoneInfoResult.ZoneInfo.ZoneName}, RequiresWaypoint: {currentPlayerZoneInfoResult.ZoneInfo.RequiresMarketWaypoint}");
+                }
+                return currentPlayerZoneInfoResult.ZoneInfo;
             }
             else
             {
-                Debug.LogWarning("Waypoint or playerArmature is null.");
+                Debug.LogError($"PlayerManager: Zone info request failed: {currentPlayerZoneInfoResult.ErrorMessage}");
+                
+                // Return fallback zone info on error
+                return new PlayerZoneInfo
+                {
+                    CharacterID = characterID,
+                    ZoneID = 1,
+                    ZoneName = "IthoriaSouth",
+                    SpawnPosition = null,
+                    RequiresMarketWaypoint = true
+                };
             }
         }
-        else
+        catch (Exception ex)
         {
-            Debug.LogError("ZoneManager not found in the scene.");
+            Debug.LogError($"PlayerManager: Error getting player zone info via RPC: {ex.Message}");
+            
+            // Return fallback zone info on exception
+            return new PlayerZoneInfo
+            {
+                CharacterID = characterID,
+                ZoneID = 1,
+                ZoneName = "IthoriaSouth",
+                SpawnPosition = null,
+                RequiresMarketWaypoint = true
+            };
         }
     }
+
+    private async Task LoadCharacterZoneAsync(PlayerZoneInfo zoneInfo)
+    {
+        try
+        {
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Loading zone '{zoneInfo.ZoneName}' for character {zoneInfo.CharacterID}");
+            }
+
+            // Step 1: Request server to load the zone first (server must load zone to spawn ZoneManager)
+            await RequestServerLoadZoneAsync(zoneInfo.ZoneName);
+
+            // Step 2: Unload MainMenu when transitioning to gameplay zones
+            if (PersistentSceneManager.Instance != null && zoneInfo.ZoneName != "MainMenu")
+            {
+                if (PersistentSceneManager.Instance.IsSceneLoaded("MainMenu"))
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log($"PlayerManager: Unloading MainMenu for transition to gameplay zone '{zoneInfo.ZoneName}'");
+                    }
+                    PersistentSceneManager.Instance.UnloadMainMenuForGameplay();
+                    
+                    // Small delay to ensure MainMenu unloading completes
+                    await Task.Delay(500);
+                }
+                else
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log($"PlayerManager: MainMenu already unloaded or not present");
+                    }
+                }
+            }
+
+            // Step 3: Load zone on client side
+            bool loadSuccess = false;
+            
+            if (PersistentSceneManager.Instance != null)
+            {
+                // Load zone additively
+                PersistentSceneManager.Instance.LoadZone(zoneInfo.ZoneName, (success) =>
+                {
+                    loadSuccess = success;
+                });
+
+                // Wait for zone loading to complete (with timeout)
+                float timeout = 30f; // 30 second timeout for zone loading
+                float timer = 0f;
+                bool loadComplete = false;
+
+                while (timer < timeout && !loadComplete)
+                {
+                    await Task.Delay(100);
+                    timer += 0.1f;
+                    
+                    // Check if zone is loaded
+                    if (PersistentSceneManager.Instance.IsZoneLoaded(zoneInfo.ZoneName))
+                    {
+                        loadComplete = true;
+                        loadSuccess = true;
+                        break;
+                    }
+                }
+
+                if (!loadComplete)
+                {
+                    Debug.LogError($"PlayerManager: Zone loading timeout for '{zoneInfo.ZoneName}'");
+                    loadSuccess = false;
+                }
+            }
+            else
+            {
+                Debug.LogError("PlayerManager: PersistentSceneManager.Instance is null!");
+                loadSuccess = false;
+            }
+
+            if (loadSuccess)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Successfully loaded zone '{zoneInfo.ZoneName}'");
+                }
+
+                // Longer delay to ensure ZoneManager initialization completes on server
+                await Task.Delay(2000); // 2 seconds for server ZoneManager to fully initialize
+            }
+            else
+            {
+                throw new Exception($"Failed to load zone '{zoneInfo.ZoneName}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager: Error loading zone '{zoneInfo.ZoneName}': {ex.Message}");
+            throw;
+        }
+    }
+
+    private async Task RequestServerLoadZoneAsync(string zoneName)
+    {
+        if (debugMode)
+        {
+            Debug.Log($"PlayerManager: Requesting server to load zone '{zoneName}'");
+        }
+
+        // Setup response waiting
+        serverZoneLoadResultReceived = false;
+        currentServerZoneLoadResult = default;
+
+        // Send RPC to server
+        RequestServerLoadZoneServerRpc(zoneName);
+
+        // Wait for server response with timeout
+        float timeout = 20f; // 20 second timeout for server zone loading
+        float timer = 0f;
+
+        while (timer < timeout && !serverZoneLoadResultReceived)
+        {
+            await Task.Delay(100);
+            timer += 0.1f;
+        }
+
+        if (!serverZoneLoadResultReceived)
+        {
+            Debug.LogError($"PlayerManager: Server zone load request timeout for zone '{zoneName}'");
+            throw new Exception($"Server zone load timeout for '{zoneName}'");
+        }
+
+        if (!currentServerZoneLoadResult.Success)
+        {
+            Debug.LogError($"PlayerManager: Server failed to load zone '{zoneName}': {currentServerZoneLoadResult.ErrorMessage}");
+            throw new Exception($"Server zone load failed: {currentServerZoneLoadResult.ErrorMessage}");
+        }
+
+        if (debugMode)
+        {
+            Debug.Log($"PlayerManager: Server successfully loaded zone '{zoneName}'");
+        }
+    }
+
+    private async Task SetupCharacterSpawnAsync(PlayerZoneInfo zoneInfo)
+    {
+        try
+        {
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: SetupCharacterSpawnAsync ENTRY - Character: {zoneInfo.CharacterID}, Zone: {zoneInfo.ZoneName}");
+                Debug.Log($"PlayerManager: ZoneInfo - RequiresMarketWaypoint: {zoneInfo.RequiresMarketWaypoint}, SpawnPosition: {(zoneInfo.SpawnPosition?.ToString() ?? "NULL")}");
+            }
+
+            Vector3 spawnPosition;
+
+            if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
+            {
+                // Use stored database position
+                spawnPosition = zoneInfo.SpawnPosition.Value;
+                
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Using stored spawn position: {spawnPosition}");
+                }
+            }
+            else
+            {
+                // Need to get MarketWaypoint position from server with retry logic
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Database position not available, requesting MarketWaypoint for zone '{zoneInfo.ZoneName}'");
+                }
+
+                Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
+                
+                if (waypointPosition.HasValue)
+                {
+                    spawnPosition = waypointPosition.Value;
+                    
+                    if (debugMode)
+                    {
+                        Debug.Log($"PlayerManager: Using MarketWaypoint position: {spawnPosition}");
+                    }
+                }
+                else
+                {
+                    // Fallback to origin if no waypoint found
+                    spawnPosition = Vector3.zero;
+                    Debug.LogWarning($"PlayerManager: No MarketWaypoint found for zone '{zoneInfo.ZoneName}', using origin (0,0,0)");
+                }
+            }
+
+            // Verify selectedPlayerCharacter exists
+            if (selectedPlayerCharacter == null)
+            {
+                Debug.LogError("PlayerManager: selectedPlayerCharacter is NULL! Cannot set position.");
+                return;
+            }
+
+            // Log character info before positioning
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Character before positioning - Name: {selectedPlayerCharacter.GetCharacterName()}, ID: {selectedPlayerCharacter.GetCharacterID()}");
+                Debug.Log($"PlayerManager: Character current position: {selectedPlayerCharacter.transform.position}");
+                Debug.Log($"PlayerManager: About to set character position to: {spawnPosition}");
+            }
+
+            // Set the character position
+            selectedPlayerCharacter.SetCharacterPosition(spawnPosition, debugMode);
+
+            // Additional debug information
+            if (debugMode)
+            {
+                // Call the debug method to get comprehensive position info
+                selectedPlayerCharacter.DebugCharacterPosition();
+            }
+
+            // Additional check: if position is Vector3.zero, that might be the "hanging in space" issue
+            if (spawnPosition == Vector3.zero)
+            {
+                Debug.LogWarning($"PlayerManager: WARNING - Character positioned at origin (0,0,0). This might cause 'hanging in space' if there's no ground at origin!");
+                Debug.LogWarning($"PlayerManager: Consider adding a ground check or alternative spawn position logic.");
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager: Error setting up character spawn: {ex.Message}");
+        }
+    }
+
+    private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
+    {
+        int maxRetries = 3;
+        int retryDelay = 1000; // 1 second between retries
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Attempting to get MarketWaypoint for zone '{zoneName}' (attempt {attempt}/{maxRetries})");
+            }
+            
+            Vector3? waypointPosition = await GetMarketWaypointPositionAsync(zoneName);
+            
+            if (waypointPosition.HasValue)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Successfully found MarketWaypoint on attempt {attempt}");
+                }
+                return waypointPosition;
+            }
+            
+            // Wait before retrying (except on last attempt)
+            if (attempt < maxRetries)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: MarketWaypoint not found, waiting {retryDelay}ms before retry...");
+                }
+                await Task.Delay(retryDelay);
+            }
+        }
+        
+        Debug.LogWarning($"PlayerManager: Failed to find MarketWaypoint for zone '{zoneName}' after {maxRetries} attempts");
+        return null;
+    }
+
+    private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
+    {
+        if (selectedPlayerCharacter == null)
+        {
+            Debug.LogError("PlayerManager: Cannot get waypoint - no character selected");
+            return null;
+        }
+
+        int characterID = selectedPlayerCharacter.GetCharacterID();
+
+        try
+        {
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Requesting MarketWaypoint position for zone '{zoneName}' via RPC...");
+            }
+
+            // Wait for server response with a timeout
+            waypointResultReceived = false;
+            currentWaypointResult = default;
+            
+            // Send RPC to server-side PlayerManager which will call ServerManager
+            WaypointRequest request = new WaypointRequest
+            {
+                CharacterID = characterID,
+                ZoneName = zoneName
+            };
+            
+            RequestWaypointServerRpc(request);
+            
+            // Wait for response with timeout
+            float timeout = 10f; // 10 seconds timeout
+            float elapsed = 0f;
+            while (!waypointResultReceived && elapsed < timeout)
+            {
+                await Task.Delay(100); // Wait 100ms
+                elapsed += 0.1f;
+            }
+            
+            if (!waypointResultReceived)
+            {
+                Debug.LogError($"PlayerManager: Waypoint request timed out for zone '{zoneName}'");
+                return null;
+            }
+            
+            if (currentWaypointResult.Success && currentWaypointResult.HasWaypoint)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Received MarketWaypoint position: {currentWaypointResult.WaypointPosition}");
+                }
+                return currentWaypointResult.WaypointPosition;
+            }
+            else
+            {
+                if (debugMode)
+                {
+                    Debug.LogWarning($"PlayerManager: No waypoint available for zone '{zoneName}': {currentWaypointResult.ErrorMessage}");
+                }
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager: Error getting MarketWaypoint position via RPC: {ex.Message}");
+            return null;
+        }
+    }
+
     public void OnSetFamilyName(string newFamilyName)
     {
         if (GetCharacters().Count == 0)
@@ -1120,21 +1561,21 @@ public class PlayerManager : NetworkBehaviour
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        currentZone = FindFirstObjectByType<ZoneManager>();
-
-        SetWaypoint();
-
-        // If UIManager needs the selected character, ensure it's ready first
-        if (isInitialized && selectedPlayerCharacter != null)
+        if (debugMode)
         {
-            uiManager.SetupUI(selectedPlayerCharacter); // Re-setup UI on scene load if needed
-            uiManager.StartHUD();
-            Debug.Log("UIManager re-setup on scene load.");
+            Debug.Log($"PlayerManager: Scene loaded - {scene.name} (Mode: {mode})");
         }
-        else if (!isInitialized)
+
+        // The new zone loading system handles character positioning during SetSelectedCharacterAsync
+        // No need to search for ZoneManager here since it's server-only
+        
+        // Optional: Add any client-side scene setup logic here if needed
+        if (scene.name == "IthoriaSouth" || scene.name == "MainMenu")
         {
-            Debug.LogWarning("Scene loaded but PlayerManager not yet initialized for owner.");
-            // UI setup will happen when initialization completes
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager: Client-side setup for scene '{scene.name}' complete");
+            }
         }
     }
     private ResourceItem GetResourceItemById(int resourceItemId)
@@ -1441,4 +1882,251 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log($"Client: Received workbench list result. Success: {result.Success}");
     }
     #endregion
+
+    #region Waypoint Communication Bridge RPCs
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestWaypointServerRpc(WaypointRequest request, ServerRpcParams serverRpcParams = default)
+    {
+        // This runs on the server - act as a bridge to ServerManager
+        if (IsServer)
+        {
+            if (debugMode)
+            {
+                Debug.Log($"PlayerManager (Server): Received waypoint request for zone '{request.ZoneName}', character {request.CharacterID}");
+            }
+            
+            if (ServerManager.Instance != null)
+            {
+                // Call regular method on ServerManager (not RPC, since we're already on server)
+                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWaypointRequest...");
+                ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName, serverRpcParams.Receive.SenderClientId);
+                Debug.Log($"PlayerManager (Server): ServerManager.ProcessWaypointRequest called successfully");
+            }
+            else
+            {
+                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process waypoint request.");
+                
+                // Send error response back to client
+                WaypointResult errorResult = new WaypointResult
+                {
+                    Success = false,
+                    ErrorMessage = "Server error: ServerManager not available",
+                    WaypointPosition = Vector3.zero,
+                    HasWaypoint = false,
+                    ZoneName = request.ZoneName
+                };
+                
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
+                    }
+                };
+                
+                ReceiveWaypointResultClientRpc(errorResult, clientRpcParams);
+            }
+        }
+        else
+        {
+            Debug.LogError("PlayerManager: RequestWaypointServerRpc called on client! This should only run on server.");
+        }
+    }
+
+    [ClientRpc]
+    public void ReceiveWaypointResultClientRpc(WaypointResult result, ClientRpcParams clientRpcParams = default)
+    {
+        // This runs on the client - handle the waypoint result
+        if (debugMode)
+        {
+            Debug.Log($"PlayerManager (Client): Received waypoint result from server. Success: {result.Success}, HasWaypoint: {result.HasWaypoint}");
+        }
+        HandleWaypointResult(result);
+    }
+
+    public void HandleWaypointResult(WaypointResult result)
+    {
+        currentWaypointResult = result;
+        waypointResultReceived = true;
+        
+        if (debugMode)
+        {
+            Debug.Log($"Client: Received waypoint result for zone '{result.ZoneName}'. Success: {result.Success}");
+        }
+    }
+    #endregion
+
+    #region Player Zone Info Communication Bridge RPCs
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestPlayerZoneInfoServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    {
+        // This runs on the server - act as a bridge to ServerManager
+        if (IsServer)
+        {
+            Debug.Log($"PlayerManager (Server): Received player zone info request for character {characterID}");
+            
+            if (ServerManager.Instance != null)
+            {
+                // Call regular method on ServerManager (not RPC, since we're already on server)
+                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessPlayerZoneInfoRequest...");
+                ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID, serverRpcParams.Receive.SenderClientId);
+                Debug.Log($"PlayerManager (Server): ServerManager.ProcessPlayerZoneInfoRequest called successfully");
+            }
+            else
+            {
+                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process player zone info request.");
+                
+                // Send error response back to client
+                PlayerZoneInfoResult errorResult = new PlayerZoneInfoResult
+                {
+                    Success = false,
+                    ErrorMessage = "Server error: ServerManager not available",
+                    ZoneInfo = new PlayerZoneInfo
+                    {
+                        CharacterID = characterID,
+                        ZoneID = 1,
+                        ZoneName = "IthoriaSouth",
+                        SpawnPosition = null,
+                        RequiresMarketWaypoint = true
+                    }
+                };
+                
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
+                    }
+                };
+                
+                ReceivePlayerZoneInfoClientRpc(errorResult, clientRpcParams);
+            }
+        }
+        else
+        {
+            Debug.LogError("PlayerManager: RequestPlayerZoneInfoServerRpc called on client! This should only run on server.");
+        }
+    }
+
+    [ClientRpc]
+    public void ReceivePlayerZoneInfoClientRpc(PlayerZoneInfoResult result, ClientRpcParams clientRpcParams = default)
+    {
+        // This runs on the client - handle the player zone info result
+        Debug.Log($"PlayerManager (Client): Received player zone info result from server. Success: {result.Success}");
+        HandlePlayerZoneInfoResult(result);
+    }
+
+    public void HandlePlayerZoneInfoResult(PlayerZoneInfoResult result)
+    {
+        currentPlayerZoneInfoResult = result;
+        playerZoneInfoResultReceived = true;
+        
+        if (debugMode)
+        {
+            Debug.Log($"Client: Received player zone info result. Success: {result.Success}");
+        }
+    }
+    #endregion
+
+    #region Server Zone Load Communication Bridge RPCs
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
+    {
+        // This runs on the server - act as a bridge to ServerManager
+        if (IsServer)
+        {
+            Debug.Log($"PlayerManager (Server): Received server zone load request for zone '{zoneName}'");
+            
+            if (ServerManager.Instance != null)
+            {
+                // Call regular method on ServerManager (not RPC, since we're already on server)
+                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessServerLoadZoneRequest...");
+                ServerManager.Instance.ProcessServerLoadZoneRequest(zoneName, serverRpcParams.Receive.SenderClientId);
+                Debug.Log($"PlayerManager (Server): ServerManager.ProcessServerLoadZoneRequest called successfully");
+            }
+            else
+            {
+                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process server zone load request.");
+                
+                // Send error response back to client
+                ServerZoneLoadResult errorResult = new ServerZoneLoadResult
+                {
+                    Success = false,
+                    ErrorMessage = "Server error: ServerManager not available"
+                };
+                
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
+                    }
+                };
+                
+                ReceiveServerLoadZoneResultClientRpc(errorResult, clientRpcParams);
+            }
+        }
+        else
+        {
+            Debug.LogError("PlayerManager: RequestServerLoadZoneServerRpc called on client! This should only run on server.");
+        }
+    }
+
+    [ClientRpc]
+    public void ReceiveServerLoadZoneResultClientRpc(ServerZoneLoadResult result, ClientRpcParams clientRpcParams = default)
+    {
+        // This runs on the client - handle the server zone load result
+        Debug.Log($"PlayerManager (Client): Received server zone load result from server. Success: {result.Success}");
+        HandleServerLoadZoneResult(result);
+    }
+
+    public void HandleServerLoadZoneResult(ServerZoneLoadResult result)
+    {
+        currentServerZoneLoadResult = result;
+        serverZoneLoadResultReceived = true;
+        
+        if (debugMode)
+        {
+            Debug.Log($"Client: Received server zone load result. Success: {result.Success}");
+        }
+    }
+    #endregion
+}
+
+/// <summary>
+/// Waypoint request data structure for client-server communication
+/// </summary>
+[System.Serializable]
+public struct WaypointRequest : INetworkSerializable
+{
+    public int CharacterID;
+    public string ZoneName;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref CharacterID);
+        serializer.SerializeValue(ref ZoneName);
+    }
+}
+
+/// <summary>
+/// Waypoint result data structure for server-client communication
+/// </summary>
+[System.Serializable]
+public struct WaypointResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public Vector3 WaypointPosition;
+    public bool HasWaypoint;
+    public string ZoneName;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref WaypointPosition);
+        serializer.SerializeValue(ref HasWaypoint);
+        serializer.SerializeValue(ref ZoneName);
+    }
 }

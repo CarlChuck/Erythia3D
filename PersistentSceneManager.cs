@@ -111,11 +111,11 @@ public class PersistentSceneManager : MonoBehaviour
             Debug.LogError($"PersistentSceneManager: CRITICAL ERROR - {persistentSceneName} was found in available zones! Removed for safety.");
         }
         
-        // CRITICAL: Ensure main menu is NEVER added to available zones for zone operations
+        // PROTECTION: Ensure main menu is NEVER added to available zones for zone operations
         if (availableZones.Contains(mainMenuSceneName))
         {
             availableZones.Remove(mainMenuSceneName);
-            Debug.LogError($"PersistentSceneManager: CRITICAL ERROR - {mainMenuSceneName} was found in available zones! Removed for safety.");
+            Debug.LogError($"PersistentSceneManager: PROTECTION - {mainMenuSceneName} was found in available zones! Removed for safety.");
         }
         
         if (debugMode)
@@ -365,9 +365,9 @@ public class PersistentSceneManager : MonoBehaviour
     public void LoadZone(string zoneName, Action<bool> onComplete = null)
     {
         // PROTECTION: Check if someone is trying to load essential scenes as zones
-        if (IsEssentialScene(zoneName))
+        if (IsProtectedFromZoneOperations(zoneName))
         {
-            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot load essential scene '{zoneName}' as a zone!");
+            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot load protected scene '{zoneName}' as a zone!");
             onComplete?.Invoke(false);
             return;
         }
@@ -458,10 +458,10 @@ public class PersistentSceneManager : MonoBehaviour
     /// </summary>
     public void TransitionToZone(string targetZone, Action<bool> onComplete = null)
     {
-        // PROTECTION: Ensure target zone is not an essential scene
-        if (IsEssentialScene(targetZone))
+        // PROTECTION: Ensure target zone is not a protected scene
+        if (IsProtectedFromZoneOperations(targetZone))
         {
-            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot transition to essential scene '{targetZone}' as a zone!");
+            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot transition to protected scene '{targetZone}' as a zone!");
             onComplete?.Invoke(false);
             return;
         }
@@ -652,6 +652,16 @@ public class PersistentSceneManager : MonoBehaviour
                     zonesToUnload.Add(kvp.Key);
                 }
             }
+            
+            // Also unload MainMenu if it's loaded and we're transitioning to a gameplay zone
+            if (IsSceneLoaded(mainMenuSceneName) && targetZone != mainMenuSceneName)
+            {
+                zonesToUnload.Add(mainMenuSceneName);
+                if (debugMode)
+                {
+                    Debug.Log($"PersistentSceneManager: Adding MainMenu to unload list for transition to '{targetZone}'");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -746,7 +756,7 @@ public class PersistentSceneManager : MonoBehaviour
     /// </summary>
     public void UnloadScene(string sceneName)
     {
-        // PROTECTION: Never allow unloading of essential scenes
+        // PROTECTION: Never allow unloading of truly essential scenes (only Persistent)
         if (IsEssentialScene(sceneName))
         {
             Debug.LogError($"PersistentSceneManager: REJECTED - Cannot unload essential scene '{sceneName}'!");
@@ -820,10 +830,10 @@ public class PersistentSceneManager : MonoBehaviour
             return;
         }
 
-        // PROTECTION: Never allow essential scenes to be registered as zones
-        if (IsEssentialScene(zoneName))
+        // PROTECTION: Never allow protected scenes to be registered as zones
+        if (IsProtectedFromZoneOperations(zoneName))
         {
-            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot register essential scene '{zoneName}' as a zone!");
+            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot register protected scene '{zoneName}' as a zone!");
             return;
         }
 
@@ -836,6 +846,36 @@ public class PersistentSceneManager : MonoBehaviour
             }
         }
     }
+
+    /// <summary>
+    /// Unload MainMenu scene when transitioning to gameplay (special case)
+    /// </summary>
+    public void UnloadMainMenuForGameplay()
+    {
+        if (IsSceneLoaded(mainMenuSceneName))
+        {
+            if (debugMode)
+            {
+                Debug.Log("PersistentSceneManager: Unloading MainMenu for gameplay transition");
+            }
+            UnloadScene(mainMenuSceneName);
+        }
+    }
+
+    /// <summary>
+    /// Load MainMenu scene (for returning from gameplay)
+    /// </summary>
+    public void LoadMainMenuForReturn()
+    {
+        if (!IsSceneLoaded(mainMenuSceneName))
+        {
+            if (debugMode)
+            {
+                Debug.Log("PersistentSceneManager: Loading MainMenu for return from gameplay");
+            }
+            LoadMainMenuScene();
+        }
+    }
     #endregion
 
     #region Helper Methods
@@ -844,6 +884,16 @@ public class PersistentSceneManager : MonoBehaviour
     /// </summary>
     private bool IsEssentialScene(string sceneName)
     {
+        // Only Persistent scene is truly essential and should never be unloaded
+        return sceneName == persistentSceneName;
+    }
+
+    /// <summary>
+    /// Check if a scene should be protected from zone operations (but can be unloaded during transitions)
+    /// </summary>
+    private bool IsProtectedFromZoneOperations(string sceneName)
+    {
+        // Both Persistent and MainMenu are protected from being treated as zones
         return sceneName == persistentSceneName || sceneName == mainMenuSceneName;
     }
 
@@ -886,7 +936,7 @@ public class PersistentSceneManager : MonoBehaviour
         return !Application.isBatchMode;
     }
 
-    private bool IsSceneLoaded(string sceneName)
+    public bool IsSceneLoaded(string sceneName)
     {
         Scene scene = SceneManager.GetSceneByName(sceneName);
         return scene.IsValid() && scene.isLoaded;
@@ -973,6 +1023,26 @@ public class PersistentSceneManager : MonoBehaviour
         {
             Debug.Log($"Protection test result: {(success ? "FAILED - PROTECTION BROKEN!" : "PASSED - Protection working")}");
         });
+    }
+
+    [ContextMenu("Debug: Unload MainMenu")]
+    private void DebugUnloadMainMenu()
+    {
+        UnloadMainMenuForGameplay();
+    }
+
+    [ContextMenu("Debug: Load MainMenu")]
+    private void DebugLoadMainMenu()
+    {
+        LoadMainMenuForReturn();
+    }
+
+    [ContextMenu("Debug: Test MainMenu Unload Protection")]
+    private void DebugTestMainMenuProtection()
+    {
+        Debug.Log("Testing MainMenu unload via regular UnloadScene...");
+        UnloadScene(mainMenuSceneName);
+        Debug.Log("MainMenu unload test complete - check if MainMenu was unloaded");
     }
     #endif
     #endregion

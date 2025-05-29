@@ -3,15 +3,55 @@ using Unity.Netcode;
 using System.Collections.Generic;
 using System;
 
-/// <summary>
-/// Handles runtime spawning and management of ZoneManager NetworkBehaviours.
-/// Coordinates with PersistentSceneManager zone loading events and ServerManager.
-/// Should be attached to a child object of PersistentSceneManager to ensure persistence.
-/// </summary>
+[Serializable]
+public struct ZoneConfiguration
+{
+    public int ZoneID;
+    public string SceneName;
+    public ResourceSubType ResourceType;
+    public string DisplayName;
+    public bool IsDefault; // Mark the default/starting zone
+}
+
+[Serializable]
+public struct PlayerZoneInfo : INetworkSerializable
+{
+    public int CharacterID;
+    public int ZoneID;
+    public string ZoneName;
+    public Vector3? SpawnPosition; // Null if MarketWaypoint should be used
+    public bool RequiresMarketWaypoint;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref CharacterID);
+        serializer.SerializeValue(ref ZoneID);
+        serializer.SerializeValue(ref ZoneName);
+        
+        // Handle nullable Vector3
+        bool hasSpawnPosition = SpawnPosition.HasValue;
+        serializer.SerializeValue(ref hasSpawnPosition);
+        if (hasSpawnPosition)
+        {
+            Vector3 position = SpawnPosition.Value;
+            serializer.SerializeValue(ref position);
+            SpawnPosition = position;
+        }
+        else
+        {
+            SpawnPosition = null;
+        }
+        
+        serializer.SerializeValue(ref RequiresMarketWaypoint);
+    }
+}
+
+
 public class WorldManager : MonoBehaviour
 {
     #region Constants
     private const float zoneManagerSpawnDelay = 0.5f; // Small delay to ensure zone is fully loaded
+    private const int defaultZoneID = 1; // Default starting zone
     #endregion
 
     #region Private Fields
@@ -19,17 +59,19 @@ public class WorldManager : MonoBehaviour
     [SerializeField] private bool debugMode = true;
     [SerializeField] private Transform zoneManagerParent; // Optional parent for organization
     
-    // Zone-specific configuration mapping
+    // Zone Configuration System
     [SerializeField] private ZoneConfiguration[] zoneConfigurations = new ZoneConfiguration[]
     {
-        new ZoneConfiguration 
-        { 
-            zoneName = "IthoriaSouth", 
-            resourceSubType = ResourceSubType.Ithoria 
+        new ZoneConfiguration
+        {
+            ZoneID = 1,
+            SceneName = "IthoriaSouth",
+            ResourceType = ResourceSubType.Ithoria,
+            DisplayName = "Ithoria South",
+            IsDefault = true
         }
         // Future zones can be added here:
-        // new ZoneConfiguration { zoneName = "Aelystian", resourceSubType = ResourceSubType.Aelystian },
-        // new ZoneConfiguration { zoneName = "Qadian", resourceSubType = ResourceSubType.Qadian },
+        // new ZoneConfiguration { ZoneID = 2, SceneName = "Aelystian", ResourceType = ResourceSubType.Aelystian, DisplayName = "Aelystian Plains", IsDefault = false }
     };
     
     // Active ZoneManager tracking
@@ -37,11 +79,14 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, NetworkObject> zoneManagerNetworkObjects = new Dictionary<string, NetworkObject>();
     
     private static WorldManager instance;
+    private Dictionary<int, ZoneConfiguration> zoneIdToConfig = new Dictionary<int, ZoneConfiguration>();
+    private Dictionary<string, ZoneConfiguration> sceneNameToConfig = new Dictionary<string, ZoneConfiguration>();
     private bool hasInitialized = false;
     #endregion
 
     #region Public Properties
     public static WorldManager Instance => instance;
+    public int DefaultZoneID => defaultZoneID;
     #endregion
 
     #region Unity Lifecycle
@@ -51,6 +96,7 @@ public class WorldManager : MonoBehaviour
         if (instance == null)
         {
             instance = this;
+            InitializeZoneMapping();
             
             if (debugMode)
             {
@@ -77,11 +123,16 @@ public class WorldManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        // Clean up event subscriptions
-        if (PersistentSceneManager.Instance != null)
+        if (instance == this)
         {
-            PersistentSceneManager.OnZoneLoadCompleted -= OnZoneLoadCompleted;
-            PersistentSceneManager.OnZoneUnloadCompleted -= OnZoneUnloadCompleted;
+            // Unsubscribe from events
+            if (PersistentSceneManager.Instance != null)
+            {
+                PersistentSceneManager.OnZoneLoadCompleted -= OnZoneLoadCompleted;
+                PersistentSceneManager.OnZoneUnloadCompleted -= OnZoneUnloadCompleted;
+            }
+            
+            instance = null;
         }
         
         // Clean up any active ZoneManagers
@@ -90,30 +141,66 @@ public class WorldManager : MonoBehaviour
     #endregion
 
     #region Initialization
+    private void InitializeZoneMapping()
+    {
+        zoneIdToConfig.Clear();
+        sceneNameToConfig.Clear();
+        
+        foreach (ZoneConfiguration config in zoneConfigurations)
+        {
+            // Map ZoneID to configuration
+            if (!zoneIdToConfig.ContainsKey(config.ZoneID))
+            {
+                zoneIdToConfig[config.ZoneID] = config;
+            }
+            else
+            {
+                Debug.LogError($"WorldManager: Duplicate ZoneID {config.ZoneID} found in configuration!");
+            }
+            
+            // Map scene name to configuration
+            if (!sceneNameToConfig.ContainsKey(config.SceneName))
+            {
+                sceneNameToConfig[config.SceneName] = config;
+            }
+            else
+            {
+                Debug.LogError($"WorldManager: Duplicate scene name {config.SceneName} found in configuration!");
+            }
+        }
+        
+        if (debugMode)
+        {
+            Debug.Log($"WorldManager: Initialized zone mapping with {zoneConfigurations.Length} zones");
+        }
+    }
+
     private void InitializeWorldManager()
     {
         hasInitialized = true;
         
-        // Validate required components
+        if (debugMode)
+        {
+            Debug.Log("WorldManager: Starting initialization");
+        }
+
+        // Validate prefab assignment
         if (zoneManagerPrefab == null)
         {
-            Debug.LogError("WorldManager: ZoneManager prefab is not assigned! Zone management will not work.");
+            Debug.LogError("WorldManager: ZoneManager prefab is not assigned!");
             return;
         }
 
-        // Validate prefab has ZoneManager component
-        ZoneManager zoneManagerComponent = zoneManagerPrefab.GetComponent<ZoneManager>();
-        if (zoneManagerComponent == null)
+        // Validate prefab has required components
+        if (zoneManagerPrefab.GetComponent<ZoneManager>() == null)
         {
-            Debug.LogError("WorldManager: Assigned prefab does not have ZoneManager component!");
+            Debug.LogError("WorldManager: ZoneManager prefab is missing ZoneManager component!");
             return;
         }
 
-        // Validate prefab has NetworkObject component
-        NetworkObject networkObjectComponent = zoneManagerPrefab.GetComponent<NetworkObject>();
-        if (networkObjectComponent == null)
+        if (zoneManagerPrefab.GetComponent<NetworkObject>() == null)
         {
-            Debug.LogError("WorldManager: ZoneManager prefab does not have NetworkObject component!");
+            Debug.LogError("WorldManager: ZoneManager prefab is missing NetworkObject component!");
             return;
         }
 
@@ -125,17 +212,17 @@ public class WorldManager : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log("WorldManager: Subscribed to PersistentSceneManager zone events");
+                Debug.Log("WorldManager: Subscribed to PersistentSceneManager events");
             }
         }
         else
         {
-            Debug.LogError("WorldManager: PersistentSceneManager.Instance is null! Cannot subscribe to zone events.");
+            Debug.LogError("WorldManager: PersistentSceneManager.Instance not found!");
         }
 
         if (debugMode)
         {
-            Debug.Log($"WorldManager: Initialization complete with {zoneConfigurations.Length} zone configurations");
+            Debug.Log("WorldManager: Initialization complete");
         }
     }
     #endregion
@@ -189,23 +276,25 @@ public class WorldManager : MonoBehaviour
     {
         try
         {
+            Debug.Log($"WorldManager: SpawnZoneManager ENTRY for zone '{zoneName}'");
+
             // Check if ZoneManager already exists for this zone
             if (activeZoneManagers.ContainsKey(zoneName))
             {
-                if (debugMode)
-                {
-                    Debug.LogWarning($"WorldManager: ZoneManager already exists for zone '{zoneName}'");
-                }
+                Debug.LogWarning($"WorldManager: ZoneManager already exists for zone '{zoneName}'");
                 return;
             }
 
             // Get zone configuration
-            ZoneConfiguration config = GetZoneConfiguration(zoneName);
-            if (config == null)
+            ZoneConfiguration? configNullable = GetZoneConfiguration(zoneName);
+            if (!configNullable.HasValue)
             {
                 Debug.LogError($"WorldManager: No configuration found for zone '{zoneName}'. Cannot spawn ZoneManager.");
                 return;
             }
+            
+            ZoneConfiguration config = configNullable.Value;
+            Debug.Log($"WorldManager: Found zone configuration for '{zoneName}' with ResourceType '{config.ResourceType}'");
 
             // Get ServerManager reference
             ServerManager serverManager = ServerManager.Instance;
@@ -214,13 +303,17 @@ public class WorldManager : MonoBehaviour
                 Debug.LogError($"WorldManager: ServerManager.Instance is null. Cannot spawn ZoneManager for zone '{zoneName}'.");
                 return;
             }
+            Debug.Log($"WorldManager: ServerManager found, proceeding with ZoneManager spawn");
 
             // Determine spawn parent
             Transform spawnParent = zoneManagerParent != null ? zoneManagerParent : transform;
+            Debug.Log($"WorldManager: Using spawn parent: {spawnParent.name}");
 
             // Instantiate ZoneManager prefab
+            Debug.Log($"WorldManager: Instantiating ZoneManager prefab for zone '{zoneName}'");
             GameObject zoneManagerInstance = Instantiate(zoneManagerPrefab, spawnParent);
             zoneManagerInstance.name = $"ZoneManager_{zoneName}";
+            Debug.Log($"WorldManager: ZoneManager GameObject created with name '{zoneManagerInstance.name}'");
 
             // Get components
             ZoneManager zoneManager = zoneManagerInstance.GetComponent<ZoneManager>();
@@ -228,28 +321,31 @@ public class WorldManager : MonoBehaviour
 
             if (zoneManager == null || networkObject == null)
             {
-                Debug.LogError($"WorldManager: Failed to get required components from ZoneManager instance for zone '{zoneName}'");
+                Debug.LogError($"WorldManager: Failed to get required components from ZoneManager instance for zone '{zoneName}' - ZoneManager: {zoneManager != null}, NetworkObject: {networkObject != null}");
                 Destroy(zoneManagerInstance);
                 return;
             }
+            Debug.Log($"WorldManager: Got ZoneManager and NetworkObject components successfully");
 
             // Configure server-only visibility
             networkObject.CheckObjectVisibility = (clientId) => false; // Server-only, invisible to all clients
+            Debug.Log($"WorldManager: Configured server-only visibility for ZoneManager");
 
             // Spawn as NetworkObject
+            Debug.Log($"WorldManager: Spawning ZoneManager as NetworkObject...");
             networkObject.Spawn();
+            Debug.Log($"WorldManager: ZoneManager NetworkObject spawned successfully");
 
             // Initialize ZoneManager with zone-specific data
-            zoneManager.InitializeForZone(zoneName, config.resourceSubType, serverManager);
+            Debug.Log($"WorldManager: Initializing ZoneManager for zone '{zoneName}' with ResourceType '{config.ResourceType}'");
+            zoneManager.InitializeForZone(zoneName, config.ResourceType, serverManager);
+            Debug.Log($"WorldManager: ZoneManager initialization completed");
 
             // Track the spawned ZoneManager
             activeZoneManagers[zoneName] = zoneManager;
             zoneManagerNetworkObjects[zoneName] = networkObject;
 
-            if (debugMode)
-            {
-                Debug.Log($"WorldManager: Successfully spawned and initialized ZoneManager for zone '{zoneName}' with ResourceSubType '{config.resourceSubType}'");
-            }
+            Debug.Log($"WorldManager: Successfully spawned and initialized ZoneManager for zone '{zoneName}'. Total active ZoneManagers: {activeZoneManagers.Count}");
 
             // Notify ServerManager that ZoneManager is ready (if needed for future integration)
             NotifyServerManagerZoneReady(zoneName, zoneManager);
@@ -323,51 +419,148 @@ public class WorldManager : MonoBehaviour
     #endregion
 
     #region Configuration Management
-    private ZoneConfiguration GetZoneConfiguration(string zoneName)
+    /// <summary>
+    /// Get zone configuration by ZoneID
+    /// </summary>
+    public ZoneConfiguration? GetZoneConfiguration(int zoneID)
     {
-        foreach (ZoneConfiguration config in zoneConfigurations)
+        if (zoneIdToConfig.TryGetValue(zoneID, out ZoneConfiguration config))
         {
-            if (config.zoneName == zoneName)
-            {
-                return config;
-            }
+            return config;
         }
         return null;
     }
 
     /// <summary>
-    /// Add or update a zone configuration at runtime
+    /// Get zone configuration by scene name
     /// </summary>
-    public void RegisterZoneConfiguration(string zoneName, ResourceSubType resourceSubType)
+    public ZoneConfiguration? GetZoneConfiguration(string sceneName)
     {
-        // Check if configuration already exists
-        for (int i = 0; i < zoneConfigurations.Length; i++)
+        if (sceneNameToConfig.TryGetValue(sceneName, out ZoneConfiguration config))
         {
-            if (zoneConfigurations[i].zoneName == zoneName)
+            return config;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Get the default zone configuration
+    /// </summary>
+    public ZoneConfiguration GetDefaultZoneConfiguration()
+    {
+        foreach (ZoneConfiguration config in zoneConfigurations)
+        {
+            if (config.IsDefault)
             {
-                zoneConfigurations[i].resourceSubType = resourceSubType;
-                
-                if (debugMode)
-                {
-                    Debug.Log($"WorldManager: Updated configuration for zone '{zoneName}' to ResourceSubType '{resourceSubType}'");
-                }
-                return;
+                return config;
             }
         }
-
-        // Add new configuration (expand array)
-        ZoneConfiguration newConfig = new ZoneConfiguration
+        
+        // Fallback to first zone if no default marked
+        if (zoneConfigurations.Length > 0)
         {
-            zoneName = zoneName,
-            resourceSubType = resourceSubType
-        };
+            Debug.LogWarning("WorldManager: No default zone marked, using first zone as default");
+            return zoneConfigurations[0];
+        }
+        
+        Debug.LogError("WorldManager: No zones configured!");
+        return default;
+    }
 
-        Array.Resize(ref zoneConfigurations, zoneConfigurations.Length + 1);
-        zoneConfigurations[zoneConfigurations.Length - 1] = newConfig;
+    /// <summary>
+    /// Check if a ZoneID is valid
+    /// </summary>
+    public bool IsValidZoneID(int zoneID)
+    {
+        return zoneIdToConfig.ContainsKey(zoneID);
+    }
+
+    /// <summary>
+    /// Get all available zone IDs
+    /// </summary>
+    public int[] GetAllZoneIDs()
+    {
+        int[] zoneIDs = new int[zoneIdToConfig.Count];
+        zoneIdToConfig.Keys.CopyTo(zoneIDs, 0);
+        return zoneIDs;
+    }
+
+    /// <summary>
+    /// Get scene name from ZoneID with fallback to default
+    /// </summary>
+    public string GetSceneNameForZone(int zoneID)
+    {
+        ZoneConfiguration? config = GetZoneConfiguration(zoneID);
+        if (config.HasValue)
+        {
+            return config.Value.SceneName;
+        }
+        
+        // Fallback to default zone
+        Debug.LogWarning($"WorldManager: Invalid ZoneID {zoneID}, falling back to default zone");
+        ZoneConfiguration defaultConfig = GetDefaultZoneConfiguration();
+        return defaultConfig.SceneName;
+    }
+    #endregion
+
+    #region Player Zone Loading API
+    /// <summary>
+    /// Get MarketWaypoint position from ZoneManager (server-side only)
+    /// </summary>
+    public Vector3? GetMarketWaypointPosition(string zoneName)
+    {
+        if (!IsServer())
+        {
+            Debug.LogError("WorldManager: GetMarketWaypointPosition can only be called on server!");
+            return null;
+        }
 
         if (debugMode)
         {
-            Debug.Log($"WorldManager: Added new configuration for zone '{zoneName}' with ResourceSubType '{resourceSubType}'");
+            Debug.Log($"WorldManager: Looking for ZoneManager for zone '{zoneName}'. Active ZoneManagers: {activeZoneManagers.Count}");
+            foreach (var kvp in activeZoneManagers)
+            {
+                Debug.Log($"WorldManager: Available ZoneManager: '{kvp.Key}' -> {(kvp.Value != null ? "Valid" : "NULL")}");
+            }
+        }
+
+        if (activeZoneManagers.TryGetValue(zoneName, out ZoneManager zoneManager))
+        {
+            if (zoneManager != null)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"WorldManager: Found ZoneManager for '{zoneName}', checking for MarketWaypoint...");
+                }
+
+                if (zoneManager.HasMarketWaypoint())
+                {
+                    Transform waypoint = zoneManager.GetMarketWaypoint();
+                    Vector3 position = waypoint.position;
+                    
+                    if (debugMode)
+                    {
+                        Debug.Log($"WorldManager: MarketWaypoint position for zone '{zoneName}': {position}");
+                    }
+                    
+                    return position;
+                }
+                else
+                {
+                    Debug.LogWarning($"WorldManager: ZoneManager for '{zoneName}' has no MarketWaypoint");
+                    return null;
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"WorldManager: ZoneManager for '{zoneName}' is null!");
+                return null;
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"WorldManager: No ZoneManager found for zone '{zoneName}'");
+            return null;
         }
     }
     #endregion
@@ -445,7 +638,7 @@ public class WorldManager : MonoBehaviour
         for (int i = 0; i < zoneConfigurations.Length; i++)
         {
             ZoneConfiguration config = zoneConfigurations[i];
-            Debug.Log($"Config {i}: Zone='{config.zoneName}', ResourceSubType='{config.resourceSubType}'");
+            Debug.Log($"Config {i}: Zone='{config.SceneName}', ResourceType='{config.ResourceType}'");
         }
     }
 
@@ -476,14 +669,4 @@ public class WorldManager : MonoBehaviour
     }
     #endif
     #endregion
-}
-
-/// <summary>
-/// Configuration data for zone-specific settings
-/// </summary>
-[Serializable]
-public class ZoneConfiguration
-{
-    public string zoneName;
-    public ResourceSubType resourceSubType;
 }

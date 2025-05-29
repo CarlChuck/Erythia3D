@@ -232,6 +232,153 @@ public class CharactersManager : BaseManager
         };
     }
     #endregion
+
+    #region Zone and Position Management
+    /// <summary>
+    /// Get character's current zone and position information
+    /// </summary>
+    public async Task<Dictionary<string, object>> GetCharacterLocationAsync(int characterID)
+    {
+        string query = $"SELECT ZoneID, XLoc, YLoc, ZLoc FROM `{CharacterDataTableName}` WHERE CharID = @CharID";
+        Dictionary<string, object> parameters = new Dictionary<string, object> { { "@CharID", characterID } };
+        
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
+            
+            if (results.Count > 0)
+            {
+                LogInfo($"Retrieved location data for CharID: {characterID}");
+                return results[0]; // Return the first (and should be only) result
+            }
+            else
+            {
+                LogWarning($"No location data found for CharID: {characterID}");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception retrieving location for CharID {characterID}", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Update character's zone and position
+    /// </summary>
+    public async Task<bool> UpdateCharacterLocationAsync(int characterID, int zoneID, int xLoc, int yLoc, int zLoc)
+    {
+        if (characterID <= 0)
+        {
+            LogError("Invalid CharacterID provided for location update.");
+            return false;
+        }
+
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "ZoneID", zoneID },
+            { "XLoc", xLoc },
+            { "YLoc", yLoc },
+            { "ZLoc", zLoc }
+        };
+
+        string whereCondition = "`CharID` = @where_CharID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            { "@where_CharID", characterID }
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
+            {
+                LogInfo($"Character location updated successfully for CharID: {characterID} - Zone: {zoneID}, Position: ({xLoc}, {yLoc}, {zLoc})");
+            }
+            else
+            {
+                LogWarning($"Failed to update character location for CharID: {characterID}. Character might not exist?");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating character location for CharID {characterID}", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Update only character's zone (useful for zone transitions)
+    /// </summary>
+    public async Task<bool> UpdateCharacterZoneAsync(int characterID, int zoneID)
+    {
+        if (characterID <= 0)
+        {
+            LogError("Invalid CharacterID provided for zone update.");
+            return false;
+        }
+
+        Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
+        {
+            { "ZoneID", zoneID }
+        };
+
+        string whereCondition = "`CharID` = @where_CharID";
+        Dictionary<string, object> whereParams = new Dictionary<string, object>
+        {
+            { "@where_CharID", characterID }
+        };
+
+        try
+        {
+            bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
+            if (success)
+            {
+                LogInfo($"Character zone updated successfully for CharID: {characterID} to Zone: {zoneID}");
+            }
+            else
+            {
+                LogWarning($"Failed to update character zone for CharID: {characterID}. Character might not exist?");
+            }
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating character zone for CharID {characterID}", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get default zone and position for character spawning (when location is 0,0,0 or invalid)
+    /// Returns: { ZoneID, XLoc, YLoc, ZLoc } with default values
+    /// </summary>
+    public Dictionary<string, object> GetDefaultCharacterLocation()
+    {
+        // Default to ZoneID 1 (IthoriaSouth) and position 0,0,0 (will be replaced with MarketWaypoint)
+        return new Dictionary<string, object>
+        {
+            { "ZoneID", 1 }, // Default zone
+            { "XLoc", 0 },   // Will trigger waypoint fallback
+            { "YLoc", 0 },   // Will trigger waypoint fallback  
+            { "ZLoc", 0 }    // Will trigger waypoint fallback
+        };
+    }
+
+    /// <summary>
+    /// Check if a character location is considered "default" (0,0,0) and needs waypoint fallback
+    /// </summary>
+    public bool IsDefaultLocation(int xLoc, int yLoc, int zLoc)
+    {
+        return xLoc == 0 && yLoc == 0 && zLoc == 0;
+    }
+    #endregion
+
+    #region Species Management
+    // Existing code...
+    #endregion
 }
 
 [System.Serializable]
