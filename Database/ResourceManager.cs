@@ -50,6 +50,131 @@ public class ResourceManager : BaseManager
     }
     #endregion
 
+    #region Initialization
+    protected override async Task InitializeAsync()
+    {
+        loadedTemplates.Clear();
+        loadedResourceInstances.Clear();
+        templatesById.Clear();
+        resourcesById.Clear();
+
+        try
+        {
+            // 1. Ensure Tables Exist
+            await EnsureResourceTablesExistAsync();
+
+            // 2. Load Templates
+            List<ResourceTemplate> templates = await LoadAllResourceTemplatesAsync() ?? throw new Exception("Failed to load Resource Templates.");
+            loadedTemplates = templates;
+            templatesById = loadedTemplates.ToDictionary(t => t.ResourceTemplateID, t => t);
+
+            // 3. Load Instances
+            List<Resource> instances = await LoadAllResourceInstancesAsync() ?? throw new Exception("Failed to load Resource Instances.");
+            loadedResourceInstances = instances;
+            resourcesById = loadedResourceInstances.ToDictionary(i => i.ResourceSpawnID, i => i);
+
+            // 4. Link Instances to Templates
+            LinkInstancesToTemplates();
+
+            // 5. Mark as Initialized and Notify
+            await Task.Factory.StartNew(() => {
+                isInitialized = true;
+                NotifyDataLoaded();
+            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        catch (Exception ex)
+        {
+            await Task.Factory.StartNew(() => {
+                LogError("Initialization Async Error", ex);
+                isInitialized = false;
+            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+    }
+    private async Task EnsureResourceTablesExistAsync()
+    {
+        bool templateTableOK = await EnsureTableExistsAsync(ResourceTemplatesTableName, GetResourceTemplateTableDefinition());
+        bool instanceTableOK = await EnsureTableExistsAsync(ResourceInstancesTableName, GetResourceTableDefinition());
+
+        if (!templateTableOK || !instanceTableOK)
+        {
+            throw new Exception("Failed to initialize required resource database tables async.");
+        }
+    }
+    public async Task<List<Resource>> LoadAllResourceInstancesAsync()
+    {
+        List<Resource> resources = new List<Resource>();
+        string query = $"SELECT * FROM `{ResourceInstancesTableName}`";
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query);
+            if (results == null)
+            {
+                Debug.LogError($"Query failed for '{ResourceInstancesTableName}'.");
+                return null;
+            }
+            if (results.Count > 0)
+            {
+                foreach (var rowData in results)
+                {
+                    Resource resource = Instantiate(resourcePrefab.gameObject, resourceInstancesParent).GetComponent<Resource>();
+                    if (resource == null)
+                    {
+                        Debug.LogError("Failed to get Resource component.");
+                        Destroy(resource.gameObject);
+                        continue;
+                    }
+                    MapDictionaryToResource(resource, rowData);
+                    resources.Add(resource);
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"No results for '{ResourceInstancesTableName}'.");
+            }
+            return resources;
+        }
+        catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); return null; }
+    }
+    public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
+    {
+        List<ResourceTemplate> templates = new List<ResourceTemplate>();
+        string query = $"SELECT * FROM `{ResourceTemplatesTableName}`";
+        try
+        {
+            List<Dictionary<string, object>> results = await QueryDataAsync(query);
+            if (results == null)
+            {
+                Debug.LogError($"Query execution failed for table '{ResourceTemplatesTableName}'.");
+                return null;
+            }
+            if (results.Count == 0)
+            {
+                Debug.LogWarning($"Query returned no results for table '{ResourceTemplatesTableName}'.");
+                return templates;
+            }
+
+            foreach (var rowData in results)
+            {
+                ResourceTemplate template = Instantiate(resourceTemplatePrefab.gameObject, resourceTemplatesParent).GetComponent<ResourceTemplate>();
+                if (template == null)
+                {
+                    Debug.LogError("Failed to get ResourceTemplate component from instantiated prefab.");
+                    Destroy(template.gameObject); // Clean up failed instance
+                    continue;
+                }
+                MapDictionaryToResourceTemplate(template, rowData);
+                templates.Add(template);
+            }
+            return templates;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error loading all resource templates from '{ResourceTemplatesTableName}': {ex.Message}");
+            return null; // Indicate failure
+        }
+    }
+    #endregion
+
     public async Task<Resource> SpawnResourceFromTemplateAsync(ResourceType type, ResourceSubType regionType)
     {
         if (!isInitialized)
@@ -191,7 +316,7 @@ public class ResourceManager : BaseManager
                                     newResource.SetResourceTemplate(template);
                                     loadedResourceInstances.Add(newResource);
                                     resourcesById[newResource.ResourceSpawnID] = newResource;
-                                    LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
+                                    //LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
                                     return newResource;
                                 }
                             }
@@ -204,7 +329,6 @@ public class ResourceManager : BaseManager
                     }
                 }
             }
-
             LogError("Failed to get last insert ID after successful insert.");
             Destroy(resourceGO);
             return null;
@@ -223,146 +347,6 @@ public class ResourceManager : BaseManager
             return null;
         }
     }
-
-
-    #region Initialization
-    protected override async Task InitializeAsync()
-    {
-        loadedTemplates.Clear();
-        loadedResourceInstances.Clear();
-        templatesById.Clear();
-        resourcesById.Clear();
-
-        try
-        {
-            // 1. Ensure Tables Exist
-            await EnsureResourceTablesExistAsync();
-
-            // 2. Load Templates
-            LogInfo("Loading Resource Templates...");
-            List<ResourceTemplate> templates = await LoadAllResourceTemplatesAsync();
-            if (templates == null) throw new Exception("Failed to load Resource Templates.");
-            loadedTemplates = templates;
-            templatesById = loadedTemplates.ToDictionary(t => t.ResourceTemplateID, t => t);
-            LogInfo($"Loaded and indexed {loadedTemplates.Count} resource templates.");
-
-            // 3. Load Instances
-            LogInfo("Loading Resource Instances...");
-            List<Resource> instances = await LoadAllResourceInstancesAsync();
-            if (instances == null) throw new Exception("Failed to load Resource Instances.");
-            loadedResourceInstances = instances;
-            resourcesById = loadedResourceInstances.ToDictionary(i => i.ResourceSpawnID, i => i);
-            LogInfo($"Loaded {loadedResourceInstances.Count} resource instances.");
-
-            // 4. Link Instances to Templates
-            LinkInstancesToTemplates();
-            LogInfo("Linked resource instances to templates.");
-
-            // 5. Mark as Initialized and Notify
-            await Task.Factory.StartNew(() => {
-                isInitialized = true;
-                LogInfo("Initialization Complete. Invoking OnDataLoaded.");
-                NotifyDataLoaded();
-            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
-        }
-        catch (Exception ex)
-        {
-            await Task.Factory.StartNew(() => {
-                LogError("Initialization Async Error", ex);
-                isInitialized = false;
-            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
-        }
-    }
-    private async Task EnsureResourceTablesExistAsync()
-    {
-        LogInfo("Checking and initializing resource data tables async...");
-        bool templateTableOK = await EnsureTableExistsAsync(ResourceTemplatesTableName, GetResourceTemplateTableDefinition());
-        bool instanceTableOK = await EnsureTableExistsAsync(ResourceInstancesTableName, GetResourceTableDefinition());
-
-        if (!templateTableOK || !instanceTableOK)
-        {
-            throw new Exception("Failed to initialize required resource database tables async.");
-        }
-        LogInfo("Resource data tables checked/initialized async.");
-    }
-    public async Task<List<Resource>> LoadAllResourceInstancesAsync()
-    {
-        List<Resource> resources = new List<Resource>();
-        string query = $"SELECT * FROM `{ResourceInstancesTableName}`";
-        Debug.Log($"Executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await QueryDataAsync(query);
-            if (results == null)
-            {
-                Debug.LogError($"Query failed for '{ResourceInstancesTableName}'.");
-                return null;
-            }
-            if (results.Count > 0)
-            {
-                foreach (var rowData in results)
-                {
-                    Resource resource = Instantiate(resourcePrefab.gameObject, resourceInstancesParent).GetComponent<Resource>();
-                    if (resource == null)
-                    {
-                        Debug.LogError("Failed to get Resource component.");
-                        Destroy(resource.gameObject);
-                        continue;
-                    }
-                    MapDictionaryToResource(resource, rowData);
-                    resources.Add(resource);
-                }
-                Debug.Log($"Loaded {resources.Count} resource instances data rows.");
-            }
-            else
-            {
-                Debug.LogWarning($"No results for '{ResourceInstancesTableName}'.");
-            }
-            return resources;
-        }
-        catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); return null; }
-    }
-    public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
-    {
-        List<ResourceTemplate> templates = new List<ResourceTemplate>();
-        string query = $"SELECT * FROM `{ResourceTemplatesTableName}`";
-        Debug.Log($"Executing query: {query}");
-        try
-        {
-            List<Dictionary<string, object>> results = await QueryDataAsync(query);
-            if (results == null)
-            {
-                Debug.LogError($"Query execution failed for table '{ResourceTemplatesTableName}'.");
-                return null;
-            }
-            if (results.Count == 0)
-            {
-                Debug.LogWarning($"Query returned no results for table '{ResourceTemplatesTableName}'.");
-                return templates;
-            }
-
-            foreach (var rowData in results)
-            {
-                ResourceTemplate template = Instantiate(resourceTemplatePrefab.gameObject, resourceTemplatesParent).GetComponent<ResourceTemplate>();
-                if (template == null)
-                {
-                    Debug.LogError("Failed to get ResourceTemplate component from instantiated prefab.");
-                    Destroy(template.gameObject); // Clean up failed instance
-                    continue;
-                }
-                MapDictionaryToResourceTemplate(template, rowData);
-                templates.Add(template);
-            }
-            Debug.Log($"Loaded {templates.Count} resource templates data rows.");
-            return templates;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error loading all resource templates from '{ResourceTemplatesTableName}': {ex.Message}");
-            return null; // Indicate failure
-        }
-    }
-    #endregion
 
     #region Getters
     private Dictionary<string, string> GetResourceTableDefinition()
@@ -436,7 +420,7 @@ public class ResourceManager : BaseManager
         }
         return loadedTemplates; // Or return a copy: new List<ResourceTemplate>(loadedTemplates)
     }
-    public Resource GetResourceInstanceById(int resourceID)
+    public Resource GetResourceById(int resourceID)
     {
         if (!isInitialized) return null;
         resourcesById.TryGetValue(resourceID, out Resource resource);

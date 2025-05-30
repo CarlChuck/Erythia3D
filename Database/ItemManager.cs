@@ -66,7 +66,6 @@ public class ItemManager : BaseManager
         {
             await EnsureItemTablesExistAsync();
 
-            LogInfo("Loading Item Templates...");
             List<ItemTemplate> newItemTemplates = await LoadAllItemTemplatesAsync();
             if (newItemTemplates == null)
             { 
@@ -74,9 +73,7 @@ public class ItemManager : BaseManager
             }
             itemTemplates = newItemTemplates; 
             templatesById = newItemTemplates.ToDictionary(t => t.ItemTemplateID, t => t);
-            LogInfo($"Loaded and indexed {templatesById.Count} item templates.");
 
-            LogInfo("Loading Item Instances...");
             List<Item> itemInstances = await LoadAllItemInstancesAsync();
             if (itemInstances == null) 
             { 
@@ -84,10 +81,8 @@ public class ItemManager : BaseManager
             }
             items = itemInstances;
             itemsById = itemInstances.ToDictionary(i => i.ItemID, i => i);
-            LogInfo($"Loaded {itemsById.Count} item instances.");
             LinkItemsToTemplates();
 
-            LogInfo("Loading SubComponent Templates...");
             List<SubComponentTemplate> newSubCompTemplates = await LoadSubComponentTemplatesAsync(); // Get list
             if (newSubCompTemplates == null) 
             { 
@@ -95,9 +90,7 @@ public class ItemManager : BaseManager
             }
             subComponentTemplates = newSubCompTemplates;
             subComponentTemplatesById = newSubCompTemplates.ToDictionary(t => t.ComponentTemplateID, t => t);
-            LogInfo($"Loaded and indexed {subComponentTemplatesById.Count} sub-component templates.");
 
-            LogInfo("Loading SubComponent Instances...");
             List<SubComponent> subCompInstances = await LoadAllSubComponentsAsync(); // Get list
             if (subCompInstances == null) 
             { 
@@ -105,7 +98,6 @@ public class ItemManager : BaseManager
             }
             subComponents = subCompInstances;
             subComponentsById = subCompInstances.ToDictionary(i => i.SubComponentID, i => i);
-            LogInfo($"Loaded {subComponentsById.Count} sub-component instances.");
             LinkSubComponentsToTemplates();
 
             // 5. Mark as Initialized and Notify (on main thread)
@@ -126,7 +118,6 @@ public class ItemManager : BaseManager
     }
     private async Task EnsureItemTablesExistAsync()
     {
-        LogInfo("Checking and initializing item & sub-component data tables async...");
         bool templateTableOK = await EnsureTableExistsAsync(ItemTemplatesTableName, GetItemTemplateTableDefinition());
         bool instanceTableOK = await EnsureTableExistsAsync(ItemInstancesTableName, GetItemTableDefinition());
         bool subCompTemplateTableOK = await EnsureTableExistsAsync(SubComponentTemplatesTableName, GetSubComponentTemplateTableDefinition());
@@ -136,14 +127,12 @@ public class ItemManager : BaseManager
         {
             throw new Exception("Failed to initialize required item/sub-component database tables async.");
         }
-        LogInfo("Item & sub-component data tables checked/initialized async.");
     }
     public async Task<List<ItemTemplate>> LoadAllItemTemplatesAsync()
     {
         List<ItemTemplate> templates = new List<ItemTemplate>();
 
         string query = $"SELECT * FROM `{ItemTemplatesTableName}`";
-        LogInfo($"ItemManager executing query: {query}");
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
@@ -164,17 +153,19 @@ public class ItemManager : BaseManager
                 MapDictionaryToItemTemplate(template, rowData);
                 templates.Add(template);
             }
-            LogInfo($"Loaded {templates.Count} item template data rows.");
             return templates;
         }
-        catch (Exception ex) { LogError($"Error loading item templates: {ex.Message}"); return null; }
+        catch (Exception ex)
+        { 
+            LogError($"Error loading item templates: {ex.Message}"); 
+            return null; 
+        }
     }
     public async Task<List<Item>> LoadAllItemInstancesAsync()
     {
         List<Item> instances = new List<Item>();
 
-        string query = $"SELECT * FROM `{ItemInstancesTableName}`"; // Query the instances table
-        LogInfo($"ItemManager executing query: {query}");
+        string query = $"SELECT * FROM `{ItemInstancesTableName}`";
         try
         {
             List<Dictionary<string, object>> results = await DatabaseManager.Instance.ExecuteQueryAsync(query);
@@ -195,7 +186,6 @@ public class ItemManager : BaseManager
                 MapDictionaryToItem(instance, rowData);
                 instances.Add(instance);
             }
-            LogInfo($"Loaded {instances.Count} item instance data rows.");
             return instances;
         }
         catch (Exception ex) 
@@ -229,7 +219,6 @@ public class ItemManager : BaseManager
                 MapDictionaryToSubComponentTemplate(template, row);
                 loadedList.Add(template);
             }
-            LogInfo($"Finished processing sub-component templates. Returning {loadedList.Count} templates.");
             return loadedList;
         }
         catch (Exception ex)
@@ -263,8 +252,7 @@ public class ItemManager : BaseManager
                 MapDictionaryToSubComponent(instance, row);
                 loadedList.Add(instance);
             }
-            Debug.Log($"Finished processing sub-component instances. Returning {loadedList.Count} instances.");
-            return loadedList; // Return the populated list
+            return loadedList;
         }
         catch (Exception ex)
         {
@@ -407,7 +395,6 @@ public class ItemManager : BaseManager
             LogError("Cannot save null item instance or item without a template.");
             return -1;
         }
-        LogInfo($"Attempting to save new Item Instance: {itemInstance.ItemName} (TemplateID: {itemInstance.ItemTemplateID})");
 
         // Prepare dictionary based on ItemInstances table columns
         Dictionary<string, object> values = new Dictionary<string, object> {
@@ -445,10 +432,9 @@ public class ItemManager : BaseManager
                 long newId = await DatabaseManager.Instance.GetLastInsertIdAsync();
                 if (newId > 0)
                 {
-                    itemInstance.SetItemID((int)newId); // Update object with DB ID
-                    items.Add(itemInstance); // Add to runtime list
-                    itemsById[itemInstance.ItemID] = itemInstance; // Add to lookup
-                    LogInfo($"Saved new Item Instance ID: {newId}");
+                    itemInstance.SetItemID((int)newId);
+                    items.Add(itemInstance);
+                    itemsById[itemInstance.ItemID] = itemInstance;
                     return newId;
                 }
                 else
@@ -476,7 +462,6 @@ public class ItemManager : BaseManager
             LogError("Cannot update item instance: Invalid item or ItemID.");
             return false;
         }
-        LogInfo($"Attempting to update Item Instance ID: {itemInstance.ItemID}");
 
         // Prepare dictionary with fields that can be updated
         Dictionary<string, object> values = new Dictionary<string, object> {
@@ -514,8 +499,6 @@ public class ItemManager : BaseManager
             bool success = await UpdateDataAsync(ItemInstancesTableName, values, whereCondition, whereParams);
             if (success)
             {
-                LogInfo($"Updated Item Instance ID: {itemInstance.ItemID}");
-                // Update the runtime data
                 if (itemsById.ContainsKey(itemInstance.ItemID))
                 {
                     itemsById[itemInstance.ItemID] = itemInstance;
@@ -540,7 +523,6 @@ public class ItemManager : BaseManager
             LogError("Invalid ItemID provided for deletion.");
             return false;
         }
-        LogInfo($"Attempting to delete Item Instance ID: {itemInstanceId}");
 
         string whereCondition = "`ItemID` = @where_ItemID";
         Dictionary<string, object> whereParams = new Dictionary<string, object> {
@@ -557,8 +539,6 @@ public class ItemManager : BaseManager
                 {
                     itemsById.Remove(itemInstanceId);
                     items.Remove(itemToRemove);
-                    LogInfo($"Deleted Item Instance ID: {itemInstanceId}");
-                    // Destroy GameObject if it exists
                     if (itemToRemove != null && itemToRemove.gameObject != null)
                     {
                         Destroy(itemToRemove.gameObject);
@@ -589,7 +569,6 @@ public class ItemManager : BaseManager
         }
         // Use template name if instance name is null/empty for logging
         string logName = string.IsNullOrEmpty(subComponentInstance.Name) ? subComponentInstance.Template.Name : subComponentInstance.Name;
-        LogInfo($"Attempting to save new SubComponent Instance: {logName} (TemplateID: {subComponentInstance.SubComponentTemplateID})");
 
         // Prepare dictionary based on SubComponents table columns
         Dictionary<string, object> values = new Dictionary<string, object> {
@@ -615,10 +594,9 @@ public class ItemManager : BaseManager
                 long newId = await DatabaseManager.Instance.GetLastInsertIdAsync();
                 if (newId > 0)
                 {
-                    subComponentInstance.SetSubComponentID((int)newId); // Update object with DB ID
-                    subComponents.Add(subComponentInstance); // Add to runtime list
-                    subComponentsById[subComponentInstance.SubComponentID] = subComponentInstance; // Add to lookup
-                    LogInfo($"Saved new SubComponent Instance ID: {newId}");
+                    subComponentInstance.SetSubComponentID((int)newId);
+                    subComponents.Add(subComponentInstance); 
+                    subComponentsById[subComponentInstance.SubComponentID] = subComponentInstance; 
                     return newId;
                 }
                 else
@@ -646,7 +624,6 @@ public class ItemManager : BaseManager
             LogError("Invalid SubComponentID provided for deletion.");
             return false;
         }
-        LogInfo($"Attempting to delete SubComponent Instance ID: {subComponentInstanceId}");
 
         string whereCondition = "`SubComponentID` = @where_SubComponentID"; // Use backticks for safety
         Dictionary<string, object> whereParams = new Dictionary<string, object> {
@@ -665,13 +642,11 @@ public class ItemManager : BaseManager
                 {
                     subComponentsById.Remove(subComponentInstanceId);
                     subComponents.Remove(componentToRemove);
-                    LogInfo($"Deleted SubComponent Instance ID: {subComponentInstanceId}");
 
                     // Destroy GameObject if it exists
                     if (componentToRemove != null && componentToRemove.gameObject != null)
                     {
                         Destroy(componentToRemove.gameObject);
-                        LogInfo($"Destroyed GameObject for SubComponent Instance ID: {subComponentInstanceId}");
                     }
                 }
                 else

@@ -13,7 +13,7 @@ public class Crafter : MonoBehaviour
         inventoryManager = InventoryManager.Instance;
     }
     
-    public object CraftRecipe(PlayerCharacter character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4, SubComponent component5, SubComponent component6, SubComponent component7, SubComponent component8)
+    public object CraftRecipe(PlayerStatBlock character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4, SubComponent component5, SubComponent component6, SubComponent component7, SubComponent component8)
     {
         if (recipe != null)
         {
@@ -105,7 +105,7 @@ public class Crafter : MonoBehaviour
         }
 
     }
-    public async Task<Item> CraftItem(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
+    public async Task<Item> CraftItem(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
@@ -135,7 +135,7 @@ public class Crafter : MonoBehaviour
             return null;
         }
     }
-    public async Task<Item> CraftWeapon(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
+    public async Task<Item> CraftWeapon(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
@@ -169,7 +169,7 @@ public class Crafter : MonoBehaviour
             return null;
         }
     }
-    public async Task<Item> CraftArmour(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
+    public async Task<Item> CraftArmour(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
@@ -206,7 +206,7 @@ public class Crafter : MonoBehaviour
             return null;
         }
     }
-    public async Task<Item> CraftTool(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
+    public async Task<Item> CraftTool(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
         Item itemToReturn = MapTemplateToItem(itemTemplate);
@@ -239,7 +239,7 @@ public class Crafter : MonoBehaviour
             return null;
         }
     }
-    public async Task<SubComponent> CraftSubComponent(PlayerCharacter character, Recipe recipe, Resource[] resources, SubComponent[] components)
+    public async Task<SubComponent> CraftSubComponent(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         SubComponentTemplate subCompTemplate = recipe.OutputSubComponent;
         if (subCompTemplate == null)

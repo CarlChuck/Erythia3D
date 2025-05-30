@@ -12,7 +12,6 @@ public class ServerBootstrap : MonoBehaviour
 
     private void Start()
     {
-        Debug.Log($"ServerBootstrap: Start() called. autoStartServer={autoStartServer}");
         
         // Only initialize server if this is actually running on the server
         if (autoStartServer && ShouldRunServer())
@@ -34,43 +33,10 @@ public class ServerBootstrap : MonoBehaviour
         }
     }
 
-    private bool ShouldRunServer()
-    {
-        Debug.Log("ServerBootstrap: Checking if should run server...");
-        
-        // Run server if in batch mode (dedicated server)
-        if (Application.isBatchMode)
-        {
-            Debug.Log("ServerBootstrap: Running in batch mode - should run server");
-            return true;
-        }
-            
-        // Run server if explicitly set via command line
-        string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (args[i] == "-server" || args[i] == "--server")
-            {
-                Debug.Log($"ServerBootstrap: Found server command line arg: {args[i]} - should run server");
-                return true;
-            }
-        }
-        
-        // In editor, always allow server to run for testing
-        #if UNITY_EDITOR
-        Debug.Log("ServerBootstrap: Running in editor - should run server");
-        return true;
-        #else
-        // For client builds without server flags
-        Debug.Log("ServerBootstrap: No server conditions met - should not run server");
-        return false;
-        #endif
-    }
-
     public void InitializeServer()
     {
         Debug.Log("ServerBootstrap: InitializeServer() called");
-        
+
         // Additional safety check - only proceed if we should run server
         if (!ShouldRunServer() && !Application.isBatchMode)
         {
@@ -122,6 +88,39 @@ public class ServerBootstrap : MonoBehaviour
             // Subscribe to server started event if not ready yet
             networkManager.OnServerStarted += OnServerStarted;
         }
+    }
+
+    private bool ShouldRunServer()
+    {
+        Debug.Log("ServerBootstrap: Checking if should run server...");
+        
+        // Run server if in batch mode (dedicated server)
+        if (Application.isBatchMode)
+        {
+            Debug.Log("ServerBootstrap: Running in batch mode - should run server");
+            return true;
+        }
+            
+        // Run server if explicitly set via command line
+        string[] args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "-server" || args[i] == "--server")
+            {
+                Debug.Log($"ServerBootstrap: Found server command line arg: {args[i]} - should run server");
+                return true;
+            }
+        }
+        
+        // In editor, always allow server to run for testing
+        #if UNITY_EDITOR
+        Debug.Log("ServerBootstrap: Running in editor - should run server");
+        return true;
+        #else
+        // For client builds without server flags
+        Debug.Log("ServerBootstrap: No server conditions met - should not run server");
+        return false;
+        #endif
     }
 
     private void OnServerStarted()

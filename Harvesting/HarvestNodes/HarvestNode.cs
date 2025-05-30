@@ -9,7 +9,7 @@ public class HarvestNode : ResourceNode
         hType = HarvestType.Harvesting;
     }
 
-    public override void OnInteract(PlayerCharacter pCharacter)
+    public override void OnInteract(PlayerController pCharacter)
     {
         base.OnInteract(pCharacter);
     }

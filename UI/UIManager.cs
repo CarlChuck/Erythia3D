@@ -7,7 +7,7 @@ using UnityEngine.EventSystems; // Required for EventSystem access
 public class UIManager : MonoBehaviour
 {
     [Header("Player Reference")]
-    [SerializeField] private PlayerCharacter playerCharacter;
+    [SerializeField] private PlayerStatBlock playerCharacter;
 
     [Header("HUD Elements")]
     [SerializeField] private GameObject hudSection;
@@ -42,7 +42,7 @@ public class UIManager : MonoBehaviour
         hudSection.SetActive(false); // Start with HUD hidden
         CloseAllWindowsAndTabs(); // Ensure all windows are closed initially
     }
-    public void SetupUI(PlayerCharacter targetPlayer)
+    public void SetupUI(PlayerStatBlock targetPlayer)
     {
         if (isInitialized)
         {

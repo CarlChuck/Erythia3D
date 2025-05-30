@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System;
 
-public class StatBlock : NetworkBehaviour
+public class StatBlock : MonoBehaviour
 {
     private string characterName;
     public SpeciesTemplate species;

@@ -55,6 +55,36 @@ public class AccountManager : BaseManager
     }
     #endregion
 
+    #region Initialize
+    protected override async Task InitializeAsync()
+    {
+        try
+        {
+            // 1. Ensure Table Exists
+            await EnsureAccountsTableExistsAsync();
+
+            // 2. Mark as Initialized
+            isInitialized = true;
+            NotifyDataLoaded();
+        }
+        catch (Exception ex)
+        {
+            LogError("AccountManager Initialization Failed", ex);
+            isInitialized = false;
+        }
+    }
+    private async Task EnsureAccountsTableExistsAsync()
+    {
+        bool tableOK = await EnsureTableExistsAsync(AccountsTableName, GetAccountTableDefinition());
+
+        if (!tableOK)
+        {
+            throw new Exception("Failed to initialize accounts database table async.");
+        }
+    }
+    #endregion
+
+
     public async Task<bool> CreateNewAccountAsync(string username, string password, string email, ulong steamId, string language, string ipAddress = "0.0.0.0")
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
@@ -97,7 +127,6 @@ public class AccountManager : BaseManager
             {
                 if (int.TryParse(accountIdObj.ToString(), out int newAccountId))
                 {
-                    LogInfo($"Account for '{username}' created successfully with AccountID: {newAccountId}.");
                     await InventoryManager.Instance.AddOwnedWorkbenchAsync(newAccountId, 1);
                     return true;
                 }
@@ -119,39 +148,6 @@ public class AccountManager : BaseManager
             return false;
         }
     }
-
-    #region Initialize
-
-    protected override async Task InitializeAsync()
-    {
-        try
-        {
-            // 1. Ensure Table Exists
-            await EnsureAccountsTableExistsAsync();
-
-            // 2. Mark as Initialized
-            isInitialized = true;
-            LogInfo("AccountManager Initialization Complete.");
-            NotifyDataLoaded();
-        }
-        catch (Exception ex)
-        {
-            LogError("AccountManager Initialization Failed", ex);
-            isInitialized = false;
-        }
-    }
-    private async Task EnsureAccountsTableExistsAsync()
-    {
-        LogInfo("Checking and initializing accounts table async...");
-        bool tableOK = await EnsureTableExistsAsync(AccountsTableName, GetAccountTableDefinition());
-
-        if (!tableOK)
-        {
-            throw new Exception("Failed to initialize accounts database table async.");
-        }
-        LogInfo("Accounts table checked/initialized async.");
-    }
-    #endregion
 
     #region Password Stuff
     private string HashPassword(string password)

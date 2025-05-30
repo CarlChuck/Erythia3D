@@ -3,7 +3,7 @@ using UnityEngine;
 public class Interactable : MonoBehaviour
 {
 
-    public virtual void OnInteract(PlayerCharacter pCharacter)
+    public virtual void OnInteract(PlayerController pCharacter)
     {
         //Solved in the subclass
     }

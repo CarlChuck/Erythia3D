@@ -36,12 +36,9 @@ public class InventoryManager : BaseManager
     {
         try
         {
-            // 1. Ensure Tables Exist
             await EnsureInventoryTablesExistAsync();
 
-            // 2. Mark as Initialized
             isInitialized = true;
-            LogInfo("InventoryManager Initialization Complete.");
             NotifyDataLoaded();
         }
         catch (Exception ex)
@@ -52,7 +49,6 @@ public class InventoryManager : BaseManager
     }
     private async Task EnsureInventoryTablesExistAsync()
     {
-        LogInfo("Checking and initializing inventory data tables async...");
         bool inventoryItemsTableOK = await EnsureTableExistsAsync(InventoryItemsTableName, GetInventoryItemsTableDefinition());
         bool invResourceItemsTableOK = await EnsureTableExistsAsync(InventoryResourceItemsTableName, GetInventoryResourceItemsTableDefinition());
         bool subComponentsTableOK = await EnsureTableExistsAsync(InventorySubComponentsTableName, GetInventorySubComponentsTableDefinition());
@@ -65,7 +61,6 @@ public class InventoryManager : BaseManager
         {
             throw new Exception("Failed to initialize required inventory database tables async.");
         }
-        LogInfo("Inventory data tables checked/initialized async.");
     }
     private Dictionary<string, string> GetInventoryItemsTableDefinition()
     {
@@ -150,7 +145,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} inventory items for character {charId}");
             return results;
         }
         catch (Exception ex)
@@ -184,11 +178,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(InventoryItemsTableName, values);
-            if (success)
-            {
-                LogInfo($"Added item {itemId} to slot {slotId} for character {charId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to add item {itemId} to slot {slotId} for character {charId}");
             }
@@ -218,11 +208,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(InventoryItemsTableName, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Removed item from slot {slotId} for character {charId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to remove item from slot {slotId} for character {charId}");
             }
@@ -251,7 +237,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} inventory resource items (slots) for character {charId}");
             return results;
         }
         catch (Exception ex)
@@ -283,11 +268,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(InventoryResourceItemsTableName, linkedItemsParams);
-            if (success)
-            {
-                LogInfo($"Added resource item {resourceItemIdToAdd} with quantity {quantity} for character {charId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to add resource item {resourceItemIdToAdd} for character {charId}");
             }
@@ -328,11 +309,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await UpdateDataAsync(InventoryResourceItemsTableName, valuesToUpdate, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Updated resource item {resourceItemIdToAdd} quantity to {quantity} for character {charId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to update resource item {resourceItemIdToAdd} quantity for character {charId}");
             }
@@ -362,11 +339,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(InventoryResourceItemsTableName, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Removed resource item {resourceItemId} from inventory for character {charId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to remove resource item {resourceItemId} from inventory for character {charId}");
             }
@@ -395,7 +368,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} inventory subcomponents (slots) for character {charId}");
             return results;
         }
         catch (Exception ex)
@@ -428,7 +400,6 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(InventorySubComponentsTableName, values);
-            LogInfo(success ? $"Added inventory subcomponent {subComponentId} for character {charId}" : $"Failed to add inventory subcomponent {subComponentId} for character {charId}");
             return success;
         }
         catch (Exception ex)
@@ -455,7 +426,6 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(InventorySubComponentsTableName, whereCondition, whereParams);
-            LogInfo(success ? $"Removed inventory subcomponent {subComponentId} for character {charId}" : $"Failed to remove inventory subcomponent {subComponentId} for character {charId}");
             return success;
         }
         catch (Exception ex)
@@ -481,7 +451,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} owned workbenches for account {accountId}");
             return results;
         }
         catch (Exception ex)
@@ -513,8 +482,7 @@ public class InventoryManager : BaseManager
 
         try
         {
-            bool success = await SaveDataAsync(OwnedWorkbenchesTableName, values); // This will generate OwnedWorkBenchID
-            LogInfo(success ? $"Added new workbench (type: {workbenchType}) for account {accountId}" : $"Failed to add new workbench for account {accountId}");
+            bool success = await SaveDataAsync(OwnedWorkbenchesTableName, values);
             return success;
         }
         catch (Exception ex)
@@ -541,7 +509,6 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(OwnedWorkbenchesTableName, whereCondition, whereParams);
-            LogInfo(success ? $"Removed owned workbench type {workbenchType} for account {accountId}" : $"Failed to remove owned workbench type {workbenchType} for account {accountId}");
             return success;
         }
         catch (Exception ex)
@@ -567,7 +534,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} account inventory items for account {accountId}");
             return results;
         }
         catch (Exception ex)
@@ -600,11 +566,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(AccountInventoryItemsTableName, values);
-            if (success)
-            {
-                LogInfo($"Added item {itemId} to account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to add item {itemId} to account inventory for account {accountId}");
             }
@@ -634,11 +596,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(AccountInventoryItemsTableName, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Removed item {itemId} from account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to remove item {itemId} from account inventory for account {accountId}");
             }
@@ -667,7 +625,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} account inventory resource items for account {accountId}");
             return results;
         }
         catch (Exception ex)
@@ -700,11 +657,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(AccountInventoryResourceItemsTableName, values);
-            if (success)
-            {
-                LogInfo($"Added resource item {resourceItemId} to account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to add resource item {resourceItemId} to account inventory for account {accountId}");
             }
@@ -735,11 +688,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await UpdateDataAsync(AccountInventoryResourceItemsTableName, valuesToUpdate, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Updated resource item {resourceItemIdToAdd} quantity to {quantity} for account {accntId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to update resource item {resourceItemIdToAdd} quantity for account {accntId}");
             }
@@ -769,11 +718,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(AccountInventoryResourceItemsTableName, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Removed resource item {resourceItemId} from account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to remove resource item {resourceItemId} from account inventory for account {accountId}");
             }
@@ -802,7 +747,6 @@ public class InventoryManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-            LogInfo($"Retrieved {results.Count} account inventory subcomponents for account {accountId}");
             return results;
         }
         catch (Exception ex)
@@ -835,11 +779,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await SaveDataAsync(AccountInventorySubComponentsTableName, values);
-            if (success)
-            {
-                LogInfo($"Added subcomponent {subComponentId} to account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to add subcomponent {subComponentId} to account inventory for account {accountId}");
             }
@@ -869,11 +809,7 @@ public class InventoryManager : BaseManager
         try
         {
             bool success = await DeleteDataAsync(AccountInventorySubComponentsTableName, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Removed subcomponent {subComponentId} from account inventory for account {accountId}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to remove subcomponent {subComponentId} from account inventory for account {accountId}");
             }

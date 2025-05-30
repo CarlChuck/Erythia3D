@@ -36,9 +36,6 @@ public class CraftingManager : BaseManager
     #region Initialize
     protected override async Task InitializeAsync()
     {
-        Debug.Log("Initializing CraftingManager...");
-        
-        // Define the Recipes table structure
         var recipeColumns = new Dictionary<string, string>
         {
             { "RecipeID", "INT AUTO_INCREMENT PRIMARY KEY" },
@@ -142,7 +139,6 @@ public class CraftingManager : BaseManager
         
         isInitialized = true;
         NotifyDataLoaded();
-        Debug.Log("CraftingManager initialization complete");
     }
     private async Task LoadRecipesAsync()
     {
@@ -160,7 +156,6 @@ public class CraftingManager : BaseManager
             Debug.LogError("Failed to load recipes from database");
             return;
         }
-        Debug.Log($"Loaded {results.Count} recipe rows from DB.");
 
         foreach (var row in results)
         {
@@ -252,7 +247,6 @@ public class CraftingManager : BaseManager
                 Destroy(recipeObj);
             }
         }
-        Debug.Log($"Finished processing recipes. Loaded {recipesById.Count} recipes.");
     }
     #endregion
 
@@ -267,14 +261,13 @@ public class CraftingManager : BaseManager
         recipesByName.TryGetValue(recipeName, out Recipe recipe);
         return recipe;
     }
-
     public List<Recipe> GetRecipesByWorkbenchType(int workbenchType)
     {
         if (recipesByWorkbenchType.TryGetValue(workbenchType, out List<Recipe> recipeList))
         {
-            return new List<Recipe>(recipeList); // Return a copy to prevent external modification
+            return new List<Recipe>(recipeList);
         }
-        return new List<Recipe>(); // Return an empty list if type not found
+        return new List<Recipe>();
     }
     #endregion
 }

@@ -13,7 +13,7 @@ public class MiningNode : ResourceNode
         hType = HarvestType.Mining;
     }
 
-    public override void OnInteract(PlayerCharacter pCharacter)
+    public override void OnInteract(PlayerController pCharacter)
     {
         base.OnInteract(pCharacter);
     }

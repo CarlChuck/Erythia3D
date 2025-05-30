@@ -22,7 +22,6 @@ public class CharactersManager : BaseManager
 
     #region Singleton
     public static CharactersManager Instance;
-
     protected void Awake()
     {
         if (Instance == null)
@@ -38,9 +37,7 @@ public class CharactersManager : BaseManager
     }
     #endregion
 
-
     #region Initialize
-
     protected override async Task InitializeAsync()
     {
         try
@@ -50,7 +47,6 @@ public class CharactersManager : BaseManager
 
             // 2. Mark as Initialized
             isInitialized = true;
-            LogInfo("CharactersManager Initialization Complete.");
             NotifyDataLoaded();
         }
         catch (Exception ex)
@@ -61,14 +57,12 @@ public class CharactersManager : BaseManager
     }
     private async Task EnsureCharacterTableExistsAsync()
     {
-        LogInfo("Checking and initializing character data table async...");
         bool tableOK = await EnsureTableExistsAsync(CharacterDataTableName, GetCharacterTableDefinition());
 
         if (!tableOK)
         {
             throw new Exception("Failed to initialize character database table async.");
         }
-        LogInfo("Character data table checked/initialized async.");
     }
     #endregion
 
@@ -102,11 +96,7 @@ public class CharactersManager : BaseManager
         {
             bool characterAdded = await SaveDataAsync(CharacterDataTableName, values);
 
-            if (characterAdded)
-            {
-                LogInfo($"New character '{characterName}' created successfully for Account ID {accountID}.");
-            }
-            else
+            if (characterAdded == false)
             {
                 LogWarning($"Failed to create new character '{characterName}'. Check DatabaseManager logs or constraints (e.g., duplicate Familyname?).");
             }
@@ -149,11 +139,7 @@ public class CharactersManager : BaseManager
         try
         {
             bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Character data updated successfully for CharID: {characterID}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to update character data for CharID: {characterID}. Character might not exist?");
             }
@@ -174,15 +160,6 @@ public class CharactersManager : BaseManager
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
-
-            if (results.Count > 0)
-            {
-                LogInfo($"Found {results.Count} character(s) for Account ID: {accountId}");
-            }
-            else
-            {
-                LogInfo($"No characters found for Account ID: {accountId}");
-            }
             return results;
         }
         catch (Exception ex)
@@ -234,9 +211,6 @@ public class CharactersManager : BaseManager
     #endregion
 
     #region Zone and Position Management
-    /// <summary>
-    /// Get character's current zone and position information
-    /// </summary>
     public async Task<Dictionary<string, object>> GetCharacterLocationAsync(int characterID)
     {
         string query = $"SELECT ZoneID, XLoc, YLoc, ZLoc FROM `{CharacterDataTableName}` WHERE CharID = @CharID";
@@ -248,8 +222,7 @@ public class CharactersManager : BaseManager
             
             if (results.Count > 0)
             {
-                LogInfo($"Retrieved location data for CharID: {characterID}");
-                return results[0]; // Return the first (and should be only) result
+                return results[0]; 
             }
             else
             {
@@ -264,9 +237,6 @@ public class CharactersManager : BaseManager
         }
     }
 
-    /// <summary>
-    /// Update character's zone and position
-    /// </summary>
     public async Task<bool> UpdateCharacterLocationAsync(int characterID, int zoneID, int xLoc, int yLoc, int zLoc)
     {
         if (characterID <= 0)
@@ -292,11 +262,7 @@ public class CharactersManager : BaseManager
         try
         {
             bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Character location updated successfully for CharID: {characterID} - Zone: {zoneID}, Position: ({xLoc}, {yLoc}, {zLoc})");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to update character location for CharID: {characterID}. Character might not exist?");
             }
@@ -309,9 +275,6 @@ public class CharactersManager : BaseManager
         }
     }
 
-    /// <summary>
-    /// Update only character's zone (useful for zone transitions)
-    /// </summary>
     public async Task<bool> UpdateCharacterZoneAsync(int characterID, int zoneID)
     {
         if (characterID <= 0)
@@ -334,11 +297,7 @@ public class CharactersManager : BaseManager
         try
         {
             bool success = await UpdateDataAsync(CharacterDataTableName, valuesToUpdate, whereCondition, whereParams);
-            if (success)
-            {
-                LogInfo($"Character zone updated successfully for CharID: {characterID} to Zone: {zoneID}");
-            }
-            else
+            if (success == false)
             {
                 LogWarning($"Failed to update character zone for CharID: {characterID}. Character might not exist?");
             }
@@ -351,33 +310,21 @@ public class CharactersManager : BaseManager
         }
     }
 
-    /// <summary>
-    /// Get default zone and position for character spawning (when location is 0,0,0 or invalid)
-    /// Returns: { ZoneID, XLoc, YLoc, ZLoc } with default values
-    /// </summary>
     public Dictionary<string, object> GetDefaultCharacterLocation()
     {
-        // Default to ZoneID 1 (IthoriaSouth) and position 0,0,0 (will be replaced with MarketWaypoint)
         return new Dictionary<string, object>
         {
-            { "ZoneID", 1 }, // Default zone
-            { "XLoc", 0 },   // Will trigger waypoint fallback
-            { "YLoc", 0 },   // Will trigger waypoint fallback  
-            { "ZLoc", 0 }    // Will trigger waypoint fallback
+            { "ZoneID", 1 },
+            { "XLoc", 0 }, 
+            { "YLoc", 0 },    
+            { "ZLoc", 0 } 
         };
     }
 
-    /// <summary>
-    /// Check if a character location is considered "default" (0,0,0) and needs waypoint fallback
-    /// </summary>
     public bool IsDefaultLocation(int xLoc, int yLoc, int zLoc)
     {
         return xLoc == 0 && yLoc == 0 && zLoc == 0;
     }
-    #endregion
-
-    #region Species Management
-    // Existing code...
     #endregion
 }
 

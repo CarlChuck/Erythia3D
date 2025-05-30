@@ -23,13 +23,11 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     #region Singleton
     public static DatabaseManager Instance;
 
-    // Awake is now protected due to BaseManager
     protected void Awake() // Changed to protected
     {
         if (Instance == null)
         {
             Instance = this;
-            // DontDestroyOnLoad(gameObject); // Optional: if you want it to persist across scenes
         }
         else if (Instance != this)
         {
@@ -37,13 +35,11 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
             Destroy(gameObject);
             return;
         }
-        //StartInitialization(); // Call BaseManager's initialization starter
     }
     #endregion
 
     protected override async Task InitializeAsync() 
     {
-        Debug.Log("Initializing DatabaseManager...");
         try
         {
             MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
@@ -68,8 +64,7 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
             connectionString = builder.ConnectionString;
             Debug.Log($"MySQL connection string configured for {server}:{port}/{database}");
             isInitialized = true; // Set initialization status
-            NotifyDataLoaded(); // Notify if needed, though DBManager might not have "data" in the same sense
-            Debug.Log("DatabaseManager initialization complete.");
+            NotifyDataLoaded();
         }
         catch (Exception ex)
         {
@@ -140,8 +135,15 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     // returns the number of rows affected or -1 on failure
     public async Task<int> ExecuteNonQueryAsync(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
-        if (logQueries) Debug.Log($"Executing async non-query: {commandText}");
+        if (string.IsNullOrEmpty(connectionString)) 
+        { 
+            Debug.LogError("DB connection string not initialized."); 
+            return -1; 
+        }
+        if (logQueries) 
+        { 
+            Debug.Log($"Executing async non-query: {commandText}"); 
+        }
 
         using (var connection = new MySqlConnection(connectionString))
         {
@@ -171,8 +173,15 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
     // Executes a query asynchronously and returns the first column of the first row.
     public async Task<object> ExecuteScalarAsync(string commandText, Dictionary<string, object> parameters = null)
     {
-        if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return null; }
-        if (logQueries) Debug.Log($"Executing async scalar: {commandText}");
+        if (string.IsNullOrEmpty(connectionString)) 
+        { 
+            Debug.LogError("DB connection string not initialized."); 
+            return null; 
+        }
+        if (logQueries) 
+        { 
+            Debug.Log($"Executing async scalar: {commandText}"); 
+        }
 
         using (var connection = new MySqlConnection(connectionString))
         {
@@ -188,18 +197,18 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
                             cmd.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
                         }
                     }
-                    return await cmd.ExecuteScalarAsync(); // Use async execute
+                    return await cmd.ExecuteScalarAsync();
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Error executing async scalar: {commandText}\n{ex.Message}\n{ex.StackTrace}");
-                return null; // Indicate failure
+                return null;
             }
         }
     }
 
-    // Gets the last inserted ID asynchronously.
+
     public async Task<long> GetLastInsertIdAsync()
     {
         if (string.IsNullOrEmpty(connectionString)) { Debug.LogError("DB connection string not initialized."); return -1; }
@@ -224,8 +233,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         }
     }
 
-
-    // Asynchronous check if a table exists
     public async Task<bool> TableExistsAsync(string tableName)
     {
         // Note: information_schema queries might be slower on some MySQL versions.
@@ -239,8 +246,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         return result != null && result != DBNull.Value;
     }
 
-
-    // Asynchronous Table Creation
     public async Task<bool> CreateTableIfNotExistsAsync(string tableName, Dictionary<string, string> columns)
     {
         try
@@ -265,7 +270,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         }
     }
 
-    // Asynchronous Insert
     public async Task<bool> InsertDataAsync(string tableName, Dictionary<string, object> values)
     {
         try
@@ -287,7 +291,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         }
     }
 
-    // Asynchronous Update
     public async Task<bool> UpdateDataFinalAsync(string tableName, Dictionary<string, object> values, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
@@ -311,7 +314,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
         }
     }
 
-    // Asynchronous Delete
     public async Task<bool> DeleteDataFinalAsync(string tableName, string whereCondition, Dictionary<string, object> whereParams)
     {
         try
@@ -326,7 +328,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
             return false;
         }
     }
-
 
     public string GetConnectionString()
     {

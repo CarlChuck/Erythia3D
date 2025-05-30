@@ -99,24 +99,24 @@ public abstract class ResourceNode : Interactable
         */
     }
 
-    public override void OnInteract(PlayerCharacter pCharacter)
+    public override void OnInteract(PlayerController pCharacter)
     {
         ToolItem equippedTool = null;
         if (pCharacter != null)
         {
             if (hType == HarvestType.Mining)
             {
-                equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.MiningTool) as ToolItem;
+                equippedTool = pCharacter.GetPlayerCharacter().GetEquipmentProfile().GetItemInSlot(ItemType.MiningTool) as ToolItem;
                 pCharacter.OnMiningHit();
             }
             else if (hType == HarvestType.Woodcutting)
             {
-                equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.WoodTool) as ToolItem;
+                equippedTool = pCharacter.GetPlayerCharacter().GetEquipmentProfile().GetItemInSlot(ItemType.WoodTool) as ToolItem;
                 pCharacter.OnWoodCuttingHit();
             }
             else if (hType == HarvestType.Harvesting)
             {
-                equippedTool = pCharacter.GetEquipmentProfile().GetItemInSlot(ItemType.HarvestingTool) as ToolItem;
+                equippedTool = pCharacter.GetPlayerCharacter().GetEquipmentProfile().GetItemInSlot(ItemType.HarvestingTool) as ToolItem;
                 pCharacter.OnHarvestHit();
             }
             int damagetoSend = equippedTool != null ? equippedTool.GetDamage() : 2; 
@@ -127,7 +127,7 @@ public abstract class ResourceNode : Interactable
             if (damagetoSend > 0)
             {
                 ResourceItem resourceItem = GenerateResource(damagetoSend);
-                pCharacter.OnPickupResourceItem(resourceItem);
+                pCharacter.GetPlayerCharacter().OnPickupResourceItem(resourceItem);
             }
         }
     }

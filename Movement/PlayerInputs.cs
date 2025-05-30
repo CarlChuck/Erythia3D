@@ -88,7 +88,7 @@ public class PlayerInputs : NetworkBehaviour
 	{
         if (value.isPressed)
         {
-            var playerCharacter = PlayerManager.Instance?.GetSelectedPlayerCharacter();
+            var playerCharacter = PlayerManager.Instance?.GetControlledCharacter();
             if (playerCharacter != null)
             {
                 // Get mouse position using the new Input System

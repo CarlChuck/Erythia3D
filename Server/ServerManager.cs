@@ -24,54 +24,35 @@ public class ServerManager : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
-        
-        if (IsServer)
-        {
-            Debug.Log("ServerManager: NetworkObject spawned on server, ready to handle RPCs");
-        }
     }
 
     public override void OnNetworkDespawn()
     {
         base.OnNetworkDespawn();
-        Debug.Log("ServerManager: NetworkObject despawned");
     }
 
     #region Login Communication RPCs
     [ServerRpc(RequireOwnership = false)]
     public void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
     {
-        Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
-        
-        // Process the login directly
+        //Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
         ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, serverRpcParams.Receive.SenderClientId);
     }
 
     // Regular method for server-to-server communication (called by PlayerManager on server)
     public async void ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessLoginRequest ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={senderClientId}");
-        
+        //Debug.Log($"ServerManager: ProcessLoginRequest ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={senderClientId}");        
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessLogin directly (async/await)...");
             LoginResult result = await ProcessLogin(steamID, accountID, accountName, email, ipAddress, language);
-            
-            Debug.Log($"ServerManager: ProcessLogin completed. Success={result.Success}, ErrorMessage={result.ErrorMessage}");
-            
-            // Instead of sending ClientRpc directly, call back to PlayerManager on server
-            Debug.Log($"ServerManager: Finding PlayerManager to send response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
-            
+            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);            
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 // Find the PlayerManager that belongs to the client who sent the request
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -80,7 +61,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceiveLoginResultClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -130,36 +110,28 @@ public class ServerManager : NetworkBehaviour
     #region Character Loading Communication
     public async void ProcessCharacterListRequest(int accountID, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessCharacterListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
-        
+        //Debug.Log($"ServerManager: ProcessCharacterListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");        
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessCharacterList...");
             CharacterListResult result = await ProcessCharacterList(accountID);
-            
-            Debug.Log($"ServerManager: ProcessCharacterList completed. Success={result.Success}, CharacterCount={result.Characters?.Length ?? 0}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send character list response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending character list response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
                         {
-                            TargetClientIds = new ulong[] { senderClientId }
+                            TargetClientIds = new ulong[] 
+                            { 
+                                senderClientId 
+                            }
                         }
                     };
                     pm.ReceiveCharacterListClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Character list response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -209,27 +181,18 @@ public class ServerManager : NetworkBehaviour
     #region Inventory Loading Communication
     public async void ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessAccountInventoryRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
+        //Debug.Log($"ServerManager: ProcessAccountInventoryRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
         
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessAccountInventory...");
             AccountInventoryResult result = await ProcessAccountInventory(accountID);
-            
-            Debug.Log($"ServerManager: ProcessAccountInventory completed. Success={result.Success}, ItemCount={result.Items?.Length ?? 0}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send account inventory response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending account inventory response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -238,7 +201,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceiveAccountInventoryClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Account inventory response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -289,27 +251,17 @@ public class ServerManager : NetworkBehaviour
 
     public async void ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessCharacterInventoryRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");
-        
+        //Debug.Log($"ServerManager: ProcessCharacterInventoryRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessCharacterInventory...");
             CharacterInventoryResult result = await ProcessCharacterInventory(characterID);
-            
-            Debug.Log($"ServerManager: ProcessCharacterInventory completed. Success={result.Success}, ItemCount={result.Items?.Length ?? 0}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send character inventory response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending character inventory response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -318,7 +270,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceiveCharacterInventoryClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Character inventory response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -368,27 +319,18 @@ public class ServerManager : NetworkBehaviour
 
     public async void ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessWorkbenchListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
+        //Debug.Log($"ServerManager: ProcessWorkbenchListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
         
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessWorkbenchList...");
             WorkbenchListResult result = await ProcessWorkbenchList(accountID);
-            
-            Debug.Log($"ServerManager: ProcessWorkbenchList completed. Success={result.Success}, WorkbenchCount={result.Workbenches?.Length ?? 0}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send workbench list response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending workbench list response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -397,7 +339,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceiveWorkbenchListClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Workbench list response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -444,30 +385,21 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Waypoint Communication
+    #region Waypoint and Zone Communication
     public async void ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessWaypointRequest ENTRY - characterID={characterID}, zoneName={zoneName}, senderClientId={senderClientId}");
+        //Debug.Log($"ServerManager: ProcessWaypointRequest ENTRY - characterID={characterID}, zoneName={zoneName}, senderClientId={senderClientId}");
         
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessWaypoint...");
             WaypointResult result = await ProcessWaypoint(characterID, zoneName);
-            
-            Debug.Log($"ServerManager: ProcessWaypoint completed. Success={result.Success}, HasWaypoint={result.HasWaypoint}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send waypoint response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending waypoint response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -476,7 +408,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceiveWaypointResultClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Waypoint response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -523,32 +454,20 @@ public class ServerManager : NetworkBehaviour
         
         Debug.Log($"ServerManager: ProcessWaypointRequest completed");
     }
-    #endregion
 
-    #region Player Zone Information Communication
     public async void ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
     {
-        Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");
-        
+        //Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
         try
         {
-            Debug.Log($"ServerManager: Calling ProcessPlayerZoneInfo...");
             PlayerZoneInfoResult result = await ProcessPlayerZoneInfo(characterID);
-            
-            Debug.Log($"ServerManager: ProcessPlayerZoneInfo completed. Success={result.Success}, ZoneName={result.ZoneInfo.ZoneName}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send player zone info response back to client {senderClientId}...");
             PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
             
             bool responseSet = false;
             foreach (PlayerManager pm in playerManagers)
             {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
                 if (pm.IsServer && pm.OwnerClientId == senderClientId)
                 {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending player zone info response...");
                     ClientRpcParams clientRpcParams = new ClientRpcParams
                     {
                         Send = new ClientRpcSendParams
@@ -557,7 +476,6 @@ public class ServerManager : NetworkBehaviour
                         }
                     };
                     pm.ReceivePlayerZoneInfoClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Player zone info response sent via PlayerManager successfully");
                     responseSet = true;
                     break;
                 }
@@ -614,15 +532,12 @@ public class ServerManager : NetworkBehaviour
     #region Server-Side Character Logic
     private async Task<CharacterListResult> ProcessCharacterList(int accountID)
     {
-        Debug.Log($"ServerManager: ProcessCharacterList ENTRY - accountID={accountID}");
-        
+        //Debug.Log($"ServerManager: ProcessCharacterList ENTRY - accountID={accountID}");        
         if (!IsServer)
         {
             Debug.LogError("ProcessCharacterList called on client! This should only run on server.");
             return new CharacterListResult { Success = false, ErrorMessage = "Server-side method called on client", Characters = new CharacterData[0] };
         }
-
-        Debug.Log($"ServerManager: Calling CharactersManager.Instance.GetCharactersByAccountIDAsync...");
         if (CharactersManager.Instance == null)
         {
             Debug.LogError("ServerManager: CharactersManager.Instance is null!");
@@ -632,20 +547,13 @@ public class ServerManager : NetworkBehaviour
         try
         {
             List<Dictionary<string, object>> characterDictionaries = await CharactersManager.Instance.GetCharactersByAccountIDAsync(accountID);
-            
-            Debug.Log($"ServerManager: Retrieved {characterDictionaries.Count} character records from database");
-            
-            // Convert Dictionary data to CharacterData structs
             CharacterData[] characters = new CharacterData[characterDictionaries.Count];
             
             for (int i = 0; i < characterDictionaries.Count; i++)
             {
                 var charDict = characterDictionaries[i];
                 characters[i] = ConvertDictionaryToCharacterData(charDict);
-                Debug.Log($"ServerManager: Converted character {i}: {characters[i].Name} (ID: {characters[i].CharID})");
             }
-            
-            Debug.Log($"ServerManager: Successfully processed character list. Returning {characters.Length} characters.");
             return new CharacterListResult 
             { 
                 Success = true, 
@@ -689,38 +597,12 @@ public class ServerManager : NetworkBehaviour
         charData.VeilExp = GetIntValue(charDict, "VeilExp", 0);
         
         // Populate species stats from CharactersManager
-        if (CharactersManager.Instance != null)
-        {
-            SpeciesTemplate species = CharactersManager.Instance.GetSpeciesByID(charData.Race);
-            if (species != null)
-            {
-                charData.SpeciesStrength = species.strength;
-                charData.SpeciesDexterity = species.dexterity;
-                charData.SpeciesConstitution = species.constitution;
-                charData.SpeciesIntelligence = species.intelligence;
-                charData.SpeciesSpirit = species.spirit;
-            }
-            else
-            {
-                Debug.LogWarning($"Species not found for Race ID {charData.Race}. Using default values.");
-                // Set default species stats if species not found
-                charData.SpeciesStrength = 10;
-                charData.SpeciesDexterity = 10;
-                charData.SpeciesConstitution = 10;
-                charData.SpeciesIntelligence = 10;
-                charData.SpeciesSpirit = 10;
-            }
-        }
-        else
-        {
-            Debug.LogError("CharactersManager.Instance is null! Cannot populate species stats.");
-            // Set default species stats
-            charData.SpeciesStrength = 10;
-            charData.SpeciesDexterity = 10;
-            charData.SpeciesConstitution = 10;
-            charData.SpeciesIntelligence = 10;
-            charData.SpeciesSpirit = 10;
-        }
+        SpeciesTemplate species = CharactersManager.Instance.GetSpeciesByID(charData.Race);
+        charData.SpeciesStrength = species.strength;
+        charData.SpeciesDexterity = species.dexterity;
+        charData.SpeciesConstitution = species.constitution;
+        charData.SpeciesIntelligence = species.intelligence;
+        charData.SpeciesSpirit = species.spirit;
         
         return charData;
     }
@@ -747,15 +629,12 @@ public class ServerManager : NetworkBehaviour
     #region Server-Side Login Logic
     private async Task<LoginResult> ProcessLogin(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
     {
-        Debug.Log($"ServerManager: ProcessLogin ENTRY - steamID={steamID}, accountID={accountID}");
-        
+        //Debug.Log($"ServerManager: ProcessLogin ENTRY - steamID={steamID}, accountID={accountID}");        
         if (!IsServer)
         {
             Debug.LogError("ProcessLogin called on client! This should only run on server.");
             return new LoginResult { Success = false, ErrorMessage = "Server-side method called on client", AccountName = "" };
         }
-
-        Debug.Log($"ServerManager: Calling AccountManager.Instance.DetermineLoginMethod...");
         if (AccountManager.Instance == null)
         {
             Debug.LogError("ServerManager: AccountManager.Instance is null!");
@@ -763,7 +642,6 @@ public class ServerManager : NetworkBehaviour
         }
         
         LoginMethod loginMethod = AccountManager.Instance.DetermineLoginMethod(steamID, accountID);
-        Debug.Log($"ServerManager: Login method determined: {loginMethod}");
         
         switch (loginMethod)
         {
@@ -1116,10 +994,7 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Business Logic
-    
-    /// <summary>
-    /// Process waypoint request by coordinating with WorldManager and ZoneManager
-    /// </summary>
+
     private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
     {
         Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");

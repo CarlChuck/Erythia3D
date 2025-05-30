@@ -9,69 +9,102 @@ using UnityEditor.Profiling.Memory.Experimental;
 
 public class PlayerManager : NetworkBehaviour
 {
+    #region Helper Classes
+    private CharacterDataHandler characterHandler;
+    private InventoryDataHandler inventoryHandler;
+    private ZoneCoordinator zoneCoordinator;
+    internal NetworkRequestManager requestManager;
+    #endregion
+
+    #region References
     [Header("Player Account Info")]
     [SerializeField] private string accountName = "";
-    [SerializeField] private string email = ""; //No Idea if this is being used yet
-    private ulong steamID = 0; //TODO
+    [SerializeField] private string email = "";
+    private ulong steamID = 0;
     private int accountID;
     [SerializeField] private string familyName = "";
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
 
-    [Header("Player Character Info")]
+    [Header("Character Management")]
     [SerializeField] private GameObject charListParent;
-    [SerializeField] private GameObject playerFollowCam;
-    [SerializeField] private GameObject controlledCharacter;
-    [SerializeField] private List<PlayerCharacter> playerCharacters;
-    [SerializeField] private PlayerCharacter selectedPlayerCharacter;
-    [SerializeField] private CharacterModelManager characterModelManager;
-    [SerializeField] private ZoneManager currentZone;
+    [SerializeField] private List<PlayerStatBlock> playerCharacters;
+    [SerializeField] private PlayerStatBlock selectedPlayerCharacter;
     [SerializeField] private GameObject characterPrefab;
-    [SerializeField] private GameObject playerArmaturePrefab;
+
+    [Header("Controller and UI")]
+    [SerializeField] private PlayerController playerController;
+    [SerializeField] private GameObject playerControllerPrefab;
     [SerializeField] private GameObject mainCamera;
     [SerializeField] private UIManager uiManager;
-    [SerializeField] private WorkBench workBenchPrefab; // New prefab reference
+    [SerializeField] private GameObject playerFollowCam;
 
-    private List<WorkBench> ownedWorkbenches = new List<WorkBench>(); // New list for owned workbenches
+    [Header("Inventory and Workbenches")]
     [SerializeField] private Transform workbenchParent;
     [SerializeField] private Inventory homeInventory;
+    [SerializeField] private WorkBench workBenchPrefab;
+    private List<WorkBench> ownedWorkbenches = new List<WorkBench>();
 
-    [SerializeField] private bool debugMode = true; // Debug mode for zone loading messages
-    private bool isInitialized = false; 
-    private Task initializationTask; 
+    [Header("Debug")]
+    [SerializeField] private bool debugMode = true;
+    #endregion
 
-    // Fields for handling server response
-    private bool loginResultReceived = false;
-    private LoginResult currentLoginResult;
+    #region State Management
+    private bool isInitialized = false;
+    private Task initializationTask;
+
+    // Network response tracking - managed by NetworkRequestManager
+    internal bool loginResultReceived = false;
+    internal LoginResult currentLoginResult;
     
-    // Fields for handling character list response
-    private bool characterListReceived = false;
-    private CharacterListResult currentCharacterListResult;
+    internal bool characterListReceived = false;
+    internal CharacterListResult currentCharacterListResult;
     
-    // Fields for handling inventory responses
-    private bool accountInventoryReceived = false;
-    private AccountInventoryResult currentAccountInventoryResult;
-    private bool characterInventoryReceived = false;
-    private CharacterInventoryResult currentCharacterInventoryResult;
+    internal bool accountInventoryReceived = false;
+    internal AccountInventoryResult currentAccountInventoryResult;
+
+    internal bool characterInventoryReceived = false;
+    internal CharacterInventoryResult currentCharacterInventoryResult;
     
-    // Fields for handling workbench responses
-    private bool workbenchListReceived = false;
-    private WorkbenchListResult currentWorkbenchListResult;
+    internal bool workbenchListReceived = false;
+    internal WorkbenchListResult currentWorkbenchListResult;
 
-    // Fields for handling waypoint responses
-    private bool waypointResultReceived = false;
-    private WaypointResult currentWaypointResult;
+    internal bool waypointResultReceived = false;
+    internal WaypointResult currentWaypointResult;
 
-    // Fields for handling player zone info responses
-    private bool playerZoneInfoResultReceived = false;
-    private PlayerZoneInfoResult currentPlayerZoneInfoResult;
+    internal bool playerZoneInfoResultReceived = false;
+    internal PlayerZoneInfoResult currentPlayerZoneInfoResult;
 
-    // Fields for handling server zone load responses
-    private bool serverZoneLoadResultReceived = false;
-    private ServerZoneLoadResult currentServerZoneLoadResult;
+    internal bool serverZoneLoadResultReceived = false;
+    internal ServerZoneLoadResult currentServerZoneLoadResult;
+    #endregion
+
+    #region Helper Access Properties
+    internal ulong SteamID { get => steamID; set => steamID = value; }
+    internal int AccountID { get => accountID; set => accountID = value; }
+    internal string AccountName { get => accountName; set => accountName = value; }
+    internal string Email => email;
+    internal string IPAddress => ipAddress;
+    internal string Language => language;
+    internal string FamilyName { get => familyName; set => familyName = value; }
+    
+    internal GameObject CharListParent => charListParent;
+    internal List<PlayerStatBlock> PlayerCharacters => playerCharacters;
+    internal PlayerStatBlock SelectedPlayerCharacter { get => selectedPlayerCharacter; set => selectedPlayerCharacter = value; }
+    internal GameObject CharacterPrefab => characterPrefab;
+    internal GameObject PlayerControllerPrefab => playerControllerPrefab;
+    internal UIManager UIManager => uiManager;
+    internal bool DebugMode => debugMode;
+    
+    internal Inventory HomeInventory => homeInventory;
+    internal WorkBench WorkBenchPrefab => workBenchPrefab;
+    internal Transform WorkbenchParent => workbenchParent;
+    internal List<WorkBench> OwnedWorkbenches => ownedWorkbenches;
+    #endregion
 
     #region Singleton
     public static PlayerManager Instance { get; private set; }
+    
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -80,16 +113,24 @@ public class PlayerManager : NetworkBehaviour
             Destroy(gameObject); 
             return;
         }
-        Debug.Log($"Setting PlayerManager instance for owner: {gameObject.name}");
 
         if (Instance == null)
         {
             Instance = this;
         }
 
-        SceneManager.sceneLoaded += OnSceneLoaded; 
+        // Initialize helper classes
+        InitializeHelpers();
 
-        //TODO Steam Set ID
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void InitializeHelpers()
+    {
+        characterHandler = new CharacterDataHandler(this);
+        inventoryHandler = new InventoryDataHandler(this);
+        zoneCoordinator = new ZoneCoordinator(this);
+        requestManager = new NetworkRequestManager(this);
     }
     #endregion
 
@@ -98,11 +139,9 @@ public class PlayerManager : NetworkBehaviour
     {
         if (playerCharacters == null)
         {
-            playerCharacters = new List<PlayerCharacter>();
+            playerCharacters = new List<PlayerStatBlock>();
         }
     }
-
-    //This is to be called when starting PlayerManager
     public async void OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
     {
         accountID = newAccountID;
@@ -116,391 +155,42 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log("PlayerManager Initialization Started...");
         isInitialized = false;
 
-        // 1. Perform Login Asynchronously
-        Debug.Log("Performing login...");
-        bool loginSuccess = await LoginAsync();
+        // Use helper classes for initialization
+        bool loginSuccess = await characterHandler.LoginAsync();
         if (!loginSuccess)
         {
             Debug.LogError("Login failed. PlayerManager initialization halted.");
-            // Handle login failure (e.g., show error message, return to main menu)
-            return; // Stop initialization
+            return;
         }
-        Debug.Log($"Login successful. AccountID: {accountID}, AccountName: {accountName}");
 
-        // 2. Load Character List Asynchronously
-        Debug.Log("Loading character list...");
-        await SetCharactersListAsync();
-        Debug.Log($"Character list loaded. Found {playerCharacters.Count} characters.");
-
-        // 3. Final setup (e.g., initial UI setup)
-        if (selectedPlayerCharacter != null)
-        {
-            // Make sure UIManager setup is called AFTER character is selected/loaded
-            uiManager.SetupUI(selectedPlayerCharacter);
-            Debug.Log($"UIManager setup for selected character: {selectedPlayerCharacter.GetCharacterName()}");
-        }
-        else
-        {
-            // Handle case where no character exists - maybe prompt creation?
-            Debug.Log("No character selected after loading list.");
-        }
+        await characterHandler.LoadCharactersAsync();
+        await SetupInitialCharacter();
+        await inventoryHandler.LoadAllInventoriesAsync();
 
         isInitialized = true;
         Debug.Log("PlayerManager Initialization Complete.");
-        // Optionally invoke an event here if other systems depend on PlayerManager being ready
+    }
+    private async Task SetupInitialCharacter()
+    {
+        if (selectedPlayerCharacter != null)
+        {
+            uiManager.SetupUI(selectedPlayerCharacter);
+            Debug.Log($"UIManager setup for selected character: {selectedPlayerCharacter.GetCharacterName()}");
+        }
 
         if (MenuManager.Instance != null)
         {
-            if (selectedPlayerCharacter != null)
-            {
-                MenuManager.Instance.SetCharCreationButton(false); 
-            }
-            else
-            {
-                MenuManager.Instance.SetCharCreationButton(true); 
-            }
-        }
-        await LoadAllCharactersInventoryAsync();
-        await LoadAccountInventoryAsync();
-    }
-    private async Task<bool> LoginAsync()
-    {
-        try
-        {
-            Debug.Log("Client: Requesting login from server...");
-            
-            // Wait for server response with a timeout
-            loginResultReceived = false;
-            currentLoginResult = default;
-            
-            // Send RPC to server-side PlayerManager which will call ServerManager
-            RequestLoginServerRpc(steamID, accountID, accountName, email, ipAddress, language);
-            
-            // Wait for response with timeout
-            float timeout = 10f; // 10 seconds timeout
-            float elapsed = 0f;
-            while (!loginResultReceived && elapsed < timeout)
-            {
-                await Task.Delay(100); // Wait 100ms
-                elapsed += 0.1f;
-            }
-            
-            if (!loginResultReceived)
-            {
-                Debug.LogError("Login request timed out.");
-                return false;
-            }
-            
-            if (currentLoginResult.Success)
-            {
-                return ProcessLoginResult(currentLoginResult);
-            }
-            else
-            {
-                Debug.LogError($"Login failed: {currentLoginResult.ErrorMessage}");
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Exception during LoginAsync: {ex.Message}\n{ex.StackTrace}");
-            return false;
-        }
-    }
-
-    private bool ProcessLoginResult(LoginResult result)
-    {
-        try
-        {
-            // Update local variables with server response
-            accountID = result.AccountID;
-            accountName = result.AccountName;
-            steamID = result.SteamID;
-            
-            Debug.Log($"Login successful. AccountID: {accountID}, AccountName: {accountName}, SteamID: {steamID}");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Exception during ProcessLoginResult: {ex.Message}\n{ex.StackTrace}");
-            return false;
-        }
-    }
-
-    private async Task<bool> LoginViaSteamIDAsync()
-    {
-        // This method is no longer needed - LoginAsync handles both cases
-        return await LoginAsync();
-    }
-
-    private async Task<bool> LoginViaAccountIDAsync()
-    {
-        // This method is no longer needed - LoginAsync handles both cases
-        return await LoginAsync();
-    }
-
-    public void HandleLoginResult(LoginResult result)
-    {
-        currentLoginResult = result;
-        loginResultReceived = true;
-        Debug.Log($"Client: Received login result. Success: {result.Success}");
-    }
-
-    public async Task SetCharactersListAsync()
-    {
-        if (accountID <= 0)
-        {
-            Debug.LogError("Cannot set character list: Invalid AccountID.");
-            return;
-        }
-
-        Debug.Log("Client: Requesting character list from server...");
-        
-        // Wait for server response with a timeout
-        characterListReceived = false;
-        currentCharacterListResult = default;
-        
-        // Send RPC to server-side PlayerManager which will call ServerManager
-        RequestCharacterListServerRpc(accountID);
-        
-        // Wait for response with timeout
-        float timeout = 10f; // 10 seconds timeout
-        float elapsed = 0f;
-        while (!characterListReceived && elapsed < timeout)
-        {
-            await Task.Delay(100); // Wait 100ms
-            elapsed += 0.1f;
-        }
-        
-        if (!characterListReceived)
-        {
-            Debug.LogError("Character list request timed out.");
-            return;
-        }
-        
-        if (currentCharacterListResult.Success)
-        {
-            await ProcessCharacterListResult(currentCharacterListResult);
-        }
-        else
-        {
-            Debug.LogError($"Character list request failed: {currentCharacterListResult.ErrorMessage}");
-        }
-    }
-
-    private async Task ProcessCharacterListResult(CharacterListResult result)
-    {
-        try
-        {
-            ClearPlayerListExceptSelected();
-
-            Debug.Log($"Processing {result.Characters.Length} character data entries from server.");
-
-            foreach (CharacterData characterData in result.Characters)
-            {
-                // --- Check if character already loaded (avoid duplicates) ---
-                bool alreadyExists = false;
-                if (selectedPlayerCharacter != null && selectedPlayerCharacter.GetCharacterID() == characterData.CharID)
-                {
-                    Debug.Log($"Character ID {characterData.CharID} is already the selected character.");
-                    if (!playerCharacters.Contains(selectedPlayerCharacter))
-                    {
-                        playerCharacters.Add(selectedPlayerCharacter);
-                    }
-                    alreadyExists = true;
-                }
-                else if (playerCharacters.Any(pc => pc.GetCharacterID() == characterData.CharID))
-                {
-                    Debug.Log($"Character ID {characterData.CharID} already exists in the loaded list.");
-                    alreadyExists = true;
-                }
-
-                if (alreadyExists)
-                {
-                    continue; // Skip to next character in the list
-                }
-
-                // Load FamilyName ONLY if not already set (e.g., from Account data)
-                if (string.IsNullOrEmpty(familyName) && !string.IsNullOrEmpty(characterData.FamilyName))
-                {
-                    familyName = characterData.FamilyName;
-                }
-
-                // --- Instantiate and Setup Character ---
-                if (characterPrefab == null || charListParent == null || characterModelManager == null)
-                {
-                    Debug.LogError("Missing prefabs or parent references for character instantiation!");
-                    continue;
-                }
-
-                Debug.Log($"Instantiating new character object for ID: {characterData.CharID}, Name: {characterData.Name}");
-                PlayerCharacter newCharacter = Instantiate(characterPrefab, charListParent.transform).GetComponent<PlayerCharacter>();
-                if (newCharacter == null)
-                {
-                    Debug.LogError("Failed to get PlayerCharacter component from prefab!");
-                    continue;
-                }
-
-                GameObject charModelInstance = characterModelManager.GetCharacterModel(characterData.Race, characterData.Gender);
-                if (charModelInstance != null)
-                {
-                    GameObject charGameObject = Instantiate(charModelInstance, newCharacter.transform);
-                    newCharacter.AddModel(charGameObject);
-                }
-                else
-                {
-                    Debug.LogWarning($"Could not find character model for Race:{characterData.Race} Gender:{characterData.Gender}");
-                }
-
-                Camera cameraToSet = mainCamera.GetComponent<Camera>();
-                newCharacter.SetUpCharacter(
-                    characterData.Name, 
-                    characterData.CharID, 
-                    characterData.Title, 
-                    characterData.ZoneID, 
-                    characterData.Race, 
-                    characterData.Face, 
-                    characterData.Gender, 
-                    characterData.CombatExp, 
-                    characterData.CraftingExp, 
-                    characterData.ArcaneExp, 
-                    characterData.SpiritExp, 
-                    characterData.VeilExp, 
-                    cameraToSet, 
-                    characterData.XLoc, 
-                    characterData.YLoc, 
-                    characterData.ZLoc,
-                    characterData.SpeciesStrength,
-                    characterData.SpeciesDexterity,
-                    characterData.SpeciesConstitution,
-                    characterData.SpeciesIntelligence,
-                    characterData.SpeciesSpirit
-                );
-                playerCharacters.Add(newCharacter);
-
-                // Set as selected if none currently selected
-                if (selectedPlayerCharacter == null)
-                {
-                    Debug.Log($"Setting first loaded character as selected: {characterData.Name}");
-                    selectedPlayerCharacter = newCharacter;
-                    selectedPlayerCharacter.ActivateModel(true);
-                    InstantiateCharacter();
-                }
-            }
-
-            // Ensure selected character exists and is in the list after processing
-            if (selectedPlayerCharacter != null && !playerCharacters.Contains(selectedPlayerCharacter))
-            {
-                Debug.LogWarning("Selected character was not found in or added to the character list during processing. Adding now.");
-                playerCharacters.Add(selectedPlayerCharacter);
-            }
-            else if (selectedPlayerCharacter == null && playerCharacters.Count > 0)
-            {
-                // Fallback: if still no character selected, pick the first one from the populated list
-                Debug.LogWarning("No character was selected during load, selecting first from list.");
-                selectedPlayerCharacter = playerCharacters[0];
-                selectedPlayerCharacter.ActivateModel(true);
-                InstantiateCharacter();
-            }
-
-            Debug.Log($"Finished processing character list. Final count: {playerCharacters.Count}. Selected: {selectedPlayerCharacter?.GetCharacterName() ?? "None"}");
-
-            // Load inventory for all characters
-            await LoadAllCharactersInventoryAsync();
-
-            // Load owned workbenches
-            await LoadOwnedWorkbenchesAsync();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Exception during ProcessCharacterListResult: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
-
-    private async Task LoadOwnedWorkbenchesAsync()
-    {
-        Debug.Log("Client: Requesting workbench list from server...");
-        
-        // Wait for server response with a timeout
-        workbenchListReceived = false;
-        currentWorkbenchListResult = default;
-        
-        // Send RPC to server-side PlayerManager which will call ServerManager
-        RequestWorkbenchListServerRpc(accountID);
-        
-        // Wait for response with timeout
-        float timeout = 10f; // 10 seconds timeout
-        float elapsed = 0f;
-        while (!workbenchListReceived && elapsed < timeout)
-        {
-            await Task.Delay(100); // Wait 100ms
-            elapsed += 0.1f;
-        }
-        
-        if (!workbenchListReceived)
-        {
-            Debug.LogError("Workbench list request timed out.");
-            return;
-        }
-        
-        if (currentWorkbenchListResult.Success)
-        {
-            await ProcessOwnedWorkbenches(currentWorkbenchListResult.Workbenches);
-        }
-        else
-        {
-            Debug.LogError($"Workbench list request failed: {currentWorkbenchListResult.ErrorMessage}");
+            MenuManager.Instance.SetCharCreationButton(selectedPlayerCharacter == null);
         }
     }
     #endregion
 
-    public void InstantiateCharacter()
-    {
-        if (playerArmaturePrefab != null)
-        {
-            controlledCharacter = Instantiate(playerArmaturePrefab);
-        }
-        else 
-        { 
-            Debug.LogError("PlayerArmature reference missing!"); 
-        }
-    }
+    #region Public Interface
     public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
-        if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
-        {
-            Debug.LogError("Character or Family Name cannot be empty");
-            // TODO: Show UI popup
-            return;
-        }
-
-        if (accountID <= 0)
-        {
-            Debug.LogError("Cannot create character: Invalid AccountID.");
-            return;
-        }
-
-        Debug.Log($"Attempting to create character: {characterName}");
-        // Use await with the async version
-        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(accountID, familyName, characterName, null, 1, charRace, charGender, charFace);
-
-        if (created)
-        {
-            Debug.Log("Character creation successful, reloading character list...");
-            // Reload the list asynchronously
-            await SetCharactersListAsync();
-            // Setup UI for the newly selected character (SetCharactersList should select the first one)
-            if (selectedPlayerCharacter != null && uiManager != null)
-            {
-                uiManager.SetupUI(selectedPlayerCharacter);
-            }
-        }
-        else
-        {
-            Debug.LogError($"Failed to create character: {characterName}");
-            // TODO: Show UI feedback for failure
-        }
+        await characterHandler.CreateCharacterAsync(characterName, charRace, charGender, charFace);
     }
+    #endregion
 
     #region Save To Database
     public async Task SaveCharacter()
@@ -515,7 +205,7 @@ public class PlayerManager : NetworkBehaviour
         Transform transform = selectedPlayerCharacter.transform;
 
         bool success = await CharactersManager.Instance.UpdateCharacterAsync(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetTitle(), 
-            (int)(transform.position.x * 100), (int)(transform.position.y * 100), (int)(transform.position.z * 100), selectedPlayerCharacter.GetCombatExp(), 
+            (int)(playerController.GetPosition().x * 100), (int)(playerController.GetPosition().y * 100), (int)(playerController.GetPosition().z * 100), selectedPlayerCharacter.GetCombatExp(), 
             selectedPlayerCharacter.GetCraftingExp(), selectedPlayerCharacter.GetArcaneExp(), selectedPlayerCharacter.GetSpiritExp(), selectedPlayerCharacter.GetVeilExp());
         if (!success)
         {
@@ -534,11 +224,11 @@ public class PlayerManager : NetworkBehaviour
     {
 
     }
-    public async Task SaveCharacterEquipment(PlayerCharacter character)
+    public async Task SaveCharacterEquipment(PlayerStatBlock character)
     {
 
     }
-    public async Task SaveCharacterInventory(PlayerCharacter character)
+    public async Task SaveCharacterInventory(PlayerStatBlock character)
     {
 
     }
@@ -600,7 +290,7 @@ public class PlayerManager : NetworkBehaviour
             await LoadCharacterInventoryAsync(character);
         }
     }
-    private async Task LoadCharacterInventoryAsync(PlayerCharacter character)
+    private async Task LoadCharacterInventoryAsync(PlayerStatBlock character)
     {
         int charId = character.GetCharacterID();
         Inventory inventory = character.GetInventory();
@@ -655,8 +345,7 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"Character inventory request failed for character {character.GetCharacterName()}: {currentCharacterInventoryResult.ErrorMessage}");
         }
     }
-
-    private async Task ProcessCharacterInventoryResult(CharacterInventoryResult result, PlayerCharacter character, Inventory inventory, EquipmentProfile equipment)
+    private async Task ProcessCharacterInventoryResult(CharacterInventoryResult result, PlayerStatBlock character, Inventory inventory, EquipmentProfile equipment)
     {
         int charId = character.GetCharacterID();
         
@@ -792,7 +481,6 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"Account inventory request failed: {currentAccountInventoryResult.ErrorMessage}");
         }
     }
-
     private async Task ProcessAccountInventoryResult(AccountInventoryResult result)
     {
         try
@@ -863,7 +551,41 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"Error processing account inventory result: {ex.Message}\n{ex.StackTrace}");
         }
     }
+    private async Task LoadOwnedWorkbenchesAsync()
+    {
+        Debug.Log("Client: Requesting workbench list from server...");
 
+        // Wait for server response with a timeout
+        workbenchListReceived = false;
+        currentWorkbenchListResult = default;
+
+        // Send RPC to server-side PlayerManager which will call ServerManager
+        RequestWorkbenchListServerRpc(accountID);
+
+        // Wait for response with timeout
+        float timeout = 10f; // 10 seconds timeout
+        float elapsed = 0f;
+        while (!workbenchListReceived && elapsed < timeout)
+        {
+            await Task.Delay(100); // Wait 100ms
+            elapsed += 0.1f;
+        }
+
+        if (!workbenchListReceived)
+        {
+            Debug.LogError("Workbench list request timed out.");
+            return;
+        }
+
+        if (currentWorkbenchListResult.Success)
+        {
+            await ProcessOwnedWorkbenches(currentWorkbenchListResult.Workbenches);
+        }
+        else
+        {
+            Debug.LogError($"Workbench list request failed: {currentWorkbenchListResult.ErrorMessage}");
+        }
+    }
     private async Task ProcessOwnedWorkbenches(WorkbenchData[] workbenches)
     {
         Debug.Log($"Processing {workbenches.Length} owned workbenches from server.");
@@ -899,136 +621,6 @@ public class PlayerManager : NetworkBehaviour
         }
         Debug.Log($"Finished processing {ownedWorkbenches.Count} owned workbenches.");
     }
-    #endregion
-
-    #region Setters
-    public async Task SetSelectedCharacterAsync() 
-    {
-        try
-        {
-            if (selectedPlayerCharacter == null)
-            {
-                Debug.LogError("PlayerManager: Cannot set selected character - no character selected");
-                return;
-            }
-
-            int characterID = selectedPlayerCharacter.GetCharacterID();
-            
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Setting selected character {characterID}, determining appropriate zone...");
-            }
-
-            // Step 1: Get player zone information from WorldManager
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoAsync(characterID);
-            
-            if (string.IsNullOrEmpty(zoneInfo.ZoneName))
-            {
-                Debug.LogError($"PlayerManager: Failed to determine zone for character {characterID}");
-                return;
-            }
-
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Character {characterID} should be in zone '{zoneInfo.ZoneName}' (ZoneID: {zoneInfo.ZoneID})");
-            }
-
-            // Step 2: Load the appropriate zone scene
-            await LoadCharacterZoneAsync(zoneInfo);
-
-            // Step 3: Set up character spawn position
-            await SetupCharacterSpawnAsync(zoneInfo);
-
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Successfully set selected character {characterID} in zone '{zoneInfo.ZoneName}'");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager: Error in SetSelectedCharacterAsync: {ex.Message}");
-        }
-    }
-
-    private async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
-    {
-        try
-        {
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Requesting zone info for character {characterID} via RPC...");
-            }
-
-            // Wait for server response with a timeout
-            playerZoneInfoResultReceived = false;
-            currentPlayerZoneInfoResult = default;
-            
-            // Send RPC to server-side PlayerManager which will call ServerManager
-            RequestPlayerZoneInfoServerRpc(characterID);
-            
-            // Wait for response with timeout
-            float timeout = 10f; // 10 seconds timeout
-            float elapsed = 0f;
-            while (!playerZoneInfoResultReceived && elapsed < timeout)
-            {
-                await Task.Delay(100); // Wait 100ms
-                elapsed += 0.1f;
-            }
-            
-            if (!playerZoneInfoResultReceived)
-            {
-                Debug.LogError($"PlayerManager: Player zone info request timed out for character {characterID}");
-                
-                // Return fallback zone info
-                return new PlayerZoneInfo
-                {
-                    CharacterID = characterID,
-                    ZoneID = 1,
-                    ZoneName = "IthoriaSouth",
-                    SpawnPosition = null,
-                    RequiresMarketWaypoint = true
-                };
-            }
-            
-            if (currentPlayerZoneInfoResult.Success)
-            {
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Received zone info - Zone: {currentPlayerZoneInfoResult.ZoneInfo.ZoneName}, RequiresWaypoint: {currentPlayerZoneInfoResult.ZoneInfo.RequiresMarketWaypoint}");
-                }
-                return currentPlayerZoneInfoResult.ZoneInfo;
-            }
-            else
-            {
-                Debug.LogError($"PlayerManager: Zone info request failed: {currentPlayerZoneInfoResult.ErrorMessage}");
-                
-                // Return fallback zone info on error
-                return new PlayerZoneInfo
-                {
-                    CharacterID = characterID,
-                    ZoneID = 1,
-                    ZoneName = "IthoriaSouth",
-                    SpawnPosition = null,
-                    RequiresMarketWaypoint = true
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager: Error getting player zone info via RPC: {ex.Message}");
-            
-            // Return fallback zone info on exception
-            return new PlayerZoneInfo
-            {
-                CharacterID = characterID,
-                ZoneID = 1,
-                ZoneName = "IthoriaSouth",
-                SpawnPosition = null,
-                RequiresMarketWaypoint = true
-            };
-        }
-    }
-
     private async Task LoadCharacterZoneAsync(PlayerZoneInfo zoneInfo)
     {
         try
@@ -1051,7 +643,7 @@ public class PlayerManager : NetworkBehaviour
                         Debug.Log($"PlayerManager: Unloading MainMenu for transition to gameplay zone '{zoneInfo.ZoneName}'");
                     }
                     PersistentSceneManager.Instance.UnloadMainMenuForGameplay();
-                    
+
                     // Small delay to ensure MainMenu unloading completes
                     await Task.Delay(500);
                 }
@@ -1066,7 +658,7 @@ public class PlayerManager : NetworkBehaviour
 
             // Step 3: Load zone on client side
             bool loadSuccess = false;
-            
+
             if (PersistentSceneManager.Instance != null)
             {
                 // Load zone additively
@@ -1084,7 +676,7 @@ public class PlayerManager : NetworkBehaviour
                 {
                     await Task.Delay(100);
                     timer += 0.1f;
-                    
+
                     // Check if zone is loaded
                     if (PersistentSceneManager.Instance.IsZoneLoaded(zoneInfo.ZoneName))
                     {
@@ -1127,59 +719,22 @@ public class PlayerManager : NetworkBehaviour
             throw;
         }
     }
+    #endregion
 
-    private async Task RequestServerLoadZoneAsync(string zoneName)
+    #region Setters
+    public async Task SetSelectedCharacterAsync()
     {
-        if (debugMode)
+        if (selectedPlayerCharacter == null)
         {
-            Debug.Log($"PlayerManager: Requesting server to load zone '{zoneName}'");
+            Debug.LogError("PlayerManager: Cannot set selected character - no character selected");
+            return;
         }
-
-        // Setup response waiting
-        serverZoneLoadResultReceived = false;
-        currentServerZoneLoadResult = default;
-
-        // Send RPC to server
-        RequestServerLoadZoneServerRpc(zoneName);
-
-        // Wait for server response with timeout
-        float timeout = 20f; // 20 second timeout for server zone loading
-        float timer = 0f;
-
-        while (timer < timeout && !serverZoneLoadResultReceived)
-        {
-            await Task.Delay(100);
-            timer += 0.1f;
-        }
-
-        if (!serverZoneLoadResultReceived)
-        {
-            Debug.LogError($"PlayerManager: Server zone load request timeout for zone '{zoneName}'");
-            throw new Exception($"Server zone load timeout for '{zoneName}'");
-        }
-
-        if (!currentServerZoneLoadResult.Success)
-        {
-            Debug.LogError($"PlayerManager: Server failed to load zone '{zoneName}': {currentServerZoneLoadResult.ErrorMessage}");
-            throw new Exception($"Server zone load failed: {currentServerZoneLoadResult.ErrorMessage}");
-        }
-
-        if (debugMode)
-        {
-            Debug.Log($"PlayerManager: Server successfully loaded zone '{zoneName}'");
-        }
+        await zoneCoordinator.SetupSelectedCharacterAsync(selectedPlayerCharacter);        
     }
-
     private async Task SetupCharacterSpawnAsync(PlayerZoneInfo zoneInfo)
     {
         try
         {
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: SetupCharacterSpawnAsync ENTRY - Character: {zoneInfo.CharacterID}, Zone: {zoneInfo.ZoneName}");
-                Debug.Log($"PlayerManager: ZoneInfo - RequiresMarketWaypoint: {zoneInfo.RequiresMarketWaypoint}, SpawnPosition: {(zoneInfo.SpawnPosition?.ToString() ?? "NULL")}");
-            }
-
             Vector3 spawnPosition;
 
             if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
@@ -1235,14 +790,8 @@ public class PlayerManager : NetworkBehaviour
             }
 
             // Set the character position
-            selectedPlayerCharacter.SetCharacterPosition(spawnPosition, debugMode);
+            //selectedPlayerCharacter.SetCharacterPosition(spawnPosition, debugMode);
 
-            // Additional debug information
-            if (debugMode)
-            {
-                // Call the debug method to get comprehensive position info
-                selectedPlayerCharacter.DebugCharacterPosition();
-            }
 
             // Additional check: if position is Vector3.zero, that might be the "hanging in space" issue
             if (spawnPosition == Vector3.zero)
@@ -1257,21 +806,100 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"PlayerManager: Error setting up character spawn: {ex.Message}");
         }
     }
+    public void OnSetFamilyName(string newFamilyName)
+    {
+        if (GetCharacters().Count == 0)
+        {
+            familyName = newFamilyName;
+        }
+    }
+    public void OnSetAccountName(string newAccountName)
+    {
+        accountName = newAccountName;
+    }
+    #endregion
 
+    #region Getters
+    public string GetFamilyName()
+    {
+        return familyName;
+    }
+    public async Task<PlayerStatBlock> GetSelectedPlayerCharacterAsync()
+    {
+        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        {
+            Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
+            await initializationTask;
+        }
+        return selectedPlayerCharacter;
+    }
+    public PlayerStatBlock GetSelectedPlayerCharacter()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
+        }
+        return selectedPlayerCharacter;
+    }
+    public UIManager GetUIManager()
+    {
+        return uiManager;
+    }
+    private async Task<List<PlayerStatBlock>> GetCharactersAsync()
+    {
+        // Ensure initialization is complete before returning list
+        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        {
+            Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
+            await initializationTask;
+        }
+        // If list is still somehow null after init, re-initialize (shouldn't happen)
+        if (playerCharacters == null)
+        {
+            playerCharacters = new List<PlayerStatBlock>();
+            Debug.LogWarning("PlayerCharacters list was null after initialization check, re-initializing.");
+            // Re-running SetCharactersListAsync might be needed if initialization failed partially
+            // For now, just return the empty list. Consider more robust recovery if needed.
+            // await SetCharactersListAsync();
+        }
+        return playerCharacters;
+    }
+    public List<PlayerStatBlock> GetCharacters()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
+            // Cannot easily await here. Return current state.
+            return playerCharacters ?? new List<PlayerStatBlock>(); // Return empty list if null
+        }
+        return playerCharacters;
+    }
+    public List<WorkBench> GetOwnedWorkbenches()
+    {
+        return ownedWorkbenches;
+    }
+    public Inventory GetHomeInventory()
+    {
+        return homeInventory;
+    }
+    public PlayerController GetControlledCharacter()
+    {
+        return playerController;
+    }
     private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
     {
         int maxRetries = 3;
         int retryDelay = 1000; // 1 second between retries
-        
+
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             if (debugMode)
             {
                 Debug.Log($"PlayerManager: Attempting to get MarketWaypoint for zone '{zoneName}' (attempt {attempt}/{maxRetries})");
             }
-            
+
             Vector3? waypointPosition = await GetMarketWaypointPositionAsync(zoneName);
-            
+
             if (waypointPosition.HasValue)
             {
                 if (debugMode)
@@ -1280,7 +908,7 @@ public class PlayerManager : NetworkBehaviour
                 }
                 return waypointPosition;
             }
-            
+
             // Wait before retrying (except on last attempt)
             if (attempt < maxRetries)
             {
@@ -1291,11 +919,10 @@ public class PlayerManager : NetworkBehaviour
                 await Task.Delay(retryDelay);
             }
         }
-        
+
         Debug.LogWarning($"PlayerManager: Failed to find MarketWaypoint for zone '{zoneName}' after {maxRetries} attempts");
         return null;
     }
-
     private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
     {
         if (selectedPlayerCharacter == null)
@@ -1316,16 +943,16 @@ public class PlayerManager : NetworkBehaviour
             // Wait for server response with a timeout
             waypointResultReceived = false;
             currentWaypointResult = default;
-            
+
             // Send RPC to server-side PlayerManager which will call ServerManager
             WaypointRequest request = new WaypointRequest
             {
                 CharacterID = characterID,
                 ZoneName = zoneName
             };
-            
+
             RequestWaypointServerRpc(request);
-            
+
             // Wait for response with timeout
             float timeout = 10f; // 10 seconds timeout
             float elapsed = 0f;
@@ -1334,13 +961,13 @@ public class PlayerManager : NetworkBehaviour
                 await Task.Delay(100); // Wait 100ms
                 elapsed += 0.1f;
             }
-            
+
             if (!waypointResultReceived)
             {
                 Debug.LogError($"PlayerManager: Waypoint request timed out for zone '{zoneName}'");
                 return null;
             }
-            
+
             if (currentWaypointResult.Success && currentWaypointResult.HasWaypoint)
             {
                 if (debugMode)
@@ -1364,100 +991,85 @@ public class PlayerManager : NetworkBehaviour
             return null;
         }
     }
-
-    public void OnSetFamilyName(string newFamilyName)
+    private async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
     {
-        if (GetCharacters().Count == 0)
+        try
         {
-            familyName = newFamilyName;
-        }
-    }
-    public void OnSetAccountName(string newAccountName)
-    {
-        accountName = newAccountName;
-    }
-    #endregion
-
-    #region Getters
-    public string GetFamilyName()
-    {
-        return familyName;
-    }
-    public async Task<PlayerCharacter> GetSelectedPlayerCharacterAsync() // Make async
-    {
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
-        {
-            Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
-            await initializationTask;
-        }
-        if (selectedPlayerCharacter == null && isInitialized && playerCharacters != null && playerCharacters.Count > 0)
-        {
-            // If initialization finished but selection is null (e.g., no characters found initially),
-            // try setting the list again or selecting the first.
-            Debug.LogWarning("SelectedPlayerCharacter is null after init, attempting to select first.");
-            // Optionally re-run list loading if needed: await SetCharactersListAsync();
-            if (playerCharacters.Count > 0)
+            if (debugMode)
             {
-                selectedPlayerCharacter = playerCharacters[0];
-                // SetSelectedCharacter(); // Defer DB update
-                selectedPlayerCharacter.ActivateModel(true);
-                InstantiateCharacter();
+                Debug.Log($"PlayerManager: Requesting zone info for character {characterID} via RPC...");
+            }
+
+            // Wait for server response with a timeout
+            playerZoneInfoResultReceived = false;
+            currentPlayerZoneInfoResult = default;
+
+            // Send RPC to server-side PlayerManager which will call ServerManager
+            RequestPlayerZoneInfoServerRpc(characterID);
+
+            // Wait for response with timeout
+            float timeout = 10f; // 10 seconds timeout
+            float elapsed = 0f;
+            while (!playerZoneInfoResultReceived && elapsed < timeout)
+            {
+                await Task.Delay(100); // Wait 100ms
+                elapsed += 0.1f;
+            }
+
+            if (!playerZoneInfoResultReceived)
+            {
+                Debug.LogError($"PlayerManager: Player zone info request timed out for character {characterID}");
+
+                // Return fallback zone info
+                return new PlayerZoneInfo
+                {
+                    CharacterID = characterID,
+                    ZoneID = 1,
+                    ZoneName = "IthoriaSouth",
+                    SpawnPosition = null,
+                    RequiresMarketWaypoint = true
+                };
+            }
+
+            if (currentPlayerZoneInfoResult.Success)
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"PlayerManager: Received zone info - Zone: {currentPlayerZoneInfoResult.ZoneInfo.ZoneName}, RequiresWaypoint: {currentPlayerZoneInfoResult.ZoneInfo.RequiresMarketWaypoint}");
+                }
+                return currentPlayerZoneInfoResult.ZoneInfo;
+            }
+            else
+            {
+                Debug.LogError($"PlayerManager: Zone info request failed: {currentPlayerZoneInfoResult.ErrorMessage}");
+
+                // Return fallback zone info on error
+                return new PlayerZoneInfo
+                {
+                    CharacterID = characterID,
+                    ZoneID = 1,
+                    ZoneName = "IthoriaSouth",
+                    SpawnPosition = null,
+                    RequiresMarketWaypoint = true
+                };
             }
         }
-        return selectedPlayerCharacter;
-    }
-    public PlayerCharacter GetSelectedPlayerCharacter()
-    {
-        if (!isInitialized)
+        catch (Exception ex)
         {
-            Debug.LogWarning("Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
-            // Cannot easily await. Return current state.
+            Debug.LogError($"PlayerManager: Error getting player zone info via RPC: {ex.Message}");
+
+            // Return fallback zone info on exception
+            return new PlayerZoneInfo
+            {
+                CharacterID = characterID,
+                ZoneID = 1,
+                ZoneName = "IthoriaSouth",
+                SpawnPosition = null,
+                RequiresMarketWaypoint = true
+            };
         }
-        // Original logic had a call to SetCharactersList here - this caused the hang.
-        // We now rely on initialization in Start to populate the list.
-        return selectedPlayerCharacter;
     }
-    public UIManager GetUIManager()
-    {
-        return uiManager;
-    }
-    private async Task<List<PlayerCharacter>> GetCharactersAsync()
-    {
-        // Ensure initialization is complete before returning list
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
-        {
-            Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
-            await initializationTask;
-        }
-        // If list is still somehow null after init, re-initialize (shouldn't happen)
-        if (playerCharacters == null)
-        {
-            playerCharacters = new List<PlayerCharacter>();
-            Debug.LogWarning("PlayerCharacters list was null after initialization check, re-initializing.");
-            // Re-running SetCharactersListAsync might be needed if initialization failed partially
-            // For now, just return the empty list. Consider more robust recovery if needed.
-            // await SetCharactersListAsync();
-        }
-        return playerCharacters;
-    }
-    public List<PlayerCharacter> GetCharacters()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
-            // Cannot easily await here. Return current state.
-            return playerCharacters ?? new List<PlayerCharacter>(); // Return empty list if null
-        }
-        return playerCharacters;
-    }
-    public List<WorkBench> GetOwnedWorkbenches()
-    {
-        return ownedWorkbenches;
-    }
-    public Inventory GetHomeInventory()
-    {
-        return homeInventory;
-    }
+
     #endregion
 
     #region Helpers
@@ -1514,12 +1126,12 @@ public class PlayerManager : NetworkBehaviour
     {
         if (playerCharacters == null) 
         { 
-            playerCharacters = new List<PlayerCharacter>(); 
+            playerCharacters = new List<PlayerStatBlock>(); 
         }
 
         // Use a temporary list to avoid issues while iterating and modifying
-        List<PlayerCharacter> toRemove = new List<PlayerCharacter>();
-        foreach (PlayerCharacter character in playerCharacters)
+        List<PlayerStatBlock> toRemove = new List<PlayerStatBlock>();
+        foreach (PlayerStatBlock character in playerCharacters)
         {
             if (character == null) continue; // Skip null entries if any
             if (selectedPlayerCharacter == null || character.GetInstanceID() != selectedPlayerCharacter.GetInstanceID())
@@ -1528,7 +1140,7 @@ public class PlayerManager : NetworkBehaviour
             }
         }
 
-        foreach (PlayerCharacter characterToRemove in toRemove)
+        foreach (PlayerStatBlock characterToRemove in toRemove)
         {
             playerCharacters.Remove(characterToRemove);
             if (characterToRemove.gameObject != null)
@@ -1550,10 +1162,6 @@ public class PlayerManager : NetworkBehaviour
         {
             mainCamera.SetActive(isActive);
         }
-        if (controlledCharacter != null)
-        {
-            controlledCharacter.SetActive(isActive);
-        }
         if (playerFollowCam != null)
         {
             playerFollowCam.SetActive(isActive);
@@ -1561,11 +1169,6 @@ public class PlayerManager : NetworkBehaviour
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (debugMode)
-        {
-            Debug.Log($"PlayerManager: Scene loaded - {scene.name} (Mode: {mode})");
-        }
-
         // The new zone loading system handles character positioning during SetSelectedCharacterAsync
         // No need to search for ZoneManager here since it's server-only
         
@@ -1583,11 +1186,52 @@ public class PlayerManager : NetworkBehaviour
         ResourceItem resourceItem = null; //TODO
         return resourceItem;
     }
+    private async Task RequestServerLoadZoneAsync(string zoneName)
+    {
+        if (debugMode)
+        {
+            Debug.Log($"PlayerManager: Requesting server to load zone '{zoneName}'");
+        }
+
+        // Setup response waiting
+        serverZoneLoadResultReceived = false;
+        currentServerZoneLoadResult = default;
+
+        // Send RPC to server
+        RequestServerLoadZoneServerRpc(zoneName);
+
+        // Wait for server response with timeout
+        float timeout = 20f; // 20 second timeout for server zone loading
+        float timer = 0f;
+
+        while (timer < timeout && !serverZoneLoadResultReceived)
+        {
+            await Task.Delay(100);
+            timer += 0.1f;
+        }
+
+        if (!serverZoneLoadResultReceived)
+        {
+            Debug.LogError($"PlayerManager: Server zone load request timeout for zone '{zoneName}'");
+            throw new Exception($"Server zone load timeout for '{zoneName}'");
+        }
+
+        if (!currentServerZoneLoadResult.Success)
+        {
+            Debug.LogError($"PlayerManager: Server failed to load zone '{zoneName}': {currentServerZoneLoadResult.ErrorMessage}");
+            throw new Exception($"Server zone load failed: {currentServerZoneLoadResult.ErrorMessage}");
+        }
+
+        if (debugMode)
+        {
+            Debug.Log($"PlayerManager: Server successfully loaded zone '{zoneName}'");
+        }
+    }
     #endregion
 
     #region Login Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
+    internal void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1636,11 +1280,18 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log($"PlayerManager (Client): Received login result from server. Success: {result.Success}");
         HandleLoginResult(result);
     }
+
+    public void HandleLoginResult(LoginResult result)
+    {
+        currentLoginResult = result;
+        loginResultReceived = true;
+        Debug.Log($"Client: Received login result. Success: {result.Success}");
+    }
     #endregion
 
     #region Character List Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestCharacterListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    internal void RequestCharacterListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1701,7 +1352,7 @@ public class PlayerManager : NetworkBehaviour
 
     #region Inventory Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    internal void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1763,7 +1414,7 @@ public class PlayerManager : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    private void RequestCharacterInventoryServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    internal void RequestCharacterInventoryServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1824,7 +1475,7 @@ public class PlayerManager : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    private void RequestWorkbenchListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    internal void RequestWorkbenchListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1885,7 +1536,7 @@ public class PlayerManager : NetworkBehaviour
 
     #region Waypoint Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestWaypointServerRpc(WaypointRequest request, ServerRpcParams serverRpcParams = default)
+    internal void RequestWaypointServerRpc(WaypointRequest request, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1958,7 +1609,7 @@ public class PlayerManager : NetworkBehaviour
 
     #region Player Zone Info Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestPlayerZoneInfoServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    internal void RequestPlayerZoneInfoServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -2030,7 +1681,7 @@ public class PlayerManager : NetworkBehaviour
 
     #region Server Zone Load Communication Bridge RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
+    internal void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
