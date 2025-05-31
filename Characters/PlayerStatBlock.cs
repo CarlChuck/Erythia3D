@@ -109,6 +109,49 @@ public class PlayerStatBlock : StatBlock
 
     #endregion
 
+    #region Data Transfer Methods (for Multiplayer)
+    public void SetCharacterData(int charID, string charName, string title, int race, int gender, int face)
+    {
+        characterID = charID;
+        SetCharacterName(charName);
+        characterTitle = title;
+        SetCharacterGender(gender);
+        // TODO: Implement race and face setting when those systems are ready
+    }
+    
+    public void SetCharacterID(int charID)
+    {
+        characterID = charID;
+    }
+    
+    public void SetExperience(int combatExp, int craftingExp, int arcaneExp, int spiritExp, int veilExp)
+    {
+        combatXp = combatExp;
+        craftingXp = craftingExp;
+        arcaneXp = arcaneExp;
+        spiritXp = spiritExp;
+        veilXp = veilExp;
+    }
+    
+    public int GetRace()
+    {
+        // TODO: Return proper race when race system is implemented
+        return 0; // Placeholder
+    }
+    
+    public int GetGender()
+    {
+        // TODO: Access the gender field from StatBlock base class
+        return 0; // Placeholder - need to make gender accessible from base class
+    }
+    
+    public int GetFace()
+    {
+        // TODO: Return proper face when face system is implemented
+        return 0; // Placeholder
+    }
+    #endregion
+
     #region Items
     public void OnPickup(object obj)
     {

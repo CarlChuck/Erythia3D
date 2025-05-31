@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System;
 using System.Linq;
 using UnityEditor.Profiling.Memory.Experimental;
+using Unity.Cinemachine;
 
 public class PlayerManager : NetworkBehaviour
 {
@@ -30,14 +31,24 @@ public class PlayerManager : NetworkBehaviour
     [SerializeField] private GameObject charListParent;
     [SerializeField] private List<PlayerStatBlock> playerCharacters;
     [SerializeField] private PlayerStatBlock selectedPlayerCharacter;
-    [SerializeField] private GameObject characterPrefab;
+    [SerializeField] private GameObject characterPrefab; // Legacy - for menu display only
 
-    [Header("Controller and UI")]
-    [SerializeField] private PlayerController playerController;
-    [SerializeField] private GameObject playerControllerPrefab;
-    [SerializeField] private GameObject mainCamera;
-    [SerializeField] private UIManager uiManager;
+    [Header("Multiplayer Prefabs")]
+    [SerializeField] private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
+    
+    [Header("Camera and UI (Persistent)")]
+    [SerializeField] private Camera mainCamera;
     [SerializeField] private GameObject playerFollowCam;
+    [SerializeField] private UIManager uiManager;
+    
+    [Header("Current References")]
+    [SerializeField] private NetworkedPlayer currentNetworkedPlayer; // Currently controlled networked player
+    [SerializeField] private List<NetworkedPlayer> allNetworkedPlayers = new List<NetworkedPlayer>(); // All networked players
+    
+    [Header("Legacy References")]
+    [SerializeField] private PlayerController playerController; // Legacy
+    [SerializeField] private GameObject playerControllerPrefab; // Legacy
+    [SerializeField] private GameObject localPlayerControllerPrefab; // Legacy
 
     [Header("Inventory and Workbenches")]
     [SerializeField] private Transform workbenchParent;
@@ -201,11 +212,25 @@ public class PlayerManager : NetworkBehaviour
             return;
         }
         Debug.Log($"Saving character {selectedPlayerCharacter.GetCharacterName()} (ID: {selectedPlayerCharacter.GetCharacterID()})");
-        // Use the async version from CharactersManager
-        Transform transform = selectedPlayerCharacter.transform;
+        
+        // Get position from current networked player if available, otherwise fallback
+        Vector3 characterPosition = Vector3.zero;
+        if (currentNetworkedPlayer != null)
+        {
+            characterPosition = currentNetworkedPlayer.GetPosition();
+        }
+        else if (playerController != null)
+        {
+            characterPosition = playerController.GetPosition();
+        }
+        else
+        {
+            Debug.LogWarning("No valid position source found for character saving");
+            characterPosition = selectedPlayerCharacter.transform.position;
+        }
 
         bool success = await CharactersManager.Instance.UpdateCharacterAsync(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetTitle(), 
-            (int)(playerController.GetPosition().x * 100), (int)(playerController.GetPosition().y * 100), (int)(playerController.GetPosition().z * 100), selectedPlayerCharacter.GetCombatExp(), 
+            (int)(characterPosition.x * 100), (int)(characterPosition.y * 100), (int)(characterPosition.z * 100), selectedPlayerCharacter.GetCombatExp(), 
             selectedPlayerCharacter.GetCraftingExp(), selectedPlayerCharacter.GetArcaneExp(), selectedPlayerCharacter.GetSpiritExp(), selectedPlayerCharacter.GetVeilExp());
         if (!success)
         {
@@ -729,7 +754,104 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot set selected character - no character selected");
             return;
         }
+        
+        // For multiplayer, spawn the player using the split prefab system
+        await SpawnMultiplayerCharacterAsync();
         await zoneCoordinator.SetupSelectedCharacterAsync(selectedPlayerCharacter);        
+    }
+    
+    private async Task SpawnMultiplayerCharacterAsync()
+    {
+        try
+        {
+            Debug.Log("PlayerManager: Spawning multiplayer character using new architecture");
+            
+            // Get zone info for spawn position
+            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoAsync(selectedPlayerCharacter.GetCharacterID());
+            
+            Vector3 spawnPosition = Vector3.zero;
+            if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
+            {
+                spawnPosition = zoneInfo.SpawnPosition.Value;
+            }
+            else
+            {
+                Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
+                spawnPosition = waypointPosition ?? Vector3.zero;
+            }
+            
+            // Spawn the networked player (contains everything needed)
+            await SpawnNetworkedPlayerAsync(spawnPosition);
+            
+            Debug.Log("PlayerManager: Multiplayer character spawning complete");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager: Error spawning multiplayer character: {ex.Message}");
+        }
+    }
+    
+    private async Task SpawnNetworkedPlayerAsync(Vector3 spawnPosition)
+    {
+        if (networkedPlayerPrefab == null)
+        {
+            Debug.LogError("PlayerManager: Networked player prefab not assigned!");
+            return;
+        }
+        
+        // Request server to spawn the networked player
+        Debug.Log($"PlayerManager: Requesting networked player spawn at position: {spawnPosition}");
+        SpawnNetworkedPlayerServerRpc(spawnPosition, selectedPlayerCharacter.GetCharacterID());
+        
+        // Wait for networked player to be spawned and assigned
+        float timeout = 10f;
+        float elapsed = 0f;
+        while (currentNetworkedPlayer == null && elapsed < timeout)
+        {
+            await Task.Delay(100);
+            elapsed += 0.1f;
+        }
+        
+        if (currentNetworkedPlayer == null)
+        {
+            throw new Exception("Timeout waiting for networked player to spawn");
+        }
+    }
+    
+
+    
+    private void TransferCharacterDataToNetworkedPlayer(NetworkedPlayer networkedPlayer)
+    {
+        if (selectedPlayerCharacter == null || networkedPlayer == null) return;
+        
+        // Transfer PlayerStatBlock data to the networked player
+        var networkedStatBlock = networkedPlayer.GetPlayerStatBlock();
+        if (networkedStatBlock != null)
+        {
+            // Copy character data
+            networkedStatBlock.SetCharacterData(
+                selectedPlayerCharacter.GetCharacterID(),
+                selectedPlayerCharacter.GetCharacterName(),
+                selectedPlayerCharacter.GetTitle(),
+                selectedPlayerCharacter.GetRace(),
+                selectedPlayerCharacter.GetGender(),
+                selectedPlayerCharacter.GetFace()
+            );
+            
+            // Copy stats
+            networkedStatBlock.SetExperience(
+                selectedPlayerCharacter.GetCombatExp(),
+                selectedPlayerCharacter.GetCraftingExp(),
+                selectedPlayerCharacter.GetArcaneExp(),
+                selectedPlayerCharacter.GetSpiritExp(),
+                selectedPlayerCharacter.GetVeilExp()
+            );
+            
+            // Update reference to point to networked character
+            selectedPlayerCharacter = networkedStatBlock;
+            
+            Debug.Log($"PlayerManager: Character data transferred to networked player: {selectedPlayerCharacter.GetCharacterName()}");
+        }
     }
     private async Task SetupCharacterSpawnAsync(PlayerZoneInfo zoneInfo)
     {
@@ -885,6 +1007,105 @@ public class PlayerManager : NetworkBehaviour
     public PlayerController GetControlledCharacter()
     {
         return playerController;
+    }
+    
+    /// <summary>
+    /// Get the main camera for raycast operations
+    /// </summary>
+    public Camera GetMainCamera()
+    {
+        return mainCamera;
+    }
+    
+    /// <summary>
+    /// Set the camera target to follow a specific transform
+    /// </summary>
+    public void SetCameraTarget(Transform target)
+    {
+        if (playerFollowCam != null)
+        {
+            var cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
+            if (cinemachineCamera != null)
+            {
+                cinemachineCamera.Follow = target;
+                cinemachineCamera.LookAt = target;
+                Debug.Log($"PlayerManager: Camera target set to {target.name}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Get the currently controlled networked player
+    /// </summary>
+    public NetworkedPlayer GetCurrentNetworkedPlayer()
+    {
+        return currentNetworkedPlayer;
+    }
+    
+    /// <summary>
+    /// Get all networked players
+    /// </summary>
+    public List<NetworkedPlayer> GetAllNetworkedPlayers()
+    {
+        return allNetworkedPlayers;
+    }
+    
+    /// <summary>
+    /// Switch control to a different networked player
+    /// </summary>
+    public void SwitchControlTo(NetworkedPlayer targetPlayer)
+    {
+        if (targetPlayer == null || !allNetworkedPlayers.Contains(targetPlayer))
+        {
+            Debug.LogWarning("PlayerManager: Cannot switch to invalid networked player");
+            return;
+        }
+        
+        // Deactivate current player control
+        if (currentNetworkedPlayer != null)
+        {
+            currentNetworkedPlayer.SetPlayerControlled(false);
+        }
+        
+        // Activate new player control
+        currentNetworkedPlayer = targetPlayer;
+        currentNetworkedPlayer.SetPlayerControlled(true);
+        
+        // Update camera target
+        SetCameraTarget(currentNetworkedPlayer.transform);
+        
+        Debug.Log($"PlayerManager: Switched control to {targetPlayer.name}");
+    }
+    
+    /// <summary>
+    /// Register a networked player with the manager
+    /// </summary>
+    public void RegisterNetworkedPlayer(NetworkedPlayer networkedPlayer)
+    {
+        if (!allNetworkedPlayers.Contains(networkedPlayer))
+        {
+            allNetworkedPlayers.Add(networkedPlayer);
+            Debug.Log($"PlayerManager: Registered networked player {networkedPlayer.name}");
+        }
+    }
+    
+    /// <summary>
+    /// Unregister a networked player from the manager
+    /// </summary>
+    public void UnregisterNetworkedPlayer(NetworkedPlayer networkedPlayer)
+    {
+        if (allNetworkedPlayers.Contains(networkedPlayer))
+        {
+            allNetworkedPlayers.Remove(networkedPlayer);
+            
+            // If this was the current player, clear the reference
+            if (currentNetworkedPlayer == networkedPlayer)
+            {
+                currentNetworkedPlayer = null;
+            }
+            
+            Debug.Log($"PlayerManager: Unregistered networked player {networkedPlayer.name}");
+        }
     }
     private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
     {
@@ -1158,13 +1379,20 @@ public class PlayerManager : NetworkBehaviour
     }
     public void PlayerManagerControlSetActive(bool isActive)
     {
+        // Camera control for the new architecture
         if (mainCamera != null)
         {
-            mainCamera.SetActive(isActive);
+            mainCamera.gameObject.SetActive(isActive);
         }
         if (playerFollowCam != null)
         {
             playerFollowCam.SetActive(isActive);
+        }
+        
+        // Legacy PlayerController support
+        if (playerController != null)
+        {
+            playerController.SetLocalComponentsActive(isActive);
         }
     }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -1739,6 +1967,113 @@ public class PlayerManager : NetworkBehaviour
         if (debugMode)
         {
             Debug.Log($"Client: Received server zone load result. Success: {result.Success}");
+        }
+    }
+    #endregion
+
+    #region Networked Player Spawning RPCs
+    [ServerRpc(RequireOwnership = false)]
+    private void SpawnNetworkedPlayerServerRpc(Vector3 spawnPosition, int characterID, ServerRpcParams serverRpcParams = default)
+    {
+        if (!IsServer)
+        {
+            Debug.LogError("PlayerManager: SpawnNetworkedPlayerServerRpc called on non-server!");
+            return;
+        }
+        
+        if (networkedPlayerPrefab == null)
+        {
+            Debug.LogError("PlayerManager (Server): Networked player prefab not assigned!");
+            return;
+        }
+        
+        try
+        {
+            Debug.Log($"PlayerManager (Server): Spawning networked player at {spawnPosition} for character {characterID}");
+            
+            // Instantiate the networked player
+            GameObject networkedPlayerObj = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
+            NetworkObject networkObject = networkedPlayerObj.GetComponent<NetworkObject>();
+            
+            if (networkObject == null)
+            {
+                Debug.LogError("PlayerManager (Server): Networked player prefab missing NetworkObject component!");
+                Destroy(networkedPlayerObj);
+                return;
+            }
+            
+            // Setup character data on the networked player before spawning
+            var statBlock = networkedPlayerObj.GetComponent<PlayerStatBlock>();
+            if (statBlock != null)
+            {
+                // Set basic character ID for identification
+                statBlock.SetCharacterID(characterID);
+            }
+            
+            // Spawn with ownership to the requesting client
+            networkObject.SpawnWithOwnership(serverRpcParams.Receive.SenderClientId);
+            
+            // Notify the client about their spawned networked player
+            NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, 
+                new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
+                    }
+                });
+                
+            Debug.Log($"PlayerManager (Server): Networked player spawned successfully with NetworkObjectId: {networkObject.NetworkObjectId}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager (Server): Error spawning networked player: {ex.Message}");
+        }
+    }
+    
+    [ClientRpc]
+    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, ClientRpcParams clientRpcParams = default)
+    {
+        try
+        {
+            Debug.Log($"PlayerManager (Client): Received notification of spawned networked player with ID: {networkObjectId}");
+            
+            // Find the spawned networked player
+            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObj))
+            {
+                NetworkedPlayer networkedPlayer = networkObj.GetComponent<NetworkedPlayer>();
+                
+                if (networkedPlayer == null)
+                {
+                    Debug.LogError("PlayerManager (Client): Spawned networked player missing NetworkedPlayer component!");
+                    return;
+                }
+                
+                // Register the networked player
+                RegisterNetworkedPlayer(networkedPlayer);
+                
+                // Set as current if this is the owner
+                if (networkObj.IsOwner)
+                {
+                    currentNetworkedPlayer = networkedPlayer;
+                    
+                    // Set camera target to follow this player
+                    SetCameraTarget(networkedPlayer.transform);
+                    
+                    // Transfer character data
+                    TransferCharacterDataToNetworkedPlayer(networkedPlayer);
+                }
+                
+                Debug.Log("PlayerManager (Client): Successfully found and assigned networked player");
+            }
+            else
+            {
+                Debug.LogError($"PlayerManager (Client): Could not find spawned networked player with ID: {networkObjectId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"PlayerManager (Client): Error handling networked player spawn notification: {ex.Message}");
         }
     }
     #endregion
