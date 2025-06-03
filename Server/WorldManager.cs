@@ -305,13 +305,10 @@ public class WorldManager : MonoBehaviour
             }
             Debug.Log($"WorldManager: ServerManager found, proceeding with ZoneManager spawn");
 
-            // Determine spawn parent
-            Transform spawnParent = zoneManagerParent != null ? zoneManagerParent : transform;
-            Debug.Log($"WorldManager: Using spawn parent: {spawnParent.name}");
 
             // Instantiate ZoneManager prefab
             Debug.Log($"WorldManager: Instantiating ZoneManager prefab for zone '{zoneName}'");
-            GameObject zoneManagerInstance = Instantiate(zoneManagerPrefab, spawnParent);
+            GameObject zoneManagerInstance = Instantiate(zoneManagerPrefab);
             zoneManagerInstance.name = $"ZoneManager_{zoneName}";
             Debug.Log($"WorldManager: ZoneManager GameObject created with name '{zoneManagerInstance.name}'");
 

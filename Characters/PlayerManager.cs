@@ -28,6 +28,7 @@ public class PlayerManager : NetworkBehaviour
     [SerializeField] private string ipAddress = "0.0.0.0";
 
     [Header("Character Management")]
+    [SerializeField] private CharacterModelManager characterModelManager; // Handles character models
     [SerializeField] private GameObject charListParent;
     [SerializeField] private List<PlayerStatBlock> playerCharacters;
     [SerializeField] private PlayerStatBlock selectedPlayerCharacter;
@@ -755,29 +756,41 @@ public class PlayerManager : NetworkBehaviour
             return;
         }
         
-        // For multiplayer, spawn the player using the split prefab system
+        // First, get zone info and load the zone
+        await zoneCoordinator.SetupSelectedCharacterAsync(selectedPlayerCharacter);
+        
+        // After zone is loaded, spawn the multiplayer character with waypoints available
         await SpawnMultiplayerCharacterAsync();
-        await zoneCoordinator.SetupSelectedCharacterAsync(selectedPlayerCharacter);        
     }
     
     private async Task SpawnMultiplayerCharacterAsync()
     {
         try
         {
-            Debug.Log("PlayerManager: Spawning multiplayer character using new architecture");
+            Debug.Log("PlayerManager: Spawning multiplayer character using new architecture (zone already loaded)");
             
-            // Get zone info for spawn position
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoAsync(selectedPlayerCharacter.GetCharacterID());
-            
-            Vector3 spawnPosition = Vector3.zero;
-            if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
+            if (selectedPlayerCharacter == null)
             {
-                spawnPosition = zoneInfo.SpawnPosition.Value;
+                Debug.LogError("PlayerManager: Cannot spawn character - no character selected");
+                return;
             }
-            else
+            
+            // Get spawn position from ZoneCoordinator (zone is already loaded at this point)
+            Vector3 spawnPosition = await zoneCoordinator.GetSpawnPositionAsync(selectedPlayerCharacter.GetCharacterID());
+            
+            if (debugMode)
             {
-                Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
-                spawnPosition = waypointPosition ?? Vector3.zero;
+                Debug.Log($"PlayerManager: Received spawn position from ZoneCoordinator: {spawnPosition}");
+                
+                // Additional verification that this is not zero/origin
+                if (spawnPosition == Vector3.zero)
+                {
+                    Debug.LogWarning("PlayerManager: WARNING - Spawn position is Vector3.zero! This might indicate waypoint lookup failed.");
+                }
+                else
+                {
+                    Debug.Log($"PlayerManager: Spawn position appears valid: {spawnPosition}");
+                }
             }
             
             // Spawn the networked player (contains everything needed)
@@ -801,7 +814,7 @@ public class PlayerManager : NetworkBehaviour
         
         // Request server to spawn the networked player
         Debug.Log($"PlayerManager: Requesting networked player spawn at position: {spawnPosition}");
-        SpawnNetworkedPlayerServerRpc(spawnPosition, selectedPlayerCharacter.GetCharacterID());
+        SpawnNetworkedPlayerServerRpc(spawnPosition, selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetRace(), selectedPlayerCharacter.GetGender());
         
         // Wait for networked player to be spawned and assigned
         float timeout = 10f;
@@ -816,118 +829,8 @@ public class PlayerManager : NetworkBehaviour
         {
             throw new Exception("Timeout waiting for networked player to spawn");
         }
-    }
-    
+    }    
 
-    
-    private void TransferCharacterDataToNetworkedPlayer(NetworkedPlayer networkedPlayer)
-    {
-        if (selectedPlayerCharacter == null || networkedPlayer == null) return;
-        
-        // Transfer PlayerStatBlock data to the networked player
-        var networkedStatBlock = networkedPlayer.GetPlayerStatBlock();
-        if (networkedStatBlock != null)
-        {
-            // Copy character data
-            networkedStatBlock.SetCharacterData(
-                selectedPlayerCharacter.GetCharacterID(),
-                selectedPlayerCharacter.GetCharacterName(),
-                selectedPlayerCharacter.GetTitle(),
-                selectedPlayerCharacter.GetRace(),
-                selectedPlayerCharacter.GetGender(),
-                selectedPlayerCharacter.GetFace()
-            );
-            
-            // Copy stats
-            networkedStatBlock.SetExperience(
-                selectedPlayerCharacter.GetCombatExp(),
-                selectedPlayerCharacter.GetCraftingExp(),
-                selectedPlayerCharacter.GetArcaneExp(),
-                selectedPlayerCharacter.GetSpiritExp(),
-                selectedPlayerCharacter.GetVeilExp()
-            );
-            
-            // Update reference to point to networked character
-            selectedPlayerCharacter = networkedStatBlock;
-            
-            Debug.Log($"PlayerManager: Character data transferred to networked player: {selectedPlayerCharacter.GetCharacterName()}");
-        }
-    }
-    private async Task SetupCharacterSpawnAsync(PlayerZoneInfo zoneInfo)
-    {
-        try
-        {
-            Vector3 spawnPosition;
-
-            if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
-            {
-                // Use stored database position
-                spawnPosition = zoneInfo.SpawnPosition.Value;
-                
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Using stored spawn position: {spawnPosition}");
-                }
-            }
-            else
-            {
-                // Need to get MarketWaypoint position from server with retry logic
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Database position not available, requesting MarketWaypoint for zone '{zoneInfo.ZoneName}'");
-                }
-
-                Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
-                
-                if (waypointPosition.HasValue)
-                {
-                    spawnPosition = waypointPosition.Value;
-                    
-                    if (debugMode)
-                    {
-                        Debug.Log($"PlayerManager: Using MarketWaypoint position: {spawnPosition}");
-                    }
-                }
-                else
-                {
-                    // Fallback to origin if no waypoint found
-                    spawnPosition = Vector3.zero;
-                    Debug.LogWarning($"PlayerManager: No MarketWaypoint found for zone '{zoneInfo.ZoneName}', using origin (0,0,0)");
-                }
-            }
-
-            // Verify selectedPlayerCharacter exists
-            if (selectedPlayerCharacter == null)
-            {
-                Debug.LogError("PlayerManager: selectedPlayerCharacter is NULL! Cannot set position.");
-                return;
-            }
-
-            // Log character info before positioning
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Character before positioning - Name: {selectedPlayerCharacter.GetCharacterName()}, ID: {selectedPlayerCharacter.GetCharacterID()}");
-                Debug.Log($"PlayerManager: Character current position: {selectedPlayerCharacter.transform.position}");
-                Debug.Log($"PlayerManager: About to set character position to: {spawnPosition}");
-            }
-
-            // Set the character position
-            //selectedPlayerCharacter.SetCharacterPosition(spawnPosition, debugMode);
-
-
-            // Additional check: if position is Vector3.zero, that might be the "hanging in space" issue
-            if (spawnPosition == Vector3.zero)
-            {
-                Debug.LogWarning($"PlayerManager: WARNING - Character positioned at origin (0,0,0). This might cause 'hanging in space' if there's no ground at origin!");
-                Debug.LogWarning($"PlayerManager: Consider adding a ground check or alternative spawn position logic.");
-            }
-
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager: Error setting up character spawn: {ex.Message}");
-        }
-    }
     public void OnSetFamilyName(string newFamilyName)
     {
         if (GetCharacters().Count == 0)
@@ -1022,14 +925,50 @@ public class PlayerManager : NetworkBehaviour
     /// </summary>
     public void SetCameraTarget(Transform target)
     {
-        if (playerFollowCam != null)
+        if (target == null)
         {
-            var cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
-            if (cinemachineCamera != null)
+            Debug.LogError("PlayerManager: Cannot set camera target - target transform is null");
+            return;
+        }
+        
+        if (playerFollowCam == null)
+        {
+            Debug.LogError("PlayerManager: Cannot set camera target - playerFollowCam is null");
+            return;
+        }
+        
+        var cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
+        if (cinemachineCamera != null)
+        {
+            // Set both Follow and LookAt to the target
+            cinemachineCamera.Follow = target;
+            cinemachineCamera.LookAt = target;
+            
+            Debug.Log($"PlayerManager: Camera target set to '{target.name}' at position: {target.position}");
+            Debug.Log($"PlayerManager: Camera Follow: {cinemachineCamera.Follow?.name}, LookAt: {cinemachineCamera.LookAt?.name}");
+            
+            // Additional validation
+            if (Vector3.Distance(target.position, Vector3.zero) < 0.1f)
             {
-                cinemachineCamera.Follow = target;
-                cinemachineCamera.LookAt = target;
-                Debug.Log($"PlayerManager: Camera target set to {target.name}");
+                Debug.LogWarning($"PlayerManager: Camera target '{target.name}' is at or very close to origin (0,0,0) - this might cause camera issues");
+            }
+        }
+        else
+        {
+            Debug.LogError($"PlayerManager: PlayerFollowCam '{playerFollowCam.name}' does not have a CinemachineCamera component!");
+            
+            // Try to find CinemachineCamera in children
+            var childCinemachine = playerFollowCam.GetComponentInChildren<CinemachineCamera>();
+            if (childCinemachine != null)
+            {
+                Debug.Log($"PlayerManager: Found CinemachineCamera in child: '{childCinemachine.name}' - using that instead");
+                childCinemachine.Follow = target;
+                childCinemachine.LookAt = target;
+                Debug.Log($"PlayerManager: Child camera target set to '{target.name}'");
+            }
+            else
+            {
+                Debug.LogError("PlayerManager: No CinemachineCamera component found in PlayerFollowCam or its children!");
             }
         }
     }
@@ -1071,10 +1010,20 @@ public class PlayerManager : NetworkBehaviour
         currentNetworkedPlayer = targetPlayer;
         currentNetworkedPlayer.SetPlayerControlled(true);
         
-        // Update camera target
-        SetCameraTarget(currentNetworkedPlayer.transform);
-        
-        Debug.Log($"PlayerManager: Switched control to {targetPlayer.name}");
+        // Update camera target to follow the PlayerCameraRoot (proper camera anchor)
+        Transform cameraTargetTransform = currentNetworkedPlayer.GetPlayerCameraRoot();
+        if (cameraTargetTransform != null)
+        {
+            SetCameraTarget(cameraTargetTransform);
+            Debug.Log($"PlayerManager: Switched control to {targetPlayer.name}, camera following PlayerCameraRoot: {cameraTargetTransform.name}");
+        }
+        else
+        {
+            // Fallback to movement transform if PlayerCameraRoot not found
+            Transform movementTransform = currentNetworkedPlayer.GetMovementTransform();
+            SetCameraTarget(movementTransform);
+            Debug.LogWarning($"PlayerManager: PlayerCameraRoot not found for {targetPlayer.name}, using movement transform: {movementTransform.name}");
+        }
     }
     
     /// <summary>
@@ -1107,190 +1056,14 @@ public class PlayerManager : NetworkBehaviour
             Debug.Log($"PlayerManager: Unregistered networked player {networkedPlayer.name}");
         }
     }
-    private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
+
+    /// <summary>
+    /// Get the CharacterModelManager for spawning character models
+    /// </summary>
+    public CharacterModelManager GetCharacterModelManager()
     {
-        int maxRetries = 3;
-        int retryDelay = 1000; // 1 second between retries
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Attempting to get MarketWaypoint for zone '{zoneName}' (attempt {attempt}/{maxRetries})");
-            }
-
-            Vector3? waypointPosition = await GetMarketWaypointPositionAsync(zoneName);
-
-            if (waypointPosition.HasValue)
-            {
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Successfully found MarketWaypoint on attempt {attempt}");
-                }
-                return waypointPosition;
-            }
-
-            // Wait before retrying (except on last attempt)
-            if (attempt < maxRetries)
-            {
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: MarketWaypoint not found, waiting {retryDelay}ms before retry...");
-                }
-                await Task.Delay(retryDelay);
-            }
-        }
-
-        Debug.LogWarning($"PlayerManager: Failed to find MarketWaypoint for zone '{zoneName}' after {maxRetries} attempts");
-        return null;
+        return characterModelManager;
     }
-    private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
-    {
-        if (selectedPlayerCharacter == null)
-        {
-            Debug.LogError("PlayerManager: Cannot get waypoint - no character selected");
-            return null;
-        }
-
-        int characterID = selectedPlayerCharacter.GetCharacterID();
-
-        try
-        {
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Requesting MarketWaypoint position for zone '{zoneName}' via RPC...");
-            }
-
-            // Wait for server response with a timeout
-            waypointResultReceived = false;
-            currentWaypointResult = default;
-
-            // Send RPC to server-side PlayerManager which will call ServerManager
-            WaypointRequest request = new WaypointRequest
-            {
-                CharacterID = characterID,
-                ZoneName = zoneName
-            };
-
-            RequestWaypointServerRpc(request);
-
-            // Wait for response with timeout
-            float timeout = 10f; // 10 seconds timeout
-            float elapsed = 0f;
-            while (!waypointResultReceived && elapsed < timeout)
-            {
-                await Task.Delay(100); // Wait 100ms
-                elapsed += 0.1f;
-            }
-
-            if (!waypointResultReceived)
-            {
-                Debug.LogError($"PlayerManager: Waypoint request timed out for zone '{zoneName}'");
-                return null;
-            }
-
-            if (currentWaypointResult.Success && currentWaypointResult.HasWaypoint)
-            {
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Received MarketWaypoint position: {currentWaypointResult.WaypointPosition}");
-                }
-                return currentWaypointResult.WaypointPosition;
-            }
-            else
-            {
-                if (debugMode)
-                {
-                    Debug.LogWarning($"PlayerManager: No waypoint available for zone '{zoneName}': {currentWaypointResult.ErrorMessage}");
-                }
-                return null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager: Error getting MarketWaypoint position via RPC: {ex.Message}");
-            return null;
-        }
-    }
-    private async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
-    {
-        try
-        {
-            if (debugMode)
-            {
-                Debug.Log($"PlayerManager: Requesting zone info for character {characterID} via RPC...");
-            }
-
-            // Wait for server response with a timeout
-            playerZoneInfoResultReceived = false;
-            currentPlayerZoneInfoResult = default;
-
-            // Send RPC to server-side PlayerManager which will call ServerManager
-            RequestPlayerZoneInfoServerRpc(characterID);
-
-            // Wait for response with timeout
-            float timeout = 10f; // 10 seconds timeout
-            float elapsed = 0f;
-            while (!playerZoneInfoResultReceived && elapsed < timeout)
-            {
-                await Task.Delay(100); // Wait 100ms
-                elapsed += 0.1f;
-            }
-
-            if (!playerZoneInfoResultReceived)
-            {
-                Debug.LogError($"PlayerManager: Player zone info request timed out for character {characterID}");
-
-                // Return fallback zone info
-                return new PlayerZoneInfo
-                {
-                    CharacterID = characterID,
-                    ZoneID = 1,
-                    ZoneName = "IthoriaSouth",
-                    SpawnPosition = null,
-                    RequiresMarketWaypoint = true
-                };
-            }
-
-            if (currentPlayerZoneInfoResult.Success)
-            {
-                if (debugMode)
-                {
-                    Debug.Log($"PlayerManager: Received zone info - Zone: {currentPlayerZoneInfoResult.ZoneInfo.ZoneName}, RequiresWaypoint: {currentPlayerZoneInfoResult.ZoneInfo.RequiresMarketWaypoint}");
-                }
-                return currentPlayerZoneInfoResult.ZoneInfo;
-            }
-            else
-            {
-                Debug.LogError($"PlayerManager: Zone info request failed: {currentPlayerZoneInfoResult.ErrorMessage}");
-
-                // Return fallback zone info on error
-                return new PlayerZoneInfo
-                {
-                    CharacterID = characterID,
-                    ZoneID = 1,
-                    ZoneName = "IthoriaSouth",
-                    SpawnPosition = null,
-                    RequiresMarketWaypoint = true
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager: Error getting player zone info via RPC: {ex.Message}");
-
-            // Return fallback zone info on exception
-            return new PlayerZoneInfo
-            {
-                CharacterID = characterID,
-                ZoneID = 1,
-                ZoneName = "IthoriaSouth",
-                SpawnPosition = null,
-                RequiresMarketWaypoint = true
-            };
-        }
-    }
-
     #endregion
 
     #region Helpers
@@ -1973,48 +1746,31 @@ public class PlayerManager : NetworkBehaviour
 
     #region Networked Player Spawning RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void SpawnNetworkedPlayerServerRpc(Vector3 spawnPosition, int characterID, ServerRpcParams serverRpcParams = default)
+    private void SpawnNetworkedPlayerServerRpc(Vector3 spawnPosition, int characterID, int characterRace, int characterGender, ServerRpcParams serverRpcParams = default)
     {
         if (!IsServer)
         {
             Debug.LogError("PlayerManager: SpawnNetworkedPlayerServerRpc called on non-server!");
             return;
         }
-        
-        if (networkedPlayerPrefab == null)
-        {
-            Debug.LogError("PlayerManager (Server): Networked player prefab not assigned!");
-            return;
-        }
-        
+
         try
         {
-            Debug.Log($"PlayerManager (Server): Spawning networked player at {spawnPosition} for character {characterID}");
-            
-            // Instantiate the networked player
             GameObject networkedPlayerObj = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
             NetworkObject networkObject = networkedPlayerObj.GetComponent<NetworkObject>();
+            NetworkedPlayer networkedPlayer = networkedPlayerObj.GetComponent<NetworkedPlayer>();            
             
-            if (networkObject == null)
-            {
-                Debug.LogError("PlayerManager (Server): Networked player prefab missing NetworkObject component!");
-                Destroy(networkedPlayerObj);
-                return;
-            }
-            
-            // Setup character data on the networked player before spawning
-            var statBlock = networkedPlayerObj.GetComponent<PlayerStatBlock>();
-            if (statBlock != null)
-            {
-                // Set basic character ID for identification
-                statBlock.SetCharacterID(characterID);
-            }
-            
-            // Spawn with ownership to the requesting client
             networkObject.SpawnWithOwnership(serverRpcParams.Receive.SenderClientId);
+
+            GameObject characterModelPrefab = characterModelManager.GetCharacterModel(characterRace, characterGender);
+            networkedPlayer.SpawnCharacterModel(characterModelPrefab);
+            networkedPlayer.SetInitialPosition(spawnPosition);
+            
+            // Log final position verification
+            Debug.Log($"PlayerManager (Server): NetworkedPlayer final position after SetInitialPosition: {networkedPlayer.transform.position}");
             
             // Notify the client about their spawned networked player
-            NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, 
+            NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition,
                 new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -2023,7 +1779,7 @@ public class PlayerManager : NetworkBehaviour
                     }
                 });
                 
-            Debug.Log($"PlayerManager (Server): Networked player spawned successfully with NetworkObjectId: {networkObject.NetworkObjectId}");
+            Debug.Log($"PlayerManager (Server): Networked player spawned successfully with NetworkObjectId: {networkObject.NetworkObjectId} at position: {spawnPosition}");
         }
         catch (Exception ex)
         {
@@ -2032,11 +1788,11 @@ public class PlayerManager : NetworkBehaviour
     }
     
     [ClientRpc]
-    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, ClientRpcParams clientRpcParams = default)
+    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
     {
         try
         {
-            Debug.Log($"PlayerManager (Client): Received notification of spawned networked player with ID: {networkObjectId}");
+            Debug.Log($"PlayerManager (Client): Received notification of spawned networked player with ID: {networkObjectId} at position: {spawnPosition}");
             
             // Find the spawned networked player
             if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObj))
@@ -2049,19 +1805,39 @@ public class PlayerManager : NetworkBehaviour
                     return;
                 }
                 
-                // Register the networked player
-                RegisterNetworkedPlayer(networkedPlayer);
+                // Ensure position is set correctly on client
+                if (Vector3.Distance(networkedPlayer.transform.position, spawnPosition) > 0.1f)
+                {
+                    Debug.Log($"PlayerManager (Client): Correcting networked player position from {networkedPlayer.transform.position} to {spawnPosition}");
+                    networkedPlayer.SetPosition(spawnPosition);
+                }
                 
                 // Set as current if this is the owner
                 if (networkObj.IsOwner)
                 {
                     currentNetworkedPlayer = networkedPlayer;
                     
-                    // Set camera target to follow this player
-                    SetCameraTarget(networkedPlayer.transform);
+                    // Set camera target to follow the PlayerCameraRoot (proper camera anchor)
+                    Transform cameraTargetTransform = networkedPlayer.GetPlayerCameraRoot();
+                    if (cameraTargetTransform != null)
+                    {
+                        SetCameraTarget(cameraTargetTransform);
+                        Debug.Log($"PlayerManager (Client): Camera targeting PlayerCameraRoot: {cameraTargetTransform.name}");
+                    }
+                    else
+                    {
+                        // Fallback to movement transform if PlayerCameraRoot not found
+                        Transform movementTransform = networkedPlayer.GetMovementTransform();
+                        SetCameraTarget(movementTransform);
+                        Debug.LogWarning($"PlayerManager (Client): PlayerCameraRoot not found, using movement transform: {movementTransform.name}");
+                    }
                     
-                    // Transfer character data
-                    TransferCharacterDataToNetworkedPlayer(networkedPlayer);
+                    
+                    Debug.Log($"PlayerManager (Client): Set as current networked player at position: {networkedPlayer.GetPosition()}");
+                }
+                else
+                {
+                    Debug.Log($"PlayerManager (Client): Remote networked player spawned at position: {networkedPlayer.GetPosition()}");
                 }
                 
                 Debug.Log("PlayerManager (Client): Successfully found and assigned networked player");

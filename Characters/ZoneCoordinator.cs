@@ -16,6 +16,9 @@ public class ZoneCoordinator
     }
 
     #region Character Setup and Zone Loading
+    /// <summary>
+    /// Sets up selected character for multiplayer - loads zone only, no PlayerController creation
+    /// </summary>
     public async Task SetupSelectedCharacterAsync(PlayerStatBlock selectedCharacter)
     {
         try
@@ -24,11 +27,11 @@ public class ZoneCoordinator
             
             if (playerManager.DebugMode)
             {
-                Debug.Log($"ZoneCoordinator: Setting up selected character {characterID}, determining appropriate zone...");
+                Debug.Log($"ZoneCoordinator: Setting up selected character {characterID} for multiplayer (zone loading only)...");
             }
 
             // Step 1: Get player zone information
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoAsync(characterID);
+            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
             
             if (string.IsNullOrEmpty(zoneInfo.ZoneName))
             {
@@ -44,12 +47,12 @@ public class ZoneCoordinator
             // Step 2: Load the appropriate zone scene
             await LoadCharacterZoneAsync(zoneInfo);
 
-            // Step 3: Create and position PlayerController
-            await SetupPlayerControllerAsync(selectedCharacter, zoneInfo);
+            // NOTE: PlayerController creation removed for multiplayer architecture
+            // NetworkedPlayer will be spawned by PlayerManager after zone loading
 
             if (playerManager.DebugMode)
             {
-                Debug.Log($"ZoneCoordinator: Successfully set up selected character {characterID} in zone '{zoneInfo.ZoneName}'");
+                Debug.Log($"ZoneCoordinator: Successfully loaded zone '{zoneInfo.ZoneName}' for character {characterID} (multiplayer ready)");
             }
         }
         catch (Exception ex)
@@ -58,7 +61,52 @@ public class ZoneCoordinator
         }
     }
 
-    private async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
+    /// <summary>
+    /// Legacy method for single-player - sets up character with PlayerController
+    /// </summary>
+    public async Task SetupSelectedCharacterLegacyAsync(PlayerStatBlock selectedCharacter)
+    {
+        try
+        {
+            int characterID = selectedCharacter.GetCharacterID();
+            
+            if (playerManager.DebugMode)
+            {
+                Debug.Log($"ZoneCoordinator: Setting up selected character {characterID} (legacy mode with PlayerController)...");
+            }
+
+            // Step 1: Get player zone information
+            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
+            
+            if (string.IsNullOrEmpty(zoneInfo.ZoneName))
+            {
+                Debug.LogError($"ZoneCoordinator: Failed to determine zone for character {characterID}");
+                return;
+            }
+
+            if (playerManager.DebugMode)
+            {
+                Debug.Log($"ZoneCoordinator: Character {characterID} should be in zone '{zoneInfo.ZoneName}' (ZoneID: {zoneInfo.ZoneID})");
+            }
+
+            // Step 2: Load the appropriate zone scene
+            await LoadCharacterZoneAsync(zoneInfo);
+
+            // Step 3: Create and position PlayerController (legacy)
+            await SetupPlayerControllerAsync(selectedCharacter, zoneInfo);
+
+            if (playerManager.DebugMode)
+            {
+                Debug.Log($"ZoneCoordinator: Successfully set up selected character {characterID} in zone '{zoneInfo.ZoneName}' (legacy mode)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ZoneCoordinator: Error in SetupSelectedCharacterLegacyAsync: {ex.Message}");
+        }
+    }
+
+    private async Task<PlayerZoneInfo> GetPlayerZoneInfoInternalAsync(int characterID)
     {
         try
         {
@@ -257,7 +305,47 @@ public class ZoneCoordinator
     }
     #endregion
 
+    #region Public Interface for PlayerManager
+    /// <summary>
+    /// Public method for PlayerManager to get zone info
+    /// </summary>
+    public async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
+    {
+        return await GetPlayerZoneInfoInternalAsync(characterID);
+    }
+
+    /// <summary>
+    /// Public method for PlayerManager to get spawn position after zone loading
+    /// </summary>
+    public async Task<Vector3> GetSpawnPositionAsync(int characterID)
+    {
+        try
+        {
+            if (playerManager.DebugMode)
+            {
+                Debug.Log($"ZoneCoordinator: Getting spawn position for character {characterID} (zone should be loaded)");
+            }
+
+            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
+            Vector3 spawnPosition = await DetermineSpawnPositionAsync(zoneInfo);
+            
+            if (playerManager.DebugMode)
+            {
+                Debug.Log($"ZoneCoordinator: Determined spawn position: {spawnPosition} for character {characterID}");
+            }
+            
+            return spawnPosition;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ZoneCoordinator: Error getting spawn position for character {characterID}: {ex.Message}");
+            return Vector3.zero;
+        }
+    }
+    #endregion
+
     #region Spawn Position Determination
+
     private async Task<Vector3> DetermineSpawnPositionAsync(PlayerZoneInfo zoneInfo)
     {
         try
