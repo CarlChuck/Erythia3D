@@ -18,11 +18,12 @@ public class PlayerStatBlock : StatBlock
     private int veilXp;
 
     #region Setup and Initialization
-
-    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int race, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, int speciesStrength = 10, int speciesDexterity = 10, int speciesConstitution = 10, int speciesIntelligence = 10, int speciesSpirit = 10)
+    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int species, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, int speciesStrength = 10, int speciesDexterity = 10, int speciesConstitution = 10, int speciesIntelligence = 10, int speciesSpirit = 10)
     {
         // Create a temporary SpeciesTemplate with the provided stats
         SpeciesTemplate tempSpecies = ScriptableObject.CreateInstance<SpeciesTemplate>();
+        SetSpeciesNum(species);
+        SetGender(gender);
         tempSpecies.strength = speciesStrength;
         tempSpecies.dexterity = speciesDexterity;
         tempSpecies.constitution = speciesConstitution;
@@ -48,16 +49,45 @@ public class PlayerStatBlock : StatBlock
     }
     private void SetUpInventory() 
     {
-        inventory.SetupInventory();
+        if (inventory != null)
+        {
+            inventory.SetupInventory();
+        }
+        else
+        {
+            Debug.LogWarning($"PlayerStatBlock: Inventory component is null on {gameObject.name}, skipping inventory setup");
+        }
     }
     private void SetUpEquipment() 
     { 
-        equipment.SetupEquipmentProfile(inventory);
+        if (equipment != null && inventory != null)
+        {
+            equipment.SetupEquipmentProfile(inventory);
+        }
+        else
+        {
+            Debug.LogWarning($"PlayerStatBlock: Equipment ({equipment != null}) or Inventory ({inventory != null}) component is null on {gameObject.name}, skipping equipment setup");
+        }
     }
     private void SetEncumbrance()
     {
-        encumbrance = equipment.GetTotalWeight();
-        encumbrance += inventory.GetTotalWeight();
+        encumbrance = 0; // Default to 0 encumbrance
+        
+        if (equipment != null)
+        {
+            encumbrance += equipment.GetTotalWeight();
+        }
+        
+        if (inventory != null)
+        {
+            encumbrance += inventory.GetTotalWeight();
+        }
+        
+        // If both are null (server case), encumbrance remains 0
+        if (equipment == null && inventory == null)
+        {
+            Debug.LogWarning($"PlayerStatBlock: Both Equipment and Inventory are null on {gameObject.name}, encumbrance set to 0");
+        }
     }
     #endregion
 
@@ -106,6 +136,11 @@ public class PlayerStatBlock : StatBlock
     {
         return veilXp;
     }
+    public int GetFace()
+    {
+        // TODO: Return proper face when face system is implemented
+        return 0; // Placeholder
+    }
 
     #endregion
 
@@ -131,24 +166,6 @@ public class PlayerStatBlock : StatBlock
         arcaneXp = arcaneExp;
         spiritXp = spiritExp;
         veilXp = veilExp;
-    }
-    
-    public int GetRace()
-    {
-        // TODO: Return proper race when race system is implemented
-        return 0; // Placeholder
-    }
-    
-    public int GetGender()
-    {
-        // TODO: Access the gender field from StatBlock base class
-        return 0; // Placeholder - need to make gender accessible from base class
-    }
-    
-    public int GetFace()
-    {
-        // TODO: Return proper face when face system is implemented
-        return 0; // Placeholder
     }
     #endregion
 

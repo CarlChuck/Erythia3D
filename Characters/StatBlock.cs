@@ -7,6 +7,7 @@ public class StatBlock : MonoBehaviour
 {
     private string characterName;
     public SpeciesTemplate species;
+    private int speciesNum;
     private int gender;
     [SerializeField] private Stat strength;
     [SerializeField] private Stat dexterity;
@@ -229,6 +230,10 @@ public class StatBlock : MonoBehaviour
     {
         species = newSpecies;
     }
+    public void SetSpeciesNum(int newSpeciesNum)
+    {
+        speciesNum = newSpeciesNum;
+    }
     public void SetGender(int newGender)
     {
         gender = newGender;
@@ -276,6 +281,14 @@ public class StatBlock : MonoBehaviour
         gender = newGender;
     }
 
+    public int GetSpecies()
+    {
+        return speciesNum;
+    }
+    public int GetGender()
+    {
+        return gender;
+    }
 
     public float GetCurrentHealth()
     {

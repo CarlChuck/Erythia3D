@@ -35,8 +35,6 @@ public class ServerBootstrap : MonoBehaviour
 
     public void InitializeServer()
     {
-        Debug.Log("ServerBootstrap: InitializeServer() called");
-
         // Additional safety check - only proceed if we should run server
         if (!ShouldRunServer() && !Application.isBatchMode)
         {
@@ -125,15 +123,12 @@ public class ServerBootstrap : MonoBehaviour
 
     private void OnServerStarted()
     {
-        Debug.Log("ServerBootstrap: OnServerStarted event received");
-        networkManager.OnServerStarted -= OnServerStarted; // Unsubscribe
+        networkManager.OnServerStarted -= OnServerStarted;
         SpawnServerManager();
     }
 
     private void SpawnServerManager()
-    {
-        Debug.Log("ServerBootstrap: SpawnServerManager() called");
-        
+    {        
         if (serverManagerPrefab == null)
         {
             Debug.LogError("ServerBootstrap: ServerManager prefab is not assigned!");

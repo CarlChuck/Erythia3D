@@ -4,14 +4,9 @@ using System.Threading.Tasks;
 using System;
 using System.Linq;
 
-/// <summary>
-/// Helper class for PlayerManager to handle character-related operations
-/// Uses PlayerManager's RPC methods for server communication
-/// </summary>
 public class CharacterDataHandler
 {
     private PlayerManager playerManager;
-
     public CharacterDataHandler(PlayerManager manager)
     {
         playerManager = manager;
@@ -50,12 +45,10 @@ public class CharacterDataHandler
             return false;
         }
     }
-
     private bool ProcessLoginResult(LoginResult result)
     {
         try
         {
-            // Update PlayerManager's account info
             playerManager.AccountID = result.AccountID;
             playerManager.AccountName = result.AccountName;
             playerManager.SteamID = result.SteamID;
@@ -79,10 +72,6 @@ public class CharacterDataHandler
             Debug.LogError("CharacterDataHandler: Cannot load characters: Invalid AccountID.");
             return;
         }
-
-        Debug.Log("CharacterDataHandler: Requesting character list from server...");
-        
-        // Use NetworkRequestManager for cleaner request handling
         CharacterListResult result = await playerManager.requestManager.SendCharacterListRequestAsync(playerManager.AccountID);
         
         if (result.Success)
@@ -94,20 +83,19 @@ public class CharacterDataHandler
             Debug.LogError($"CharacterDataHandler: Character list request failed: {result.ErrorMessage}");
         }
     }
-
-    private async Task ProcessCharacterListResult(CharacterListResult result)
+    public async Task ProcessCharacterListResult(CharacterListResult result)
     {
         try
         {
             ClearPlayerListExceptSelected();
 
-            Debug.Log($"CharacterDataHandler: Processing {result.Characters.Length} character data entries from server.");
-
             foreach (CharacterData characterData in result.Characters)
             {
                 // Check if character already loaded (avoid duplicates)
-                bool alreadyExists = CheckIfCharacterExists(characterData.CharID);
-                if (alreadyExists) continue;
+                if (CheckIfCharacterExists(characterData.CharID)) 
+                { 
+                    continue; 
+                }
 
                 // Load FamilyName ONLY if not already set
                 if (string.IsNullOrEmpty(playerManager.FamilyName) && !string.IsNullOrEmpty(characterData.FamilyName))
@@ -115,34 +103,29 @@ public class CharacterDataHandler
                     playerManager.FamilyName = characterData.FamilyName;
                 }
 
-                // Instantiate and setup character
                 PlayerStatBlock newCharacter = InstantiateCharacter(characterData);
                 if (newCharacter != null)
                 {
                     playerManager.PlayerCharacters.Add(newCharacter);
 
-                    // Set as selected if none currently selected
+                    //Sets the first character loaded as the selected character if none is selected
                     if (playerManager.SelectedPlayerCharacter == null)
                     {
-                        Debug.Log($"CharacterDataHandler: Setting first loaded character as selected: {characterData.Name}");
                         playerManager.SelectedPlayerCharacter = newCharacter;
                     }
                 }
             }
-
-            // Ensure selected character is in list
             EnsureSelectedCharacterInList();
-
-            Debug.Log($"CharacterDataHandler: Finished processing character list. Final count: {playerManager.PlayerCharacters.Count}. Selected: {playerManager.SelectedPlayerCharacter?.GetCharacterName() ?? "None"}");
         }
         catch (Exception ex)
         {
             Debug.LogError($"CharacterDataHandler: Exception during ProcessCharacterListResult: {ex.Message}\n{ex.StackTrace}");
         }
     }
-
     public async Task CreateCharacterAsync(string characterName, int charRace, int charGender, int charFace)
     {
+        int charStartingZone = 1; // Use the player's starting zone
+        charStartingZone = GetStartingZoneByRace(charRace);
         if (string.IsNullOrEmpty(playerManager.FamilyName) || string.IsNullOrEmpty(characterName))
         {
             Debug.LogError("CharacterDataHandler: Character or Family Name cannot be empty");
@@ -154,16 +137,14 @@ public class CharacterDataHandler
             Debug.LogError("CharacterDataHandler: Cannot create character: Invalid AccountID.");
             return;
         }
-
-        Debug.Log($"CharacterDataHandler: Attempting to create character: {characterName}");
         
         // Use CharactersManager directly for character creation
         bool created = await CharactersManager.Instance.CreateNewCharacterAsync(
             playerManager.AccountID, 
             playerManager.FamilyName, 
             characterName, 
-            null, 
-            1, 
+            null,
+            charStartingZone, 
             charRace, 
             charGender, 
             charFace
@@ -171,10 +152,10 @@ public class CharacterDataHandler
 
         if (created)
         {
-            Debug.Log("CharacterDataHandler: Character creation successful, reloading character list...");
             await LoadCharactersAsync();
             
-            if (playerManager.SelectedPlayerCharacter != null && playerManager.UIManager != null)
+            // Only update UI on client side
+            if (playerManager.SelectedPlayerCharacter != null && playerManager.UIManager != null && !playerManager.IsServer)
             {
                 playerManager.UIManager.SetupUI(playerManager.SelectedPlayerCharacter);
             }
@@ -191,7 +172,6 @@ public class CharacterDataHandler
     {
         if (playerManager.SelectedPlayerCharacter != null && playerManager.SelectedPlayerCharacter.GetCharacterID() == characterID)
         {
-            Debug.Log($"CharacterDataHandler: Character ID {characterID} is already the selected character.");
             if (!playerManager.PlayerCharacters.Contains(playerManager.SelectedPlayerCharacter))
             {
                 playerManager.PlayerCharacters.Add(playerManager.SelectedPlayerCharacter);
@@ -200,29 +180,14 @@ public class CharacterDataHandler
         }
         else if (playerManager.PlayerCharacters.Any(pc => pc.GetCharacterID() == characterID))
         {
-            Debug.Log($"CharacterDataHandler: Character ID {characterID} already exists in the loaded list.");
             return true;
         }
         return false;
     }
-
     private PlayerStatBlock InstantiateCharacter(CharacterData characterData)
     {
-        if (playerManager.CharacterPrefab == null || playerManager.CharListParent == null)
-        {
-            Debug.LogError("CharacterDataHandler: Missing prefabs or parent references for character instantiation!");
-            return null;
-        }
-
-        Debug.Log($"CharacterDataHandler: Instantiating new character object for ID: {characterData.CharID}, Name: {characterData.Name}");
         PlayerStatBlock newCharacter = GameObject.Instantiate(playerManager.CharacterPrefab, playerManager.CharListParent.transform).GetComponent<PlayerStatBlock>();
         
-        if (newCharacter == null)
-        {
-            Debug.LogError("CharacterDataHandler: Failed to get PlayerStatBlock component from prefab!");
-            return null;
-        }
-
         newCharacter.SetUpCharacter(
             characterData.Name, 
             characterData.CharID, 
@@ -245,16 +210,8 @@ public class CharacterDataHandler
 
         return newCharacter;
     }
-
     private void ClearPlayerListExceptSelected()
     {
-        if (playerManager.PlayerCharacters == null) 
-        { 
-            // This shouldn't happen with property access, but safe fallback
-            Debug.LogError("CharacterDataHandler: PlayerCharacters list is null");
-            return;
-        }
-
         List<PlayerStatBlock> toRemove = new List<PlayerStatBlock>();
         foreach (PlayerStatBlock character in playerManager.PlayerCharacters)
         {
@@ -271,23 +228,63 @@ public class CharacterDataHandler
             if (characterToRemove.gameObject != null)
             {
                 GameObject.Destroy(characterToRemove.gameObject);
-                Debug.Log($"CharacterDataHandler: Destroyed non-selected character object: {characterToRemove.GetCharacterName()}");
             }
         }
     }
-
     private void EnsureSelectedCharacterInList()
     {
         if (playerManager.SelectedPlayerCharacter != null && !playerManager.PlayerCharacters.Contains(playerManager.SelectedPlayerCharacter))
         {
-            Debug.LogWarning("CharacterDataHandler: Selected character was not found in list during processing. Adding now.");
+            //Debug.LogWarning("CharacterDataHandler: Selected character was not found in list during processing. Adding now.");
             playerManager.PlayerCharacters.Add(playerManager.SelectedPlayerCharacter);
         }
         else if (playerManager.SelectedPlayerCharacter == null && playerManager.PlayerCharacters.Count > 0)
         {
-            Debug.LogWarning("CharacterDataHandler: No character was selected during load, selecting first from list.");
+            //Debug.LogWarning("CharacterDataHandler: No character was selected during load, selecting first from list.");
             playerManager.SelectedPlayerCharacter = playerManager.PlayerCharacters[0];
         }
+    }
+    public int GetStartingZoneByRace(int race)
+    {
+        int toReturn = 1; // Default starting zone
+        if (playerManager.SelectedPlayerCharacter != null)
+        {
+            switch (playerManager.SelectedPlayerCharacter.GetSpecies())
+            {
+                case 1: // Aelystian
+                    toReturn = 1; // IthoriaSouth
+                    break;
+                case 2: // Anurian
+                    toReturn = 2; // ShiftingWastes
+                    break;
+                case 3: // Getaii
+                    toReturn = 3; // PurrgishWoodlands
+                    break;
+                case 4: // Hivernian
+                    toReturn = 4; // HiverniaForestNorth
+                    break;
+                case 5: // Kasmiran
+                    toReturn = 5; // CanaGrasslands
+                    break;
+                case 6: // Meliviaen
+                    toReturn = 6; // GreatForestSouth
+                    break;
+                case 7: // Qadian
+                    toReturn = 7; // QadianDelta
+                    break;
+                case 8: // Tkyan
+                    toReturn = 8; // TkyanDepths
+                    break;
+                case 9: // Valahoran
+                    toReturn = 9; // ValahorSouth
+                    break;
+                default:
+                    toReturn = 1; // IthoriaSouth - can be default for now
+                    break;
+            }
+        }
+
+        return toReturn;
     }
     #endregion
 } 

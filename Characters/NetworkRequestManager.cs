@@ -3,10 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 
-/// <summary>
-/// Helper class for PlayerManager to manage network requests and responses
-/// Provides generic timeout handling and response tracking
-/// </summary>
 public class NetworkRequestManager
 {
     private PlayerManager playerManager;
@@ -40,11 +36,6 @@ public class NetworkRequestManager
     {
         try
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"NetworkRequestManager: Sending {requestType} request...");
-            }
-
             // Reset state for new request
             resetStateAction?.Invoke();
 
@@ -78,11 +69,6 @@ public class NetworkRequestManager
                 return default(TResponse);
             }
 
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"NetworkRequestManager: {requestType} request completed successfully in {elapsed:F1} seconds.");
-            }
-
             return getResponseFunc();
         }
         catch (Exception ex)
@@ -94,9 +80,6 @@ public class NetworkRequestManager
     #endregion
 
     #region Specific Request Wrappers
-    /// <summary>
-    /// Login request wrapper
-    /// </summary>
     public async Task<LoginResult> SendLoginRequestAsync(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
     {
         return await SendRequestAsync<LoginResult>(
@@ -110,10 +93,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Character list request wrapper
-    /// </summary>
     public async Task<CharacterListResult> SendCharacterListRequestAsync(int accountID)
     {
         return await SendRequestAsync<CharacterListResult>(
@@ -127,10 +106,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Account inventory request wrapper
-    /// </summary>
     public async Task<AccountInventoryResult> SendAccountInventoryRequestAsync(int accountID)
     {
         return await SendRequestAsync<AccountInventoryResult>(
@@ -144,10 +119,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Character inventory request wrapper
-    /// </summary>
     public async Task<CharacterInventoryResult> SendCharacterInventoryRequestAsync(int characterID)
     {
         return await SendRequestAsync<CharacterInventoryResult>(
@@ -161,10 +132,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Workbench list request wrapper
-    /// </summary>
     public async Task<WorkbenchListResult> SendWorkbenchListRequestAsync(int accountID)
     {
         return await SendRequestAsync<WorkbenchListResult>(
@@ -178,10 +145,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Player zone info request wrapper
-    /// </summary>
     public async Task<PlayerZoneInfoResult> SendPlayerZoneInfoRequestAsync(int characterID)
     {
         return await SendRequestAsync<PlayerZoneInfoResult>(
@@ -195,10 +158,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Waypoint request wrapper
-    /// </summary>
     public async Task<WaypointResult> SendWaypointRequestAsync(WaypointRequest request)
     {
         return await SendRequestAsync<WaypointResult>(
@@ -212,10 +171,6 @@ public class NetworkRequestManager
             }
         );
     }
-
-    /// <summary>
-    /// Server zone load request wrapper
-    /// </summary>
     public async Task<ServerZoneLoadResult> SendServerZoneLoadRequestAsync(string zoneName)
     {
         return await SendRequestAsync<ServerZoneLoadResult>(
@@ -233,9 +188,6 @@ public class NetworkRequestManager
     #endregion
 
     #region Batch Operations
-    /// <summary>
-    /// Send multiple requests in parallel and wait for all to complete
-    /// </summary>
     public async Task<Dictionary<string, object>> SendBatchRequestsAsync(params (string name, Func<Task<object>> request)[] requests)
     {
         Dictionary<string, object> results = new Dictionary<string, object>();
@@ -270,9 +222,6 @@ public class NetworkRequestManager
     #endregion
 
     #region Request Monitoring
-    /// <summary>
-    /// Get information about currently active requests
-    /// </summary>
     public List<string> GetActiveRequests()
     {
         List<string> active = new List<string>();
@@ -287,10 +236,6 @@ public class NetworkRequestManager
 
         return active;
     }
-
-    /// <summary>
-    /// Cancel all active requests (useful for cleanup)
-    /// </summary>
     public void CancelAllRequests()
     {
         if (activeRequests.Count > 0)
@@ -299,10 +244,6 @@ public class NetworkRequestManager
             activeRequests.Clear();
         }
     }
-
-    /// <summary>
-    /// Check if any requests have timed out and log warnings
-    /// </summary>
     public void CheckForTimeouts()
     {
         float currentTime = Time.time;
@@ -338,9 +279,6 @@ public class NetworkRequestManager
     #endregion
 
     #region Public Utilities
-    /// <summary>
-    /// Get network request statistics
-    /// </summary>
     public NetworkRequestStats GetStats()
     {
         return new NetworkRequestStats
@@ -352,9 +290,6 @@ public class NetworkRequestManager
     #endregion
 }
 
-/// <summary>
-/// Statistics about network requests
-/// </summary>
 public struct NetworkRequestStats
 {
     public int ActiveRequestCount;

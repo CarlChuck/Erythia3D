@@ -2,33 +2,20 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System;
 
-/// <summary>
-/// Helper class for PlayerManager to handle zone loading and PlayerController instantiation
-/// Uses PlayerManager's RPC methods for server communication
-/// </summary>
 public class ZoneCoordinator
 {
     private PlayerManager playerManager;
-
     public ZoneCoordinator(PlayerManager manager)
     {
         playerManager = manager;
     }
 
     #region Character Setup and Zone Loading
-    /// <summary>
-    /// Sets up selected character for multiplayer - loads zone only, no PlayerController creation
-    /// </summary>
     public async Task SetupSelectedCharacterAsync(PlayerStatBlock selectedCharacter)
     {
         try
         {
             int characterID = selectedCharacter.GetCharacterID();
-            
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Setting up selected character {characterID} for multiplayer (zone loading only)...");
-            }
 
             // Step 1: Get player zone information
             PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
@@ -39,41 +26,19 @@ public class ZoneCoordinator
                 return;
             }
 
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Character {characterID} should be in zone '{zoneInfo.ZoneName}' (ZoneID: {zoneInfo.ZoneID})");
-            }
-
             // Step 2: Load the appropriate zone scene
             await LoadCharacterZoneAsync(zoneInfo);
-
-            // NOTE: PlayerController creation removed for multiplayer architecture
-            // NetworkedPlayer will be spawned by PlayerManager after zone loading
-
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Successfully loaded zone '{zoneInfo.ZoneName}' for character {characterID} (multiplayer ready)");
-            }
         }
         catch (Exception ex)
         {
             Debug.LogError($"ZoneCoordinator: Error in SetupSelectedCharacterAsync: {ex.Message}");
         }
     }
-
-    /// <summary>
-    /// Legacy method for single-player - sets up character with PlayerController
-    /// </summary>
     public async Task SetupSelectedCharacterLegacyAsync(PlayerStatBlock selectedCharacter)
     {
         try
         {
             int characterID = selectedCharacter.GetCharacterID();
-            
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Setting up selected character {characterID} (legacy mode with PlayerController)...");
-            }
 
             // Step 1: Get player zone information
             PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
@@ -82,11 +47,6 @@ public class ZoneCoordinator
             {
                 Debug.LogError($"ZoneCoordinator: Failed to determine zone for character {characterID}");
                 return;
-            }
-
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Character {characterID} should be in zone '{zoneInfo.ZoneName}' (ZoneID: {zoneInfo.ZoneID})");
             }
 
             // Step 2: Load the appropriate zone scene
@@ -94,11 +54,6 @@ public class ZoneCoordinator
 
             // Step 3: Create and position PlayerController (legacy)
             await SetupPlayerControllerAsync(selectedCharacter, zoneInfo);
-
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Successfully set up selected character {characterID} in zone '{zoneInfo.ZoneName}' (legacy mode)");
-            }
         }
         catch (Exception ex)
         {
@@ -110,20 +65,12 @@ public class ZoneCoordinator
     {
         try
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Requesting zone info for character {characterID} via RPC...");
-            }
 
             // Use NetworkRequestManager for cleaner request handling
             PlayerZoneInfoResult result = await playerManager.requestManager.SendPlayerZoneInfoRequestAsync(characterID);
             
             if (result.Success)
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Received zone info - Zone: {result.ZoneInfo.ZoneName}, RequiresWaypoint: {result.ZoneInfo.RequiresMarketWaypoint}");
-                }
                 return result.ZoneInfo;
             }
             else
@@ -143,11 +90,6 @@ public class ZoneCoordinator
     {
         try
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Loading zone '{zoneInfo.ZoneName}' for character {zoneInfo.CharacterID}");
-            }
-
             // Step 1: Request server to load the zone first
             await RequestServerLoadZoneAsync(zoneInfo.ZoneName);
 
@@ -156,11 +98,6 @@ public class ZoneCoordinator
 
             // Step 3: Load zone on client side
             await LoadZoneOnClient(zoneInfo.ZoneName);
-
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Successfully loaded zone '{zoneInfo.ZoneName}'");
-            }
         }
         catch (Exception ex)
         {
@@ -183,11 +120,6 @@ public class ZoneCoordinator
                 return;
             }
 
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Instantiating PlayerController at position {spawnPosition}");
-            }
-
             GameObject controllerGO = GameObject.Instantiate(playerManager.PlayerControllerPrefab);
             PlayerController controller = controllerGO.GetComponent<PlayerController>();
             
@@ -199,15 +131,10 @@ public class ZoneCoordinator
             }
 
             // Step 3: Setup controller
-            controller.SetCharacterPosition(spawnPosition, playerManager.DebugMode);
+            controller.SetCharacterPosition(spawnPosition);
 
             // TODO: Link controller to selected character
             // controller.SetPlayerStatBlock(selectedCharacter);
-
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Successfully created and positioned PlayerController");
-            }
         }
         catch (Exception ex)
         {
@@ -219,11 +146,6 @@ public class ZoneCoordinator
     #region Zone Loading Helpers
     private async Task RequestServerLoadZoneAsync(string zoneName)
     {
-        if (playerManager.DebugMode)
-        {
-            Debug.Log($"ZoneCoordinator: Requesting server to load zone '{zoneName}'");
-        }
-
         // Use NetworkRequestManager for cleaner request handling
         ServerZoneLoadResult result = await playerManager.requestManager.SendServerZoneLoadRequestAsync(zoneName);
 
@@ -231,12 +153,7 @@ public class ZoneCoordinator
         {
             Debug.LogError($"ZoneCoordinator: Server failed to load zone '{zoneName}': {result.ErrorMessage}");
             throw new Exception($"Server zone load failed: {result.ErrorMessage}");
-        }
-
-        if (playerManager.DebugMode)
-        {
-            Debug.Log($"ZoneCoordinator: Server successfully loaded zone '{zoneName}'");
-        }
+        }Debug.Log($"ZoneCoordinator: Server successfully loaded zone '{zoneName}'");        
     }
 
     private async Task UnloadMainMenuIfNeeded(string zoneName)
@@ -245,10 +162,6 @@ public class ZoneCoordinator
         {
             if (PersistentSceneManager.Instance.IsSceneLoaded("MainMenu"))
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Unloading MainMenu for transition to gameplay zone '{zoneName}'");
-                }
                 PersistentSceneManager.Instance.UnloadMainMenuForGameplay();
                 await Task.Delay(500); // Small delay for unloading
             }
@@ -306,33 +219,16 @@ public class ZoneCoordinator
     #endregion
 
     #region Public Interface for PlayerManager
-    /// <summary>
-    /// Public method for PlayerManager to get zone info
-    /// </summary>
     public async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
     {
         return await GetPlayerZoneInfoInternalAsync(characterID);
     }
-
-    /// <summary>
-    /// Public method for PlayerManager to get spawn position after zone loading
-    /// </summary>
     public async Task<Vector3> GetSpawnPositionAsync(int characterID)
     {
         try
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Getting spawn position for character {characterID} (zone should be loaded)");
-            }
-
             PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
             Vector3 spawnPosition = await DetermineSpawnPositionAsync(zoneInfo);
-            
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Determined spawn position: {spawnPosition} for character {characterID}");
-            }
             
             return spawnPosition;
         }
@@ -345,7 +241,6 @@ public class ZoneCoordinator
     #endregion
 
     #region Spawn Position Determination
-
     private async Task<Vector3> DetermineSpawnPositionAsync(PlayerZoneInfo zoneInfo)
     {
         try
@@ -356,30 +251,15 @@ public class ZoneCoordinator
             {
                 // Use stored database position
                 spawnPosition = zoneInfo.SpawnPosition.Value;
-                
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Using stored spawn position: {spawnPosition}");
-                }
             }
             else
             {
-                // Need to get MarketWaypoint position from server with retry logic
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Database position not available, requesting MarketWaypoint for zone '{zoneInfo.ZoneName}'");
-                }
 
                 Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
                 
                 if (waypointPosition.HasValue)
                 {
                     spawnPosition = waypointPosition.Value;
-                    
-                    if (playerManager.DebugMode)
-                    {
-                        Debug.Log($"ZoneCoordinator: Using MarketWaypoint position: {spawnPosition}");
-                    }
                 }
                 else
                 {
@@ -403,7 +283,6 @@ public class ZoneCoordinator
             return Vector3.zero; // Safe fallback
         }
     }
-
     private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
     {
         int maxRetries = 3;
@@ -411,29 +290,17 @@ public class ZoneCoordinator
         
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Attempting to get MarketWaypoint for zone '{zoneName}' (attempt {attempt}/{maxRetries})");
-            }
             
             Vector3? waypointPosition = await GetMarketWaypointPositionAsync(zoneName);
             
             if (waypointPosition.HasValue)
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Successfully found MarketWaypoint on attempt {attempt}");
-                }
                 return waypointPosition;
             }
             
             // Wait before retrying (except on last attempt)
             if (attempt < maxRetries)
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: MarketWaypoint not found, waiting {retryDelay}ms before retry...");
-                }
                 await Task.Delay(retryDelay);
             }
         }
@@ -441,7 +308,6 @@ public class ZoneCoordinator
         Debug.LogWarning($"ZoneCoordinator: Failed to find MarketWaypoint for zone '{zoneName}' after {maxRetries} attempts");
         return null;
     }
-
     private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
     {
         if (playerManager.SelectedPlayerCharacter == null)
@@ -454,11 +320,6 @@ public class ZoneCoordinator
 
         try
         {
-            if (playerManager.DebugMode)
-            {
-                Debug.Log($"ZoneCoordinator: Requesting MarketWaypoint position for zone '{zoneName}' via RPC...");
-            }
-
             // Create waypoint request
             WaypointRequest request = new WaypointRequest
             {
@@ -471,18 +332,10 @@ public class ZoneCoordinator
             
             if (result.Success && result.HasWaypoint)
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.Log($"ZoneCoordinator: Received MarketWaypoint position: {result.WaypointPosition}");
-                }
                 return result.WaypointPosition;
             }
             else
             {
-                if (playerManager.DebugMode)
-                {
-                    Debug.LogWarning($"ZoneCoordinator: No waypoint available for zone '{zoneName}': {result.ErrorMessage}");
-                }
                 return null;
             }
         }

@@ -3,14 +3,9 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System;
 
-/// <summary>
-/// Helper class for PlayerManager to handle inventory-related operations
-/// Uses PlayerManager's RPC methods for server communication
-/// </summary>
 public class InventoryDataHandler
 {
     private PlayerManager playerManager;
-
     public InventoryDataHandler(PlayerManager manager)
     {
         playerManager = manager;
@@ -39,7 +34,6 @@ public class InventoryDataHandler
             await LoadCharacterInventoryAsync(character);
         }
     }
-
     private async Task LoadCharacterInventoryAsync(PlayerStatBlock character)
     {
         int charId = character.GetCharacterID();
@@ -61,10 +55,7 @@ public class InventoryDataHandler
             Debug.LogError($"InventoryDataHandler: EquipmentProfile component not found for character {character.GetCharacterName()} (ID: {charId}).");
             return;
         }
-
-        Debug.Log($"InventoryDataHandler: Requesting character inventory from server for character: {character.GetCharacterName()} (ID: {charId})");
         
-        // Use NetworkRequestManager for cleaner request handling
         CharacterInventoryResult result = await playerManager.requestManager.SendCharacterInventoryRequestAsync(charId);
         
         if (result.Success)
@@ -76,20 +67,16 @@ public class InventoryDataHandler
             Debug.LogError($"InventoryDataHandler: Character inventory request failed for character {character.GetCharacterName()}: {result.ErrorMessage}");
         }
     }
-
     private async Task ProcessCharacterInventoryResult(CharacterInventoryResult result, PlayerStatBlock character, Inventory inventory, EquipmentProfile equipment)
     {
         int charId = character.GetCharacterID();
         
         try
-        {
-            Debug.Log($"InventoryDataHandler: Processing character inventory result for character: {character.GetCharacterName()} (ID: {charId})");
-            
+        {            
             inventory.ClearInventory();
             equipment.ClearEquipmentProfile();
 
-            // Load Inventory Items (Equipment and Bag Items)
-            Debug.Log($"InventoryDataHandler: Processing {result.Items.Length} inventory items for CharID: {charId}...");
+            // Load Inventory Items and Equip them if applicable
             foreach (var itemData in result.Items)
             {
                 Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemData.ItemID);
@@ -107,7 +94,6 @@ public class InventoryDataHandler
                 else
                 {
                     // Add to Inventory Bag
-                    Debug.Log($"InventoryDataHandler: Adding item {itemInstance.ItemName} (ID: {itemData.ItemID}) to inventory bag.");
                     if (!inventory.AddItem(itemInstance))
                     {
                         Debug.LogWarning($"InventoryDataHandler: Failed to add item {itemInstance.ItemName} (ID: {itemData.ItemID}) to inventory bag for character {charId}.");
@@ -116,7 +102,6 @@ public class InventoryDataHandler
             }
 
             // Load Inventory Resource Items
-            Debug.Log($"InventoryDataHandler: Processing {result.ResourceItems.Length} resource items for CharID: {charId}...");
             foreach (var resourceItemData in result.ResourceItems)
             {
                 ResourceItem resourceItemInstance = GetResourceItemById(resourceItemData.ResourceItemID);
@@ -126,7 +111,6 @@ public class InventoryDataHandler
                     continue;
                 }
 
-                Debug.Log($"InventoryDataHandler: Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemData.ResourceItemID}) to inventory bag.");
                 if (!inventory.AddResourceItem(resourceItemInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceItemID}) to inventory bag for character {charId}.");
@@ -134,7 +118,6 @@ public class InventoryDataHandler
             }
 
             // Load Inventory SubComponents
-            Debug.Log($"InventoryDataHandler: Processing {result.SubComponents.Length} subcomponents for CharID: {charId}...");
             foreach (var subCompData in result.SubComponents)
             {
                 SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subCompData.SubComponentID);
@@ -144,14 +127,11 @@ public class InventoryDataHandler
                     continue;
                 }
 
-                Debug.Log($"InventoryDataHandler: Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subCompData.SubComponentID}) to inventory bag.");
                 if (!inventory.AddSubComponent(subComponentInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to inventory bag for character {charId}.");
                 }
             }
-
-            Debug.Log($"InventoryDataHandler: Finished processing inventory for character: {character.GetCharacterName()} (ID: {charId})");
         }
         catch (Exception ex)
         {
@@ -163,9 +143,6 @@ public class InventoryDataHandler
     #region Account Inventory Management
     private async Task LoadAccountInventoryAsync()
     {
-        Debug.Log("InventoryDataHandler: Requesting account inventory from server...");
-        
-        // Use NetworkRequestManager for cleaner request handling
         AccountInventoryResult result = await playerManager.requestManager.SendAccountInventoryRequestAsync(playerManager.AccountID);
         
         if (result.Success)
@@ -177,7 +154,6 @@ public class InventoryDataHandler
             Debug.LogError($"InventoryDataHandler: Account inventory request failed: {result.ErrorMessage}");
         }
     }
-
     private async Task ProcessAccountInventoryResult(AccountInventoryResult result)
     {
         try
@@ -185,7 +161,6 @@ public class InventoryDataHandler
             playerManager.HomeInventory.ClearInventory();
 
             // Load Inventory Items
-            Debug.Log($"InventoryDataHandler: Processing {result.Items.Length} account inventory items from server.");
             foreach (var itemData in result.Items)
             {
                 Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemData.ItemID);
@@ -195,7 +170,6 @@ public class InventoryDataHandler
                     continue;
                 }
 
-                Debug.Log($"InventoryDataHandler: Adding item {itemInstance.ItemName} (ID: {itemData.ItemID}) to home inventory.");
                 if (!playerManager.HomeInventory.AddItem(itemInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add item {itemInstance.ItemName} (ID: {itemData.ItemID}) to home inventory for account {playerManager.AccountID}.");
@@ -203,7 +177,6 @@ public class InventoryDataHandler
             }
 
             // Load Account Inventory Resource Items
-            Debug.Log($"InventoryDataHandler: Processing {result.ResourceItems.Length} account resource items from server.");
             foreach (var resourceItemData in result.ResourceItems)
             {
                 ResourceItem resourceItemInstance = GetResourceItemById(resourceItemData.ResourceItemID);
@@ -213,7 +186,6 @@ public class InventoryDataHandler
                     continue;
                 }
 
-                Debug.Log($"InventoryDataHandler: Adding resource item {resourceItemInstance.Resource?.ResourceName ?? "Unknown"} (Instance ID: {resourceItemData.ResourceItemID}) to home inventory.");
                 if (!playerManager.HomeInventory.AddResourceItem(resourceItemInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceItemID}) to home inventory for account {playerManager.AccountID}.");
@@ -221,7 +193,6 @@ public class InventoryDataHandler
             }
 
             // Load Account Inventory SubComponents
-            Debug.Log($"InventoryDataHandler: Processing {result.SubComponents.Length} account subcomponents from server.");
             foreach (var subCompData in result.SubComponents)
             {
                 SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subCompData.SubComponentID);
@@ -231,7 +202,6 @@ public class InventoryDataHandler
                     continue;
                 }
 
-                Debug.Log($"InventoryDataHandler: Adding subcomponent {subComponentInstance.Name ?? "Unknown"} (Instance ID: {subCompData.SubComponentID}) to home inventory.");
                 if (!playerManager.HomeInventory.AddSubComponent(subComponentInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to home inventory for account {playerManager.AccountID}.");
@@ -240,8 +210,6 @@ public class InventoryDataHandler
 
             // Load Owned Workbenches from account inventory
             await ProcessOwnedWorkbenches(result.Workbenches);
-
-            Debug.Log($"InventoryDataHandler: Finished loading account inventory for AccountID: {playerManager.AccountID}");
         }
         catch (Exception ex)
         {
@@ -253,9 +221,6 @@ public class InventoryDataHandler
     #region Workbench Management
     private async Task LoadOwnedWorkbenchesAsync()
     {
-        Debug.Log("InventoryDataHandler: Requesting workbench list from server...");
-
-        // Use NetworkRequestManager for cleaner request handling
         WorkbenchListResult result = await playerManager.requestManager.SendWorkbenchListRequestAsync(playerManager.AccountID);
 
         if (result.Success)
@@ -267,10 +232,8 @@ public class InventoryDataHandler
             Debug.LogError($"InventoryDataHandler: Workbench list request failed: {result.ErrorMessage}");
         }
     }
-
     private async Task ProcessOwnedWorkbenches(WorkbenchData[] workbenches)
     {
-        Debug.Log($"InventoryDataHandler: Processing {workbenches.Length} owned workbenches from server.");
         playerManager.OwnedWorkbenches.Clear();
 
         foreach (var workbenchData in workbenches)
@@ -286,7 +249,6 @@ public class InventoryDataHandler
                 if (templateWorkBench != null)
                 {
                     newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes);
-                    Debug.Log($"InventoryDataHandler: Initialized workbench type {workbenchType} with {templateWorkBench.Recipes.Count} recipes from WorkBenchManager.");
                 }
                 else
                 {
@@ -301,7 +263,6 @@ public class InventoryDataHandler
 
             playerManager.OwnedWorkbenches.Add(newWorkBenchInstance);
         }
-        Debug.Log($"InventoryDataHandler: Finished processing {playerManager.OwnedWorkbenches.Count} owned workbenches.");
     }
     #endregion
 
@@ -315,7 +276,6 @@ public class InventoryDataHandler
             EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
             if (targetSlot != null)
             {
-                Debug.Log($"InventoryDataHandler: Equipping item {itemInstance.ItemName} (ID: {itemData.ItemID}) to SlotID: {itemData.SlotID} (Type: {slotType}, Index: {slotIndex})");
                 equipment.EquipItemToSlot(itemInstance, targetSlot);
             }
             else
@@ -330,7 +290,6 @@ public class InventoryDataHandler
             inventory.AddItem(itemInstance); // Put in bag as fallback
         }
     }
-
     private ItemType MapSlotIdToItemType(int slotId)
     {
         switch (slotId)
@@ -359,7 +318,6 @@ public class InventoryDataHandler
             default: return ItemType.Other;
         }
     }
-
     private int GetSlotIndexForType(int slotId)
     {
         switch (slotId)
@@ -371,7 +329,6 @@ public class InventoryDataHandler
             default: return 0; // All other slots use index 0
         }
     }
-
     private ResourceItem GetResourceItemById(int resourceItemId)
     {
         // TODO: Implement proper ResourceItem lookup

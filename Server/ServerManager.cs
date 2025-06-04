@@ -108,33 +108,28 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Character Loading Communication
-    public async void ProcessCharacterListRequest(int accountID, ulong senderClientId)
+    public async void ProcessCharacterListRequest(PlayerManager pManager, int accountID, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessCharacterListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");        
         try
         {
             CharacterListResult result = await ProcessCharacterList(accountID);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
             
             bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
+            if (pManager.IsServer && pManager.OwnerClientId == senderClientId)
             {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    Send = new ClientRpcSendParams
                     {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] 
-                            { 
-                                senderClientId 
-                            }
+                        TargetClientIds = new ulong[] 
+                        { 
+                            senderClientId 
                         }
-                    };
-                    pm.ReceiveCharacterListClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
+                    }
+                };
+                pManager.ReceiveCharacterListClientRpc(result, clientRpcParams);
+                responseSet = true;
             }
             
             if (!responseSet)
@@ -154,24 +149,20 @@ public class ServerManager : NetworkBehaviour
             
             // Send error response via PlayerManager
             Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
+
+            if (pManager.IsServer && pManager.OwnerClientId == senderClientId)
             {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
+                Debug.Log($"ServerManager: Sending character list error response via PlayerManager...");
+                ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
-                    Debug.Log($"ServerManager: Sending character list error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
+                    Send = new ClientRpcSendParams
                     {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveCharacterListClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
+                        TargetClientIds = new ulong[] { senderClientId }
+                    }
+                };
+                pManager.ReceiveCharacterListClientRpc(errorResult, clientRpcParams);
             }
+            
         }
         
         Debug.Log($"ServerManager: ProcessCharacterListRequest completed");
@@ -454,7 +445,6 @@ public class ServerManager : NetworkBehaviour
         
         Debug.Log($"ServerManager: ProcessWaypointRequest completed");
     }
-
     public async void ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
@@ -572,7 +562,6 @@ public class ServerManager : NetworkBehaviour
             };
         }
     }
-
     private CharacterData ConvertDictionaryToCharacterData(Dictionary<string, object> charDict)
     {
         CharacterData charData = new CharacterData();
@@ -607,24 +596,6 @@ public class ServerManager : NetworkBehaviour
         return charData;
     }
 
-    private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
-    {
-        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
-        {
-            return Convert.ToInt32(value);
-        }
-        return defaultValue;
-    }
-
-    private string GetStringValue(Dictionary<string, object> dict, string key, string defaultValue)
-    {
-        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
-        {
-            return value.ToString() ?? defaultValue;
-        }
-        return defaultValue;
-    }
-    #endregion
 
     #region Server-Side Login Logic
     private async Task<LoginResult> ProcessLogin(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
@@ -994,7 +965,6 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Business Logic
-
     private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
     {
         Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");
@@ -1363,6 +1333,27 @@ public class ServerManager : NetworkBehaviour
             return new ServerZoneLoadResult { Success = false, ErrorMessage = $"Server error loading zone: {ex.Message}" };
         }
     }
+    #endregion
+
+    #region Helper Methods
+    private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
+    {
+        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
+        {
+            return Convert.ToInt32(value);
+        }
+        return defaultValue;
+    }
+    private string GetStringValue(Dictionary<string, object> dict, string key, string defaultValue)
+    {
+        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
+        {
+            return value.ToString() ?? defaultValue;
+        }
+        return defaultValue;
+    }
+    #endregion
+
     #endregion
 }
 

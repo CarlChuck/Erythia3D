@@ -517,7 +517,7 @@ public class NetworkedPlayer : NetworkBehaviour
     #region Public Interface
     public Vector3 GetPosition()
     {
-        return transform.position;
+        return playerArmature.position;
     }
     
     public void SetPosition(Vector3 newPosition)
@@ -647,6 +647,7 @@ public class NetworkedPlayer : NetworkBehaviour
         
         try
         {                
+            Debug.Log($"NetworkedPlayer: Spawning character model '{characterModel.name}' at PlayerArmature '{playerArmature.name}'");
             spawnedCharacterModel = Instantiate(characterModel, playerArmature);
             spawnedCharacterModel.transform.localPosition = Vector3.zero;
             spawnedCharacterModel.transform.localRotation = Quaternion.identity;
