@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System;
 
-public class StatBlock : MonoBehaviour
+public class StatBlock : NetworkBehaviour
 {
     private string characterName;
     public SpeciesTemplate species;
@@ -51,148 +51,49 @@ public class StatBlock : MonoBehaviour
     public event Action OnVitalsChanged;
     public event Action OnStatsChanged;
 
+    private Stat CreateAndRegisterStat(string name, StatType statType, int baseValue = 0, int maxValue = 1000)
+    {
+        Stat newStat = Instantiate(statPrefab).GetComponent<Stat>();
+        newStat.transform.SetParent(transform);
+        newStat.gameObject.name = name;
+        newStat.InitialiseStat(baseValue, maxValue, statType);
+        statList.Add(newStat);
+        return newStat;
+    }
+
     public void SetupStatBlock()
     {
-        strength = Instantiate(statPrefab).GetComponent<Stat>();
-        strength.transform.SetParent(transform);
-        strength.gameObject.name = "Strength";
-        statList.Add(strength);
-        strength.InitialiseStat(species.strength, 1000, StatType.Strength);
+        // Primary Stats
+        strength = CreateAndRegisterStat("Strength", StatType.Strength, species.strength);
+        dexterity = CreateAndRegisterStat("Dexterity", StatType.Dexterity, species.dexterity);
+        constitution = CreateAndRegisterStat("Constitution", StatType.Constitution, species.constitution);
+        intelligence = CreateAndRegisterStat("Intelligence", StatType.Intelligence, species.intelligence);
+        spirit = CreateAndRegisterStat("Spirit", StatType.Spirit, species.spirit);
 
-        dexterity = Instantiate(statPrefab).GetComponent<Stat>();
-        dexterity.transform.SetParent(transform);
-        dexterity.gameObject.name = "Dexterity";
-        statList.Add(dexterity);
-        dexterity.InitialiseStat(species.dexterity, 1000, StatType.Dexterity);
+        // Derived Combat Stats
+        offence = CreateAndRegisterStat("Offence", StatType.Offence);
+        defence = CreateAndRegisterStat("Defence", StatType.Defence);
+        damBonus = CreateAndRegisterStat("DamBonus", StatType.DamBonus, 0, 500);
+        critChance = CreateAndRegisterStat("CritChance", StatType.CritChance);
+        critDamage = CreateAndRegisterStat("CritDamage", StatType.CritDamage);
+        dodge = CreateAndRegisterStat("Dodge", StatType.Dodge);
+        parry = CreateAndRegisterStat("Parry", StatType.Parry);
+        spellDamage = CreateAndRegisterStat("SpellDamage", StatType.SpellDamage);
+        buffDuration = CreateAndRegisterStat("BuffDuration", StatType.BuffDuration, 0, 100);
+        dotDuration = CreateAndRegisterStat("DotDuration", StatType.DotDuration, 0, 100);
+        healingPower = CreateAndRegisterStat("HealingPower", StatType.HealingPower);
+        healthRegen = CreateAndRegisterStat("HealthRegen", StatType.HealthRegen, 0, 10);
+        manaRegen = CreateAndRegisterStat("ManaRegen", StatType.ManaRegen, 0, 10);
+        damageShield = CreateAndRegisterStat("DamageShield", StatType.DamageShield, 0, 20);
+        attackSpeed = CreateAndRegisterStat("AttackSpeed", StatType.AttackSpeed, 0, 100);
 
-        constitution = Instantiate(statPrefab).GetComponent<Stat>();
-        constitution.transform.SetParent(transform);
-        constitution.gameObject.name = "Constitution";
-        statList.Add(constitution); 
-        constitution.InitialiseStat(species.constitution, 1000, StatType.Constitution);
-
-        intelligence = Instantiate(statPrefab).GetComponent<Stat>();
-        intelligence.transform.SetParent(transform);
-        intelligence.gameObject.name = "Intelligence";
-        statList.Add(intelligence);
-        intelligence.InitialiseStat(species.intelligence, 1000, StatType.Intelligence);
-
-        spirit = Instantiate(statPrefab).GetComponent<Stat>();
-        spirit.transform.SetParent(transform);
-        spirit.gameObject.name = "Spirit";
-        statList.Add(spirit);
-        spirit.InitialiseStat(species.spirit, 1000, StatType.Spirit);
-
-        offence = Instantiate(statPrefab).GetComponent<Stat>();
-        offence.transform.SetParent(transform);
-        offence.gameObject.name = "Offence";
-        statList.Add(offence);
-
-        defence = Instantiate(statPrefab).GetComponent<Stat>();
-        defence.transform.SetParent(transform);
-        defence.gameObject.name = "Defence";
-        statList.Add(defence);
-
-        damBonus = Instantiate(statPrefab).GetComponent<Stat>();
-        damBonus.transform.SetParent(transform);
-        damBonus.gameObject.name = "DamBonus";
-        statList.Add(damBonus);
-
-        critChance = Instantiate(statPrefab).GetComponent<Stat>();
-        critChance.transform.SetParent(transform);
-        critChance.gameObject.name = "CritChance";
-        statList.Add(critChance);
-
-        critDamage = Instantiate(statPrefab).GetComponent<Stat>();
-        critDamage.transform.SetParent(transform);
-        critDamage.gameObject.name = "CritDamage";
-        statList.Add(critDamage);
-
-        dodge = Instantiate(statPrefab).GetComponent<Stat>();
-        dodge.transform.SetParent(transform);
-        dodge.gameObject.name = "Dodge";
-        statList.Add(dodge);
-
-        parry = Instantiate(statPrefab).GetComponent<Stat>();
-        parry.transform.SetParent(transform);
-        parry.gameObject.name = "Parry";
-        statList.Add(parry);
-
-        spellDamage = Instantiate(statPrefab).GetComponent<Stat>();
-        spellDamage.transform.SetParent(transform);
-        spellDamage.gameObject.name = "SpellDamage";
-        statList.Add(spellDamage);
-
-        buffDuration = Instantiate(statPrefab).GetComponent<Stat>();
-        buffDuration.transform.SetParent(transform);
-        buffDuration.gameObject.name = "BuffDuration";
-        statList.Add(buffDuration);
-
-        dotDuration = Instantiate(statPrefab).GetComponent<Stat>();
-        dotDuration.transform.SetParent(transform);
-        dotDuration.gameObject.name = "DotDuration";
-        statList.Add(dotDuration);
-
-        healingPower = Instantiate(statPrefab).GetComponent<Stat>();
-        healingPower.transform.SetParent(transform);
-        healingPower.gameObject.name = "HealingPower";
-        statList.Add(healingPower);
-
-        healthRegen = Instantiate(statPrefab).GetComponent<Stat>();
-        healthRegen.transform.SetParent(transform);
-        healthRegen.gameObject.name = "HealthRegen";
-        statList.Add(healthRegen);
-
-        manaRegen = Instantiate(statPrefab).GetComponent<Stat>();
-        manaRegen.transform.SetParent(transform);
-        manaRegen.gameObject.name = "ManaRegen";
-        statList.Add(manaRegen);
-
-        damageShield = Instantiate(statPrefab).GetComponent<Stat>();
-        damageShield.transform.SetParent(transform);
-        damageShield.gameObject.name = "DamageShield";
-        statList.Add(damageShield);
-
-        attackSpeed = Instantiate(statPrefab).GetComponent<Stat>();
-        attackSpeed.transform.SetParent(transform);
-        attackSpeed.gameObject.name = "AttackSpeed";
-        statList.Add(attackSpeed);
-
-        defenceSkill = Instantiate(statPrefab).GetComponent<Stat>();
-        defenceSkill.transform.SetParent(transform);
-        defenceSkill.gameObject.name = "DefenceSkill";
-        statList.Add(defenceSkill);
-        defenceSkill.InitialiseStat(0, 1000, StatType.DefenceSkill);
-
-        offenceSkill = Instantiate(statPrefab).GetComponent<Stat>();
-        offenceSkill.transform.SetParent(transform);
-        offenceSkill.gameObject.name = "OffenceSkill";
-        statList.Add(offenceSkill);
-        offenceSkill.InitialiseStat(0, 1000, StatType.OffenceSkill);
-
-        weaponSkill = Instantiate(statPrefab).GetComponent<Stat>();
-        weaponSkill.transform.SetParent(transform);
-        weaponSkill.gameObject.name = "WeaponSkill";
-        statList.Add(weaponSkill);
-        weaponSkill.InitialiseStat(0, 1000, StatType.WeaponSkill);
-
-        parrySkill = Instantiate(statPrefab).GetComponent<Stat>();
-        parrySkill.transform.SetParent(transform);
-        parrySkill.gameObject.name = "ParrySkill";
-        statList.Add(parrySkill);
-        parrySkill.InitialiseStat(0, 1000, StatType.ParrySkill);
-
-        dodgeSkill = Instantiate(statPrefab).GetComponent<Stat>();
-        dodgeSkill.transform.SetParent(transform);
-        dodgeSkill.gameObject.name = "DodgeSkill";
-        statList.Add(dodgeSkill);
-        dodgeSkill.InitialiseStat(0, 1000, StatType.DodgeSkill);
-
-        critSkill = Instantiate(statPrefab).GetComponent<Stat>();
-        critSkill.transform.SetParent(transform);
-        critSkill.gameObject.name = "CritSkill";
-        statList.Add(critSkill);
-        critSkill.InitialiseStat(0, 1000, StatType.CritSkill);
+        // Skill Stats
+        defenceSkill = CreateAndRegisterStat("DefenceSkill", StatType.DefenceSkill);
+        offenceSkill = CreateAndRegisterStat("OffenceSkill", StatType.OffenceSkill);
+        weaponSkill = CreateAndRegisterStat("WeaponSkill", StatType.WeaponSkill);
+        parrySkill = CreateAndRegisterStat("ParrySkill", StatType.ParrySkill);
+        dodgeSkill = CreateAndRegisterStat("DodgeSkill", StatType.DodgeSkill);
+        critSkill = CreateAndRegisterStat("CritSkill", StatType.CritSkill);
 
         //Extra step for readability in the formula's
         int str = strength.GetStatValue() - 30;

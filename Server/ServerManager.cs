@@ -1266,7 +1266,7 @@ public class ServerManager : NetworkBehaviour
             }
         }
         
-        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest completed");
+        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest completed for client {senderClientId}");
     }
     #endregion
 
@@ -1351,6 +1351,21 @@ public class ServerManager : NetworkBehaviour
             return value.ToString() ?? defaultValue;
         }
         return defaultValue;
+    }
+
+    public Vector3 GetSpawnPositionForCharacter(int characterID)
+    {
+        // In a full implementation, you would look up the character's zone
+        // and find the appropriate ZoneManager.
+        // For now, we'll assume there is one active ZoneManager.
+        ZoneManager zoneManager = FindObjectOfType<ZoneManager>();
+        if (zoneManager != null && zoneManager.HasMarketWaypoint())
+        {
+            return zoneManager.GetMarketWaypoint().position;
+        }
+
+        Debug.LogWarning($"ServerManager: Could not find a ZoneManager with a MarketWaypoint. Defaulting to spawn position (0, 10, 0).");
+        return new Vector3(0, 10, 0); // Return a default spawn point if no waypoint is found
     }
     #endregion
 

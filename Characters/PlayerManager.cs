@@ -261,28 +261,42 @@ public class PlayerManager : NetworkBehaviour
         await SpawnNetworkedPlayerAsync(selectedPlayerCharacter);
     }    
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
-    {            
-        if (selectedPlayerCharacter == null)
-        {
-            Debug.LogError("PlayerManager: Cannot spawn character - no character selected");
-            return;
-        }
+    {
+        int characterID = playerStatBlock.GetCharacterID();
+        Debug.Log($"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
 
-        Vector3 spawnPosition = await zoneCoordinator.GetSpawnPositionAsync(selectedPlayerCharacter.GetCharacterID());
-        SpawnNetworkedPlayerServerRpc(spawnPosition, playerStatBlock.GetCharacterID(), playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
+        // We no longer need to calculate spawn position on the client.
+        // The server will be authoritative for the spawn location.
+        SpawnNetworkedPlayerServerRpc(characterID, playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
 
-        // Wait for networked player to be spawned and assigned
-        float timeout = 10f;
-        float elapsed = 0f;
-        while (currentNetworkedPlayer == null && elapsed < timeout)
+        // Wait for the networked player to be spawned and registered
+        float timeout = 10f; // 10 seconds timeout
+        float timer = 0f;
+        while (currentNetworkedPlayer == null && timer < timeout)
         {
             await Task.Delay(100);
-            elapsed += 0.1f;
+            timer += 0.1f;
         }
 
         if (currentNetworkedPlayer == null)
         {
-            throw new Exception("Timeout waiting for networked player to spawn");
+            throw new System.Exception("Timeout waiting for networked player to spawn");
+        }
+        else
+        {
+            Debug.Log($"SpawnNetworkedPlayerAsync: Successfully spawned and registered networked player (ID: {currentNetworkedPlayer.OwnerClientId}).");
+            
+            // Setup camera for the newly spawned player
+            Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
+            if (cameraTarget != null)
+            {
+                SetCameraTarget(cameraTarget);
+            }
+            else
+            {
+                // Fallback to the movement transform if camera root isn't found
+                SetCameraTarget(currentNetworkedPlayer.GetMovementTransform());
+            }
         }
     }
     public void OnSetFamilyName(string newFamilyName)
@@ -1023,112 +1037,114 @@ public class PlayerManager : NetworkBehaviour
 
     #region Networked Player Spawning RPCs
     [ServerRpc(RequireOwnership = false)]
-    private void SpawnNetworkedPlayerServerRpc(Vector3 spawnPosition, int characterID, int characterRace, int characterGender, ServerRpcParams serverRpcParams = default)
+    private void SpawnNetworkedPlayerServerRpc(int characterID, int characterRace, int characterGender, ServerRpcParams serverRpcParams = default)
     {
-        if (!IsServer)
+        var clientId = serverRpcParams.Receive.SenderClientId;
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
+
+        // --- Server-Authoritative Spawn Position ---
+        Vector3 spawnPosition = Vector3.zero;
+        if (ServerManager.Instance != null)
         {
-            Debug.LogError("PlayerManager: SpawnNetworkedPlayerServerRpc called on non-server!");
+            // This is a simplified call. In a real scenario, you might need an async method.
+            spawnPosition = ServerManager.Instance.GetSpawnPositionForCharacter(characterID);
+            Debug.Log($"SpawnNetworkedPlayerServerRpc: Determined spawn position from ServerManager: {spawnPosition}");
+        }
+        else
+        {
+            Debug.LogError("SpawnNetworkedPlayerServerRpc: ServerManager.Instance is null! Cannot determine spawn position. Defaulting to origin.");
+        }
+        // -----------------------------------------
+
+        // Instantiate the networked player prefab
+        GameObject playerObject = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
+        if (playerObject == null)
+        {
+            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Failed to instantiate networkedPlayerPrefab for client {clientId}.");
+            return;
+        }
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {spawnPosition}.");
+
+        // Get the NetworkObject component
+        var networkObject = playerObject.GetComponent<NetworkObject>();
+        if (networkObject == null)
+        {
+            Debug.LogError($"SpawnNetworkedPlayerServerRpc: networkedPlayerPrefab does not have a NetworkObject component. Cannot spawn for client {clientId}.");
+            Destroy(playerObject);
             return;
         }
 
-        try
+        // Spawn the object and assign ownership
+        networkObject.SpawnAsPlayerObject(clientId);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Spawning NetworkObject for client {clientId} with ownership.");
+
+        // Get the NetworkedPlayer component and initialize it
+        var networkedPlayer = playerObject.GetComponent<NetworkedPlayer>();
+        if (networkedPlayer != null)
         {
-            Debug.Log($"PlayerManager (Server): Race: {characterRace} Gender: {characterGender} ID: {characterID}");
-            GameObject networkedPlayerObj = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
-            NetworkObject networkObject = networkedPlayerObj.GetComponent<NetworkObject>();
-            NetworkedPlayer networkedPlayer = networkedPlayerObj.GetComponent<NetworkedPlayer>();            
-
-            GameObject characterModelPrefab = characterModelManager.GetCharacterModel(characterRace, characterGender);
-            networkedPlayer.SpawnCharacterModel(characterModelPrefab);
-            networkedPlayer.SetInitialPosition(spawnPosition);            
-            
-            networkObject.SpawnWithOwnership(serverRpcParams.Receive.SenderClientId);
-
-
-            // Log final position verification
-            Debug.Log($"PlayerManager (Server): NetworkedPlayer final position after SetInitialPosition: {networkedPlayer.transform.position}");
-            
-            // Notify the client about their spawned networked player
-            NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition,
-                new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                });
-                
-            Debug.Log($"PlayerManager (Server): Networked player spawned successfully with NetworkObjectId: {networkObject.NetworkObjectId} at position: {spawnPosition}");
+            // Set the character's identity via NetworkVariables.
+            // This will trigger the model to spawn on all clients.
+            networkedPlayer.SetCharacterVisuals(characterRace, characterGender);
+            Debug.Log($"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
         }
-        catch (Exception ex)
+        else
         {
-            Debug.LogError($"PlayerManager (Server): Error spawning networked player: {ex.Message}");
+            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Could not find NetworkedPlayer component on the spawned object for client {clientId}.");
         }
+
+        // Notify the owning client that their player has been spawned
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { clientId }
+            }
+        };
+        NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition, clientRpcParams);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
     
     [ClientRpc]
     private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
     {
-        try
+        Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
+        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObject))
         {
-            Debug.Log($"PlayerManager (Client): Received notification of spawned networked player with ID: {networkObjectId} at position: {spawnPosition}");
-            
-            // Find the spawned networked player
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObj))
+            if (networkObject != null)
             {
-                NetworkedPlayer networkedPlayer = networkObj.GetComponent<NetworkedPlayer>();
-                
-                if (networkedPlayer == null)
+                currentNetworkedPlayer = networkObject.GetComponent<NetworkedPlayer>();
+                if (currentNetworkedPlayer != null)
                 {
-                    Debug.LogError("PlayerManager (Client): Spawned networked player missing NetworkedPlayer component!");
-                    return;
-                }
-                
-                // Ensure position is set correctly on client
-                if (Vector3.Distance(networkedPlayer.transform.position, spawnPosition) > 0.1f)
-                {
-                    Debug.Log($"PlayerManager (Client): Correcting networked player position from {networkedPlayer.transform.position} to {spawnPosition}");
-                    networkedPlayer.SetPosition(spawnPosition);
-                }
-                
-                // Set as current if this is the owner
-                if (networkObj.IsOwner)
-                {
-                    currentNetworkedPlayer = networkedPlayer;
-                    
-                    // Set camera target to follow the PlayerCameraRoot (proper camera anchor)
-                    Transform cameraTargetTransform = networkedPlayer.GetPlayerCameraRoot();
-                    if (cameraTargetTransform != null)
+                    Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Successfully found and assigned NetworkedPlayer (ID: {currentNetworkedPlayer.OwnerClientId}).");
+                    if (IsOwner)
                     {
-                        SetCameraTarget(cameraTargetTransform);
-                        Debug.Log($"PlayerManager (Client): Camera targeting PlayerCameraRoot: {cameraTargetTransform.name}");
+                        // The async spawning method will handle setting the camera, but we can do it here as well
+                        // to ensure it's set as early as possible for the owner.
+                        Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
+                        if (cameraTarget != null)
+                        {
+                            SetCameraTarget(cameraTarget);
+                        }
+                        else
+                        {
+                            // Fallback to the movement transform if camera root isn't found
+                            SetCameraTarget(currentNetworkedPlayer.GetMovementTransform());
+                        }
                     }
-                    else
-                    {
-                        // Fallback to movement transform if PlayerCameraRoot not found
-                        Transform movementTransform = networkedPlayer.GetMovementTransform();
-                        SetCameraTarget(movementTransform);
-                        Debug.LogWarning($"PlayerManager (Client): PlayerCameraRoot not found, using movement transform: {movementTransform.name}");
-                    }
-                    
-                    
-                    Debug.Log($"PlayerManager (Client): Set as current networked player at position: {networkedPlayer.GetPosition()}");
                 }
                 else
                 {
-                    Debug.Log($"PlayerManager (Client): Remote networked player spawned at position: {networkedPlayer.GetPosition()}");
+                    Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: Found NetworkObject but it doesn't have a NetworkedPlayer component.");
                 }
-                
-                Debug.Log("PlayerManager (Client): Successfully found and assigned networked player");
             }
             else
             {
-                Debug.LogError($"PlayerManager (Client): Could not find spawned networked player with ID: {networkObjectId}");
+                Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: NetworkObject with ID {networkObjectId} is null after retrieval.");
             }
         }
-        catch (Exception ex)
+        else
         {
-            Debug.LogError($"PlayerManager (Client): Error handling networked player spawn notification: {ex.Message}");
+            Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: Could not find spawned NetworkObject with ID {networkObjectId}.");
         }
     }
     #endregion

@@ -1,12 +1,9 @@
 using Unity.Netcode;
+using Unity.Netcode.Components;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 
-/// <summary>
-/// Core networked player class - handles position sync, interactions, and character data
-/// Works with swappable controllers (Player Input or AI)
-/// </summary>
 public class NetworkedPlayer : NetworkBehaviour
 {
     #region Core Components
@@ -23,11 +20,14 @@ public class NetworkedPlayer : NetworkBehaviour
     [SerializeField] private PlayerInput playerInput; // Input handler on child
     [SerializeField] private Transform playerCameraRoot; // Camera target transform
     [SerializeField] private Transform playerArmature; // Where character model is spawned
+    [SerializeField] private NetworkTransform networkTransform; // NetworkTransform for syncing position
 
     private ICharacterController activeController;
     #endregion
     
     #region Network Variables
+    private NetworkVariable<int> networkRace = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private NetworkVariable<int> networkGender = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private NetworkVariable<bool> isPlayerControlled = new NetworkVariable<bool>(false);
     #endregion
     
@@ -57,14 +57,13 @@ public class NetworkedPlayer : NetworkBehaviour
         base.OnNetworkSpawn();
         
         Debug.Log($"NetworkedPlayer: OnNetworkSpawn - Transform position: {transform.position}");
-        Debug.Log($"NetworkedPlayer: OnNetworkSpawn - IsOwner: {IsOwner}, IsServer: {IsServer}");
+        Debug.Log($"NetworkedPlayer: OnNetworkSpawn - IsOwner: {IsOwner}, IsServer: {IsServer}");  
+        Debug.Log($"NetworkedPlayer: OnNetworkSpawn - NetworkTransform IsOwner: {networkTransform.IsOwner}, IsServer: {networkTransform.IsServer}");        
         
-        // Auto-find child components if not assigned
-        SetupChildComponents();
-        
-        // Verify NetworkTransform setup
-        ValidateNetworkTransformSetup();
-        
+        // Subscribe to visual changes
+        networkRace.OnValueChanged += OnVisualsChanged;
+        networkGender.OnValueChanged += OnVisualsChanged;
+
         // Configure child components for networking
         ConfigureChildComponentsForNetworking();
         
@@ -100,66 +99,23 @@ public class NetworkedPlayer : NetworkBehaviour
         {
             PlayerManager.Instance.RegisterNetworkedPlayer(this);
         }
+
+        // If we have already received the visual info, spawn the model now.
+        if (IsClient && networkRace.Value != 0 && networkGender.Value != 0)
+        {
+            SpawnCharacterModel(networkRace.Value, networkGender.Value);
+        }
     }
-    
-    /// <summary>
-    /// Auto-find child components if not manually assigned
-    /// </summary>
-    private void SetupChildComponents()
+
+    private void OnVisualsChanged(int previousValue, int newValue)
     {
-        // Find CharacterController (may be on child)
-        if (characterController == null)
+        // If both race and gender are set, spawn the model, but only on clients.
+        if (IsClient && networkRace.Value != 0 && networkGender.Value != 0)
         {
-            characterController = GetComponentInChildren<CharacterController>();
+            SpawnCharacterModel(networkRace.Value, networkGender.Value);
         }
-        
-        // Find Animator (may be on child)
-        if (animator == null)
-        {
-            animator = GetComponentInChildren<Animator>();
-        }
-        
-        // Find ThirdPersonController (likely on child)
-        if (thirdPersonController == null)
-        {
-            thirdPersonController = GetComponentInChildren<ThirdPersonController>();
-        }
-        
-        // Find PlayerInput (likely on child)
-        if (playerInput == null)
-        {
-            playerInput = GetComponentInChildren<PlayerInput>();
-        }
-        
-        // Find PlayerCameraRoot (likely on child)
-        if (playerCameraRoot == null)
-        {
-            // Search for PlayerCameraRoot by name
-            Transform[] allChildren = GetComponentsInChildren<Transform>();
-            foreach (Transform child in allChildren)
-            {
-                if (child.name == "PlayerCameraRoot")
-                {
-                    playerCameraRoot = child;
-                    break;
-                }
-            }
-            
-            // Fallback: if no PlayerCameraRoot found, use the movement transform
-            if (playerCameraRoot == null && thirdPersonController != null)
-            {
-                playerCameraRoot = thirdPersonController.transform;
-                Debug.LogWarning($"NetworkedPlayer: PlayerCameraRoot not found, using movement transform '{thirdPersonController.name}' as fallback");
-            }
-        }
-        
-        Debug.Log($"NetworkedPlayer: Found components - CharacterController: {characterController?.name}, " +
-                  $"ThirdPersonController: {thirdPersonController?.name}, PlayerInput: {playerInput?.name}, PlayerCameraRoot: {playerCameraRoot?.name}");
     }
-    
-    /// <summary>
-    /// Configure child components to work properly with networking
-    /// </summary>
+
     private void ConfigureChildComponentsForNetworking()
     {
         // Enable/disable ThirdPersonController based on ownership
@@ -177,61 +133,14 @@ public class NetworkedPlayer : NetworkBehaviour
             Debug.Log($"NetworkedPlayer: PlayerInput enabled = {IsOwner} (owner: {IsOwner})");
         }
     }
-    
-    /// <summary>
-    /// Validates that NetworkTransform is properly configured for the movement hierarchy
-    /// </summary>
-    private void ValidateNetworkTransformSetup()
-    {
-        // Check if NetworkTransform is on this object
-        var networkTransformOnParent = GetComponent<Unity.Netcode.Components.NetworkTransform>();
-        
-        // Check if there's a CharacterController on a child (where movement actually happens)
-        var characterControllerChild = GetComponentInChildren<CharacterController>();
-        
-        if (networkTransformOnParent != null && characterControllerChild != null && characterControllerChild.transform != transform)
-        {
-            Debug.LogWarning($"NetworkedPlayer: NetworkTransform is on parent but CharacterController is on child '{characterControllerChild.name}'. " +
-                           $"Consider moving NetworkTransform to the child object where movement actually occurs for proper network sync.");
-            
-            Debug.LogWarning($"NetworkedPlayer: Current setup will cause sync issues - parent stays at spawn while child moves around.");
-        }
-        
-        // Find where movement components are located
-        var thirdPersonController = GetComponentInChildren<ThirdPersonController>();
-        if (thirdPersonController != null)
-        {
-            Debug.Log($"NetworkedPlayer: Movement components found on '{thirdPersonController.name}'");
-            
-            // Check if this child has NetworkTransform
-            var networkTransformOnChild = thirdPersonController.GetComponent<Unity.Netcode.Components.NetworkTransform>();
-            if (networkTransformOnChild != null)
-            {
-                Debug.Log($"NetworkedPlayer: NetworkTransform found on movement object '{thirdPersonController.name}'");
-                
-                // Check authority setting - this is crucial for ThirdPersonController compatibility
-                var isOwnerAuth = networkTransformOnChild.InLocalSpace; // This is one way to check, but not perfect
-                Debug.LogWarning($"NetworkedPlayer: IMPORTANT - For ThirdPersonController compatibility, set NetworkTransform to 'Owner Authoritative' (Client Authoritative)");
-                Debug.LogWarning($"NetworkedPlayer: ThirdPersonController directly modifies transform.position/rotation, which conflicts with Server Authoritative NetworkTransform");
-                Debug.LogWarning($"NetworkedPlayer: Recommended: Change NetworkTransform Authority from 'Server Authoritative' to 'Owner Authoritative'");
-            }
-            else
-            {
-                Debug.LogWarning($"NetworkedPlayer: Movement object '{thirdPersonController.name}' lacks NetworkTransform. Movement won't be networked properly.");
-            }
-            
-            // Additional diagnostic for authority conflicts
-            if (networkTransformOnChild != null)
-            {
-                Debug.LogWarning($"NetworkedPlayer: DIAGNOSTIC - If movement works with NetworkTransform disabled but not enabled:");
-                Debug.LogWarning($"NetworkedPlayer: → This confirms authority conflict between ThirdPersonController and NetworkTransform");
-                Debug.LogWarning($"NetworkedPlayer: → Solution: Set NetworkTransform to 'Owner Authoritative' in Inspector");
-            }
-        }
-    }
+
     
     public override void OnNetworkDespawn()
     {
+        // Unsubscribe from visual changes
+        networkRace.OnValueChanged -= OnVisualsChanged;
+        networkGender.OnValueChanged -= OnVisualsChanged;
+
         // Cleanup spawned character model
         if (spawnedCharacterModel != null)
         {
@@ -535,10 +444,7 @@ public class NetworkedPlayer : NetworkBehaviour
         // Note: NetworkTransform automatically handles position synchronization
         // No need to manually update network variables
     }
-    
-    /// <summary>
-    /// Set initial spawn position - called by server after spawning
-    /// </summary>
+
     public void SetInitialPosition(Vector3 spawnPosition)
     {
         Debug.Log($"NetworkedPlayer: SetInitialPosition called with position: {spawnPosition}");
@@ -572,10 +478,7 @@ public class NetworkedPlayer : NetworkBehaviour
         
         Debug.Log($"NetworkedPlayer: SetInitialPosition complete - Final position: {transform.position}");
     }
-    
-    /// <summary>
-    /// Gets the transform where actual movement happens (for camera targeting, etc.)
-    /// </summary>
+
     public Transform GetMovementTransform()
     {
         // Use cached ThirdPersonController reference first
@@ -603,39 +506,44 @@ public class NetworkedPlayer : NetworkBehaviour
     {
         return animator;
     }
-    
-    /// <summary>
-    /// Gets the ThirdPersonController that handles movement
-    /// </summary>
+
     public ThirdPersonController GetThirdPersonController()
     {
         return thirdPersonController;
     }
-    
-    /// <summary>
-    /// Gets the PlayerInput component for input handling
-    /// </summary>
+
     public PlayerInput GetPlayerInput()
     {
         return playerInput;
     }
-    
-    /// <summary>
-    /// Gets the PlayerCameraRoot transform
-    /// </summary>
+
     public Transform GetPlayerCameraRoot()
     {
         return playerCameraRoot;
     }
-    
-    /// <summary>
-    /// Spawn the character model based on race and gender
-    /// </summary>
-    public void SpawnCharacterModel(GameObject characterModel)
+
+    public void SpawnCharacterModel(int race, int gender)
     {
         if (characterModelSpawned)
         {
-            Debug.LogWarning("NetworkedPlayer: Character model already spawned!");
+            // If the model is already there, we might be changing it later.
+            // For now, we'll just log and return.
+            Debug.Log("NetworkedPlayer: A character model is already spawned.");
+            return;
+        }
+        
+        // Find the CharacterModelManager instance to get the model prefab.
+        CharacterModelManager modelManager = FindObjectOfType<CharacterModelManager>();
+        if (modelManager == null)
+        {
+            Debug.LogError("NetworkedPlayer: Cannot find CharacterModelManager in the scene!");
+            return;
+        }
+
+        GameObject characterModelPrefab = modelManager.GetCharacterModel(race, gender);
+        if (characterModelPrefab == null)
+        {
+            Debug.LogError($"NetworkedPlayer: Could not get character model prefab for race {race} gender {gender}.");
             return;
         }
         
@@ -647,8 +555,8 @@ public class NetworkedPlayer : NetworkBehaviour
         
         try
         {                
-            Debug.Log($"NetworkedPlayer: Spawning character model '{characterModel.name}' at PlayerArmature '{playerArmature.name}'");
-            spawnedCharacterModel = Instantiate(characterModel, playerArmature);
+            Debug.Log($"NetworkedPlayer: Spawning character model '{characterModelPrefab.name}' at PlayerArmature '{playerArmature.name}'");
+            spawnedCharacterModel = Instantiate(characterModelPrefab, playerArmature);
             spawnedCharacterModel.transform.localPosition = Vector3.zero;
             spawnedCharacterModel.transform.localRotation = Quaternion.identity;
             
@@ -666,10 +574,7 @@ public class NetworkedPlayer : NetworkBehaviour
             Debug.LogError($"NetworkedPlayer: Error spawning character model: {ex.Message}");
         }
     }
-    
-    /// <summary>
-    /// Copy the avatar from the spawned character model to the NetworkedPlayer's animator
-    /// </summary>
+
     private void CopyAnimatorAvatar()
     {        
         // Find the animator on the spawned character model
@@ -690,11 +595,21 @@ public class NetworkedPlayer : NetworkBehaviour
         Debug.Log($"NetworkedPlayer: Copied avatar from '{spawnedCharacterModel.name}' to NetworkedPlayer animator");
         Debug.Log($"NetworkedPlayer: Model animator disabled to prevent conflicts");
     }
+
+    public void SetCharacterVisuals(int race, int gender)
+    {
+        if (IsServer)
+        {
+            networkRace.Value = race;
+            networkGender.Value = gender;
+        }
+        else
+        {
+            Debug.LogWarning("SetCharacterVisuals should only be called on the server.");
+        }
+    }
     #endregion    
-    
-    /// <summary>
-    /// Get the spawned character model
-    /// </summary>
+
     public GameObject GetSpawnedCharacterModel()
     {
         return spawnedCharacterModel;
