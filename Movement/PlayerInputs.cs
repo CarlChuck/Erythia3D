@@ -53,42 +53,42 @@ public class PlayerInputs : NetworkBehaviour
     {
         if (value.isPressed)
         {
-			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Character, characterWindowButton);
+			PlayerManager.LocalInstance.GetUIManager().RequestWindowToggle(TabWindowType.Character, characterWindowButton);
         }
     }
 	public void OnSkillsWindow(InputValue value)
 	{
 		if (value.isPressed)
 		{
-			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Skills, skillsWindowButton);
+			PlayerManager.LocalInstance.GetUIManager().RequestWindowToggle(TabWindowType.Skills, skillsWindowButton);
 		}
 	}
 	public void OnCraftingWindow(InputValue value)
 	{
 		if (value.isPressed)
 		{
-			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Crafting, craftingWindowButton);
+			PlayerManager.LocalInstance.GetUIManager().RequestWindowToggle(TabWindowType.Crafting, craftingWindowButton);
 		}
 	}
 	public void OnRosterWindow(InputValue value)
 	{
 		if (value.isPressed)
 		{
-			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Roster, rosterWindowButton);
+			PlayerManager.LocalInstance.GetUIManager().RequestWindowToggle(TabWindowType.Roster, rosterWindowButton);
 		}
 	}
 	public void OnSocialWindow(InputValue value)
 	{
 		if (value.isPressed)
 		{
-			PlayerManager.Instance.GetUIManager().RequestWindowToggle(TabWindowType.Social, socialWindowButton);
+			PlayerManager.LocalInstance.GetUIManager().RequestWindowToggle(TabWindowType.Social, socialWindowButton);
 		}
 	}
 	public void OnInteract(InputValue value)
 	{
         if (value.isPressed)
         {
-            var playerCharacter = PlayerManager.Instance?.GetControlledCharacter();
+            var playerCharacter = PlayerManager.LocalInstance?.GetControlledCharacter();
             if (playerCharacter != null)
             {
                 // Get mouse position using the new Input System

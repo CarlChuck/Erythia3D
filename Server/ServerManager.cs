@@ -3,6 +3,7 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
+using UnityEngine.SceneManagement;
 
 public class ServerManager : NetworkBehaviour
 {
@@ -1366,6 +1367,151 @@ public class ServerManager : NetworkBehaviour
 
         Debug.LogWarning($"ServerManager: Could not find a ZoneManager with a MarketWaypoint. Defaulting to spawn position (0, 10, 0).");
         return new Vector3(0, 10, 0); // Return a default spawn point if no waypoint is found
+    }
+    #endregion
+
+    #region Scene Transition and Spawning
+    private struct PendingSpawnInfo
+    {
+        public int CharacterId;
+        public int Race;
+        public int Gender;
+    }
+    private Dictionary<ulong, PendingSpawnInfo> _pendingPlayerSpawns = new Dictionary<ulong, PendingSpawnInfo>();
+
+    public async void HandleClientZoneTransitionRequest(ulong clientId, int characterId, int race, int gender)
+    {
+        // 1. Determine the zone the character should be in.
+        string zoneName = await GetCharacterZoneScene(characterId);
+        if (string.IsNullOrEmpty(zoneName))
+        {
+            Debug.LogError($"Could not determine zone for character {characterId}. Aborting transition.");
+            return;
+        }
+
+        // 2. Store the character info for spawning after the scene has loaded.
+        _pendingPlayerSpawns[clientId] = new PendingSpawnInfo { CharacterId = characterId, Race = race, Gender = gender };
+
+        // 3. Subscribe to the scene load completion event.
+        NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnServerSceneLoadComplete;
+
+        // 4. Load the new zone additively. The NetworkSceneManager will replicate this on all clients.
+        var status = NetworkManager.Singleton.SceneManager.LoadScene(zoneName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
+        if (status != SceneEventProgressStatus.Started)
+        {
+             Debug.LogWarning($"Failed to start scene load for scene {zoneName}. Status: {status}");
+             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnServerSceneLoadComplete;
+             _pendingPlayerSpawns.Remove(clientId);
+        }
+        else
+        {
+            // After starting the zone load, also unload the MainMenu scene specifically
+            Scene mainMenuScene = SceneManager.GetSceneByName("MainMenu");
+            if (mainMenuScene.isLoaded)
+            {
+                var unloadStatus = NetworkManager.Singleton.SceneManager.UnloadScene(mainMenuScene);
+                if (unloadStatus != SceneEventProgressStatus.Started)
+                {
+                    Debug.LogWarning($"Failed to start unload of MainMenu scene. Status: {unloadStatus}");
+                }
+                else
+                {
+                    Debug.Log("ServerManager: Successfully queued MainMenu scene for unload.");
+                }
+            }
+        }
+    }
+
+    private void OnServerSceneLoadComplete(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+    {
+        if (!IsServer) return;
+
+        // Iterate over all clients who have successfully loaded the scene
+        foreach (var clientId in clientsCompleted)
+        {
+            // Check if this client was waiting to be spawned
+            if (_pendingPlayerSpawns.TryGetValue(clientId, out PendingSpawnInfo spawnInfo))
+            {
+                Debug.Log($"Client {clientId} finished loading scene {sceneName}. Spawning player...");
+                SpawnPlayerInScene(clientId, spawnInfo);
+                _pendingPlayerSpawns.Remove(clientId);
+            }
+        }
+        
+        foreach (var clientId in clientsTimedOut)
+        {
+            Debug.LogWarning($"Client {clientId} timed out loading scene {sceneName}. They will not be spawned.");
+            if (_pendingPlayerSpawns.ContainsKey(clientId))
+            {
+                _pendingPlayerSpawns.Remove(clientId);
+            }
+        }
+
+        // If no more players are waiting to be spawned, we can unsubscribe from the event.
+        if (_pendingPlayerSpawns.Count == 0)
+        {
+            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnServerSceneLoadComplete;
+            Debug.Log("All pending players have been processed. Unsubscribed from scene load event.");
+        }
+    }
+
+    private void SpawnPlayerInScene(ulong clientId, PendingSpawnInfo spawnInfo)
+    {
+        // This logic is adapted from the old PlayerManager.SpawnNetworkedPlayerServerRpc
+
+        // --- Determine Spawn Position ---
+        Vector3 spawnPosition = GetSpawnPositionForCharacter(spawnInfo.CharacterId);
+
+        // --- Instantiate and Spawn Prefab ---
+        GameObject networkedPlayerPrefab = GetNetworkedPlayerPrefab();
+        if (networkedPlayerPrefab == null)
+        {
+            Debug.LogError("ServerManager: networkedPlayerPrefab is not assigned or found! Cannot spawn player.");
+            return;
+        }
+
+        GameObject playerObject = UnityEngine.Object.Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
+        var networkObject = playerObject.GetComponent<NetworkObject>();
+        
+        networkObject.SpawnAsPlayerObject(clientId);
+        Debug.Log($"ServerManager: Spawning NetworkObject for client {clientId} with ownership.");
+
+        // --- Set Visuals and Notify Client ---
+        var networkedPlayer = playerObject.GetComponent<NetworkedPlayer>();
+        if (networkedPlayer != null)
+        {
+            networkedPlayer.SetCharacterVisuals(spawnInfo.Race, spawnInfo.Gender);
+            Debug.Log($"ServerManager: Set character visuals for race {spawnInfo.Race}, gender {spawnInfo.Gender}.");
+        }
+        
+        // Find the client's PlayerManager to call the final notification RPC
+        if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var networkClient))
+        {
+            var playerManager = networkClient.PlayerObject.GetComponent<PlayerManager>();
+            if (playerManager != null)
+            {
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { clientId } }
+                };
+                // This RPC tells the client which NetworkObject is theirs so they can control it.
+                playerManager.NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition, clientRpcParams);
+                Debug.Log($"ServerManager: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
+            }
+        }
+    }
+
+    private GameObject GetNetworkedPlayerPrefab()
+    {
+        // Find any active PlayerManager instance on the server to get the prefab from.
+        var playerManager = FindAnyObjectByType<PlayerManager>();
+        if (playerManager != null && playerManager.NetworkedPlayerPrefab != null)
+        {
+            return playerManager.NetworkedPlayerPrefab;
+        }
+
+        Debug.LogError("ServerManager could not find a valid NetworkedPlayerPrefab. Searched for a PlayerManager instance but found none or it had no prefab assigned. Spawning will fail.");
+        return null;
     }
     #endregion
 

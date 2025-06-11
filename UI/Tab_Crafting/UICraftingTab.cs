@@ -16,9 +16,9 @@ public class UICraftingTab : MonoBehaviour
 
     public void UpdateWorkBenchWindow() 
     { 
-        if (PlayerManager.Instance != null)
+        if (PlayerManager.LocalInstance != null)
         {
-            List<WorkBench> workbenches = PlayerManager.Instance.GetOwnedWorkbenches();
+            List<WorkBench> workbenches = PlayerManager.LocalInstance.GetOwnedWorkbenches();
             if (workbenches != null)
             {
                 foreach (WorkBench workbench in workbenches)

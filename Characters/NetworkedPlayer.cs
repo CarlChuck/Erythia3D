@@ -95,9 +95,9 @@ public class NetworkedPlayer : NetworkBehaviour
         Debug.Log($"NetworkedPlayer: NetworkVariable callbacks registered");
         
         // Register with PlayerManager
-        if (PlayerManager.Instance != null)
+        if (PlayerManager.LocalInstance != null)
         {
-            PlayerManager.Instance.RegisterNetworkedPlayer(this);
+            PlayerManager.LocalInstance.RegisterNetworkedPlayer(this);
         }
 
         // If we have already received the visual info, spawn the model now.
@@ -151,9 +151,9 @@ public class NetworkedPlayer : NetworkBehaviour
         }
         
         // Unregister from PlayerManager
-        if (PlayerManager.Instance != null)
+        if (PlayerManager.LocalInstance != null)
         {
-            PlayerManager.Instance.UnregisterNetworkedPlayer(this);
+            PlayerManager.LocalInstance.UnregisterNetworkedPlayer(this);
         }
         
         // Unsubscribe from network variable changes
@@ -253,9 +253,9 @@ public class NetworkedPlayer : NetworkBehaviour
         if (activeController != null)
         {
             // Use camera from PlayerManager to perform raycast
-            if (PlayerManager.Instance != null)
+            if (PlayerManager.LocalInstance != null)
             {
-                Camera mainCamera = PlayerManager.Instance.GetMainCamera();
+                Camera mainCamera = PlayerManager.LocalInstance.GetMainCamera();
                 if (mainCamera != null)
                 {
                     Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
@@ -396,9 +396,9 @@ public class NetworkedPlayer : NetworkBehaviour
     private PlayerController GetOrCreatePlayerControllerForInteraction()
     {
         // First, try to find an existing PlayerController in the PlayerManager
-        if (PlayerManager.Instance != null)
+        if (PlayerManager.LocalInstance != null)
         {
-            PlayerController existingController = PlayerManager.Instance.GetControlledCharacter();
+            PlayerController existingController = PlayerManager.LocalInstance.GetControlledCharacter();
             if (existingController != null)
             {
                 return existingController;

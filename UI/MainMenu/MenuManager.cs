@@ -66,7 +66,7 @@ public class MenuManager : MonoBehaviour
     {
         if (playerManager == null)
         {
-            playerManager = PlayerManager.Instance;
+            playerManager = PlayerManager.LocalInstance;
         }
         
         if (menuCanvas != null && menuCanvas.activeSelf)
@@ -116,7 +116,7 @@ public class MenuManager : MonoBehaviour
     {
         if (playerManager == null)
         {
-            playerManager = PlayerManager.Instance;
+            playerManager = PlayerManager.LocalInstance;
         }
         string accountNumberText = accountNumberField.text.Trim();
         string accountNameText = accountNameField.text.Trim();

@@ -5,9 +5,30 @@ using UnityEngine.SceneManagement;
 using System.Threading.Tasks;
 using System;
 using Unity.Cinemachine;
+using System.Linq;
 
 public class PlayerManager : NetworkBehaviour
 {
+    #region Local Instance Access
+    // This replaces the traditional singleton pattern which does not work correctly
+    // with multiple clients in the editor (Multiplayer Play Mode).
+    private static readonly List<PlayerManager> s_instances = new List<PlayerManager>();
+
+    /// <summary>
+    /// Gets the PlayerManager instance that is owned by the local client.
+    /// This is the correct way to access the PlayerManager in a multiplayer environment.
+    /// </summary>
+    public static PlayerManager LocalInstance
+    {
+        get
+        {
+            if (NetworkManager.Singleton == null) return null;
+            // The IsOwner check is the key to finding the instance for the local player.
+            return s_instances.FirstOrDefault(pm => pm.IsOwner);
+        }
+    }
+    #endregion
+
     #region Helper Classes
     private CharacterDataHandler characterHandler;
     private InventoryDataHandler inventoryHandler;
@@ -34,6 +55,7 @@ public class PlayerManager : NetworkBehaviour
 
     [Header("Multiplayer Prefabs")]
     [SerializeField] private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
+    public GameObject NetworkedPlayerPrefab => networkedPlayerPrefab; // Public accessor for ServerManager
     
     [Header("Camera and UI (Persistent)")]
     [SerializeField] private Camera mainCamera;
@@ -109,23 +131,8 @@ public class PlayerManager : NetworkBehaviour
     internal List<WorkBench> OwnedWorkbenches => ownedWorkbenches;
     #endregion
 
-    #region Singleton
-    public static PlayerManager Instance { get; private set; }
-    
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-        {
-            Debug.LogWarning($"Multiple PlayerManager instances owned by client. Destroying this one on GameObject: {gameObject.name}");
-            Destroy(gameObject); 
-            return;
-        }
-
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-
         // Initialize helper classes
         InitializeHelpers();
 
@@ -139,7 +146,6 @@ public class PlayerManager : NetworkBehaviour
         zoneCoordinator = new ZoneCoordinator(this);
         requestManager = new NetworkRequestManager(this);
     }
-    #endregion
 
     #region Initialization
     private void Start()
@@ -239,29 +245,34 @@ public class PlayerManager : NetworkBehaviour
     {
         if (selectedPlayerCharacter == null)
         {
-            Debug.LogError("PlayerManager: Cannot set selected character - no character selected");
+            Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
             return;
         }
         
-        // First, sync character data to server if we're the client
-        if (IsClient && !IsServer)
-        {
-            Debug.Log("PlayerManager (Client): Syncing character data to server before spawning...");
-            PlayerCharacterData characterData = ConvertToPlayerCharacterData(selectedPlayerCharacter);
-            //SyncCharacterDataToServerRpc(characterData);
-            
-            // Brief delay to allow server to process the character data
-            await Task.Delay(500);
-        }
-        
-        // Then, get zone info and load the zone
-        await zoneCoordinator.SetupSelectedCharacterAsync(selectedPlayerCharacter);
-        
-        // After zone is loaded, spawn the multiplayer character with waypoints available
-        await SpawnNetworkedPlayerAsync(selectedPlayerCharacter);
+        // The client no longer handles scene transitions.
+        // It simply tells the server it's ready and provides the necessary character data.
+        Debug.Log($"PlayerManager: Requesting server to transition to zone for character {selectedPlayerCharacter.GetCharacterID()}.");
+        RequestZoneTransitionServerRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
+
+        // The old flow of calling ZoneCoordinator and SpawnNetworkedPlayerAsync from the client is now obsolete.
+        // The server will handle all of it.
     }    
-    private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
+    
+    [ServerRpc]
+    private void RequestZoneTransitionServerRpc(int characterId, int race, int gender, ServerRpcParams serverRpcParams = default)
     {
+        if (ServerManager.Instance != null)
+        {
+            ServerManager.Instance.HandleClientZoneTransitionRequest(serverRpcParams.Receive.SenderClientId, characterId, race, gender);
+        }
+        else
+        {
+            Debug.LogError("ServerManager not found! Cannot handle zone transition request.");
+        }
+    }
+    
+    private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
+    {            
         int characterID = playerStatBlock.GetCharacterID();
         Debug.Log($"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
 
@@ -503,6 +514,17 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Helpers
+    public override void OnNetworkSpawn()
+    {
+        base.OnNetworkSpawn();
+        s_instances.Add(this);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        s_instances.Remove(this);
+        base.OnNetworkDespawn();
+    }
     public override void OnDestroy()
     {
         SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
@@ -1105,7 +1127,7 @@ public class PlayerManager : NetworkBehaviour
     }
     
     [ClientRpc]
-    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
+    public void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
     {
         Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
         if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObject))

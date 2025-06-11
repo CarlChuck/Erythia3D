@@ -143,9 +143,9 @@ public class PlayerInputController : MonoBehaviour, ICharacterController
         enabled = true;
         
         // Setup camera to follow this networked player
-        if (PlayerManager.Instance != null)
+        if (PlayerManager.LocalInstance != null)
         {
-            PlayerManager.Instance.SetCameraTarget(networkedPlayer.transform);
+            PlayerManager.LocalInstance.SetCameraTarget(networkedPlayer.transform);
         }
         
         Debug.Log("PlayerInputController: Activated");
