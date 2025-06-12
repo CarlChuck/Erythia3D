@@ -162,7 +162,7 @@ public class ZoneCoordinator
         {
             if (PersistentSceneManager.Instance.IsSceneLoaded("MainMenu"))
             {
-                PersistentSceneManager.Instance.UnloadMainMenuForGameplay();
+                PersistentSceneManager.Instance.UnloadScene("MainMenu");
                 await Task.Delay(500); // Small delay for unloading
             }
         }

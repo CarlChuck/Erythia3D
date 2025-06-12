@@ -1518,9 +1518,7 @@ public class ServerManager : NetworkBehaviour
     #endregion
 }
 
-/// <summary>
-/// Player zone information result structure for server-client communication
-/// </summary>
+/// Player zone information result struct for server-client communication
 [System.Serializable]
 public struct PlayerZoneInfoResult : INetworkSerializable
 {
@@ -1536,9 +1534,7 @@ public struct PlayerZoneInfoResult : INetworkSerializable
     }
 }
 
-/// <summary>
-/// Server zone loading result structure for server-client communication
-/// </summary>
+/// Server zone loading result struct for server-client communication
 [System.Serializable]
 public struct ServerZoneLoadResult : INetworkSerializable
 {
