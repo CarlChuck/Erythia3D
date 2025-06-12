@@ -4,8 +4,9 @@ using Unity.Netcode;
 using System.Collections;
 using System.Collections.Generic;
 using System;
+using System.Linq;
 
-public class PersistentSceneManager : MonoBehaviour
+public class PersistentSceneManager : NetworkBehaviour
 {
     #region Constants
     private const string mainMenuSceneName = "MainMenu";
@@ -26,7 +27,6 @@ public class PersistentSceneManager : MonoBehaviour
     
     // Persistent Scene Protection
     private Coroutine persistentSceneMonitorCoroutine;
-    private bool persistentSceneProtectionEnabled = true;
     #endregion
 
     #region Public Properties
@@ -93,7 +93,6 @@ public class PersistentSceneManager : MonoBehaviour
         // availableZones.Add("Qadian");
         // etc.
     }
-
     private IEnumerator InitializeSceneManagement()
     {
         hasInitialized = true;
@@ -107,105 +106,15 @@ public class PersistentSceneManager : MonoBehaviour
         // Ensure Persistent scene is set as active and won't unload
         SceneManager.SetActiveScene(SceneManager.GetSceneByName(persistentSceneName));
 
-        // Start persistent scene monitoring
-        StartPersistentSceneMonitoring();
-
         // Determine role and load appropriate scenes
         DetermineRoleAndLoadScenes();
     }
-
     private void DetermineRoleAndLoadScenes()
     {
         bool isServer = IsRunningAsServer();
         bool isClient = IsRunningAsClient();
 
         LoadMainMenuScene();
-    }
-    #endregion
-
-    #region Persistent Scene Protection
-    private void StartPersistentSceneMonitoring()
-    {
-        if (persistentSceneProtectionEnabled && persistentSceneMonitorCoroutine == null)
-        {
-            persistentSceneMonitorCoroutine = StartCoroutine(MonitorPersistentScene());
-        }
-    }
-
-    private IEnumerator MonitorPersistentScene()
-    {
-        while (persistentSceneProtectionEnabled)
-        {
-            yield return new WaitForSeconds(persistentSceneMonitoringInterval);
-            
-            // Check if persistent scene still exists and is loaded
-            Scene persistentScene = SceneManager.GetSceneByName(persistentSceneName);
-            
-            if (!persistentScene.IsValid() || !persistentScene.isLoaded)
-            {
-                Debug.LogError($"PersistentSceneManager: CRITICAL ERROR - {persistentSceneName} scene is missing or unloaded!");
-                OnPersistentSceneProtectionTriggered?.Invoke();
-                
-                // This is a critical failure - the game is likely broken
-                // Log extensively and attempt emergency recovery
-                Debug.LogError("PersistentSceneManager: Game state is compromised. NetworkManager and all server components may be lost.");
-                Debug.LogError("PersistentSceneManager: Attempting emergency shutdown to prevent data corruption.");
-                
-                // Emergency shutdown - better to restart than continue in broken state
-                if (Application.isEditor)
-                {
-                    Debug.LogError("PersistentSceneManager: In editor - stopping play mode");
-                    #if UNITY_EDITOR
-                    UnityEditor.EditorApplication.isPlaying = false;
-                    #endif
-                }
-                else
-                {
-                    Debug.LogError("PersistentSceneManager: In build - shutting down application");
-                    Application.Quit();
-                }
-                
-                yield break; // Stop monitoring
-            }
-            
-            // Ensure persistent scene remains the active scene
-            Scene activeScene = SceneManager.GetActiveScene();
-            if (activeScene.name != persistentSceneName)
-            {
-                Debug.LogWarning($"PersistentSceneManager: Active scene changed to '{activeScene.name}'. Restoring {persistentSceneName} as active.");
-                SceneManager.SetActiveScene(persistentScene);
-            }
-        }
-    }
-
-    public void DisablePersistentSceneProtection()
-    {
-        Debug.LogWarning("PersistentSceneManager: Persistent scene protection DISABLED. This is extremely dangerous!");
-        persistentSceneProtectionEnabled = false;
-        
-        if (persistentSceneMonitorCoroutine != null)
-        {
-            StopCoroutine(persistentSceneMonitorCoroutine);
-            persistentSceneMonitorCoroutine = null;
-        }
-    }
-
-    public void EnablePersistentSceneProtection()
-    {
-        if (!persistentSceneProtectionEnabled)
-        {
-            Debug.Log("PersistentSceneManager: Re-enabling persistent scene protection");
-            persistentSceneProtectionEnabled = true;
-            StartPersistentSceneMonitoring();
-        }
-    }
-
-    public bool IsPersistentSceneHealthy()
-    {
-        Scene persistentScene = SceneManager.GetSceneByName(persistentSceneName);
-        bool isHealthy = persistentScene.IsValid() && persistentScene.isLoaded;
-        
-        return isHealthy;
     }
     #endregion
 
@@ -218,7 +127,6 @@ public class PersistentSceneManager : MonoBehaviour
         }
         StartCoroutine(LoadSceneAsync(mainMenuSceneName));
     }
-
     private IEnumerator LoadSceneAsync(string sceneName)
     {
         AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
@@ -242,7 +150,7 @@ public class PersistentSceneManager : MonoBehaviour
     public void LoadZone(string zoneName, Action<bool> onComplete = null)
     {
         // PROTECTION: Check if someone is trying to load essential scenes as zones
-        if (IsProtectedFromZoneOperations(zoneName))
+        if (IsEssentialScene(zoneName))
         {
             Debug.LogError($"PersistentSceneManager: REJECTED - Cannot load protected scene '{zoneName}' as a zone!");
             onComplete?.Invoke(false);
@@ -306,7 +214,7 @@ public class PersistentSceneManager : MonoBehaviour
     public void TransitionToZone(string targetZone, Action<bool> onComplete = null)
     {
         // PROTECTION: Ensure target zone is not a protected scene
-        if (IsProtectedFromZoneOperations(targetZone))
+        if (IsEssentialScene(targetZone))
         {
             Debug.LogError($"PersistentSceneManager: REJECTED - Cannot transition to protected scene '{targetZone}' as a zone!");
             onComplete?.Invoke(false);
@@ -322,7 +230,6 @@ public class PersistentSceneManager : MonoBehaviour
 
         StartCoroutine(TransitionToZoneAsync(targetZone, onComplete));
     }
-
     private IEnumerator LoadZoneAsync(string zoneName, Action<bool> onComplete)
     {
         AsyncOperation asyncLoad = null;
@@ -401,7 +308,6 @@ public class PersistentSceneManager : MonoBehaviour
             }
         }
     }
-
     private IEnumerator UnloadZoneAsync(string zoneName, Action<bool> onComplete)
     {
         // FINAL PROTECTION: Double-check before unloading
@@ -460,7 +366,6 @@ public class PersistentSceneManager : MonoBehaviour
             onComplete?.Invoke(false);
         }
     }
-
     private IEnumerator TransitionToZoneAsync(string targetZone, Action<bool> onComplete)
     {
         bool transitionSuccess = true;
@@ -575,39 +480,15 @@ public class PersistentSceneManager : MonoBehaviour
     {
         return loadedZones.ContainsKey(zoneName) && loadedZones[zoneName];
     }
-    public List<string> GetLoadedZones()
-    {
-        List<string> loaded = new List<string>();
-        foreach (var kvp in loadedZones)
-        {
-            if (kvp.Value)
-            {
-                loaded.Add(kvp.Key);
-            }
-        }
-        return loaded;
-    }
-    public HashSet<string> GetAvailableZones()
-    {
-        return new HashSet<string>(availableZones);
-    }
     public void RegisterZone(string zoneName)
     {
-        if (string.IsNullOrEmpty(zoneName))
-        {
-            return;
-        }
-
         // PROTECTION: Never allow protected scenes to be registered as zones
-        if (IsProtectedFromZoneOperations(zoneName))
+        if (!IsEssentialScene(zoneName))
         {
-            Debug.LogError($"PersistentSceneManager: REJECTED - Cannot register protected scene '{zoneName}' as a zone!");
-            return;
-        }
-
-        if (!availableZones.Contains(zoneName))
-        {
-            availableZones.Add(zoneName);
+            if (!availableZones.Contains(zoneName))
+            {
+                availableZones.Add(zoneName);
+            }
         }
     }
     public void UnloadMainMenuForGameplay()
@@ -632,51 +513,30 @@ public class PersistentSceneManager : MonoBehaviour
         // Only Persistent scene is truly essential and should never be unloaded
         return sceneName == persistentSceneName;
     }
-    private bool IsProtectedFromZoneOperations(string sceneName)
-    {
-        // Both Persistent and MainMenu are protected from being treated as zones
-        return sceneName == persistentSceneName || sceneName == mainMenuSceneName;
-    }
-
     private bool IsRunningAsServer()
     {
-        // Check if running in batch mode (typical for dedicated servers)
-        if (Application.isBatchMode)
-        {
-            return true;
-        }
-
-        // Check command line arguments for server indicators
-        string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (args[i].ToLower() == "-server" || args[i].ToLower() == "-batchmode" || args[i].ToLower() == "-dedicated")
-            {
-                return true;
-            }
-        }
-
-        // Check if NetworkManager is initialized and we're server
         if (NetworkManager.Singleton != null)
         {
             return NetworkManager.Singleton.IsServer;
         }
-
-        return false;
+        else
+        {
+            Debug.LogWarning("PersistentSceneManager: NetworkManager is null");
+            return false;
+        }
     }
-
     private bool IsRunningAsClient()
     {
-        // Check if NetworkManager is initialized and we're client
         if (NetworkManager.Singleton != null)
         {
             return NetworkManager.Singleton.IsClient;
         }
-
-        // If no network manager yet, assume client (will be corrected later)
-        return !Application.isBatchMode;
+        else
+        {
+            Debug.LogWarning("PersistentSceneManager: NetworkManager is null");
+            return false;
+        }
     }
-
     public bool IsSceneLoaded(string sceneName)
     {
         Scene scene = SceneManager.GetSceneByName(sceneName);
