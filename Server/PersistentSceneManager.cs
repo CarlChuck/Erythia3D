@@ -17,7 +17,9 @@ public class PersistentSceneManager : NetworkBehaviour
     public static PersistentSceneManager Instance;
     private bool hasInitialized = false;
     [SerializeField] private float sceneLoadDelay = 0.5f; // Small delay to ensure network initialization
-    
+    private bool isServer = false;
+    private bool isClient = false;
+
     // Zone Management Fields
     private Dictionary<string, bool> loadedZones = new Dictionary<string, bool>();
     private Dictionary<string, Coroutine> activeZoneLoadOperations = new Dictionary<string, Coroutine>();
@@ -76,8 +78,8 @@ public class PersistentSceneManager : NetworkBehaviour
         SceneManager.SetActiveScene(SceneManager.GetSceneByName(persistentSceneName));
 
         // Determine role and load appropriate scenes
-        bool isServer = IsRunningAsServer();
-        bool isClient = IsRunningAsClient();
+        isServer = IsRunningAsServer();
+        isClient = IsRunningAsClient();
         LoadScene(mainMenuSceneName);
     }
     #endregion
