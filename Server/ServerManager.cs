@@ -1,15 +1,17 @@
-using Unity.Netcode;
-using UnityEngine;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using TMPro;
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class ServerManager : NetworkBehaviour
 {
     #region Singleton
-    public static ServerManager Instance { get; private set; }
-    
+    public static ServerManager Instance { get; private set; }    
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -22,15 +24,706 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
+    [Header("Master Server Configuration")]
+    [SerializeField] private ushort masterServerPort = 8888;
+    [SerializeField] private int maxConnectionsPerArea = 50;
+    [SerializeField] private bool enableDebugLogs = true;
+
+    [Header("Area Server Management")]
+    [SerializeField] private List<AreaServerTemplate> areaServerTemplates = new();
+
+    [Header("Load Balancing")]
+    [SerializeField] private float loadBalanceThreshold = 0.8f;
+    [SerializeField] private int healthCheckInterval = 10;
+
+    // Runtime data
+    private Dictionary<string, AreaServerInfo> registeredServers = new();
+    private Dictionary<ulong, string> playerToAreaMapping = new();
+    private Dictionary<string, Queue<PlayerTransferRequest>> pendingTransfers = new();
+    private Dictionary<string, System.Diagnostics.Process> externalServerProcesses = new();
+
+    // Network components
+    private NetworkManager masterNetworkManager;
+    private float lastHealthCheck = 0f;
+
     public override void OnNetworkSpawn()
     {
-        base.OnNetworkSpawn();
+        base.OnNetworkSpawn(); 
+        InitializeMasterServer();
     }
-
     public override void OnNetworkDespawn()
     {
+        ShutdownMasterServer();
         base.OnNetworkDespawn();
     }
+
+
+    #region Master Server Initialization
+
+    void InitializeMasterServer()
+    {
+        // Set up master server networking
+        masterNetworkManager = GetComponent<NetworkManager>();
+        if (masterNetworkManager == null)
+        {
+            masterNetworkManager = gameObject.AddComponent<NetworkManager>();
+        }
+
+        // Configure transport
+        var transport = masterNetworkManager.GetComponent<UnityTransport>();
+        if (transport != null)
+        {
+            transport.SetConnectionData("0.0.0.0", masterServerPort);
+        }
+
+        // Set up callbacks
+        masterNetworkManager.OnClientConnectedCallback += OnClientConnectedToMaster;
+        masterNetworkManager.OnClientDisconnectCallback += OnClientDisconnectedFromMaster;
+
+        // Start master server
+        bool started = masterNetworkManager.StartServer();
+        if (started)
+        {
+            LogDebug($"Master server started on port {masterServerPort}");
+
+            // Launch area servers if configured to auto-start
+            LaunchAreaServers();
+        }
+        else
+        {
+            LogError("Failed to start master server");
+        }
+    }
+
+    void ShutdownMasterServer()
+    {
+        // Shutdown all external server processes
+        foreach (var process in externalServerProcesses.Values)
+        {
+            if (process != null && !process.HasExited)
+            {
+                try
+                {
+                    process.Kill();
+                    process.WaitForExit(5000); // Wait up to 5 seconds
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error shutting down external server process: {ex.Message}");
+                }
+            }
+        }
+        externalServerProcesses.Clear();
+
+        if (masterNetworkManager != null && masterNetworkManager.IsServer)
+        {
+            masterNetworkManager.Shutdown();
+        }
+
+        LogDebug("Master server shut down");
+    }
+
+    #endregion
+
+    #region Area Server Management
+
+    void LaunchAreaServers()
+    {
+        foreach (var template in areaServerTemplates)
+        {
+            if (template.autoStartOnLaunch)
+            {
+                LaunchAreaServer(template);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Launch an area server (either in-process or as separate executable)
+    /// </summary>
+    public bool LaunchAreaServer(AreaServerTemplate template)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(template.serverExecutablePath))
+            {
+                // Launch as separate process
+                return LaunchExternalAreaServer(template);
+            }
+            else
+            {
+                // Launch in current process
+                return LaunchInProcessAreaServer(template);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Failed to launch area server {template.areaId}: {ex.Message}");
+            return false;
+        }
+    }
+
+    bool LaunchExternalAreaServer(AreaServerTemplate template)
+    {
+        var args = $"--area=\"{template.areaId}\" --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
+        if (!string.IsNullOrEmpty(template.additionalArgs))
+        {
+            args += " " + template.additionalArgs;
+        }
+
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = template.serverExecutablePath,
+            Arguments = args,
+            UseShellExecute = false,
+            CreateNoWindow = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        var process = System.Diagnostics.Process.Start(startInfo);
+        if (process != null)
+        {
+            externalServerProcesses[template.areaId] = process;
+
+            // Set up output monitoring
+            process.OutputDataReceived += (sender, e) => {
+                if (!string.IsNullOrEmpty(e.Data))
+                    LogDebug($"[{template.areaId}] {e.Data}");
+            };
+            process.ErrorDataReceived += (sender, e) => {
+                if (!string.IsNullOrEmpty(e.Data))
+                    LogError($"[{template.areaId}] {e.Data}");
+            };
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            LogDebug($"Launched external area server: {template.areaId} (PID: {process.Id})");
+            return true;
+        }
+
+        return false;
+    }
+
+    bool LaunchInProcessAreaServer(AreaServerTemplate template)
+    {
+        // Create a new GameObject for the area server
+        var areaServerGO = new GameObject($"AreaServer_{template.areaId}");
+        areaServerGO.transform.parent = transform;
+
+        // Add NetworkManager for this area
+        var areaNetworkManager = areaServerGO.AddComponent<NetworkManager>();
+        var areaTransport = areaServerGO.AddComponent<UnityTransport>();
+
+        // Add area server manager
+        var areaManager = areaServerGO.AddComponent<AreaServerManager>();
+
+        // Configure the area server
+        var config = new ServerAreaConfig
+        {
+            areaId = template.areaId,
+            sceneName = template.sceneName,
+            port = template.startingPort,
+            maxPlayers = template.maxPlayers,
+            spawnPosition = template.spawnPosition,
+            autoStart = true
+        };
+
+        // Use reflection to set the config (since it's serialized)
+        var configField = typeof(AreaServerManager).GetField("areaConfig",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        configField?.SetValue(areaManager, config);
+
+        LogDebug($"Launched in-process area server: {template.areaId}");
+        return true;
+    }
+
+    /// <summary>
+    /// Restart a failed area server
+    /// </summary>
+    public bool RestartAreaServer(string areaId)
+    {
+        var template = areaServerTemplates.FirstOrDefault(t => t.areaId == areaId);
+        if (template == null)
+        {
+            LogError($"No template found for area server {areaId}");
+            return false;
+        }
+
+        // Clean up existing process if any
+        if (externalServerProcesses.ContainsKey(areaId))
+        {
+            var process = externalServerProcesses[areaId];
+            if (process != null && !process.HasExited)
+            {
+                process.Kill();
+            }
+            externalServerProcesses.Remove(areaId);
+        }
+
+        // Remove from registered servers
+        UnregisterAreaServer(areaId);
+
+        // Relaunch
+        LogDebug($"Restarting area server: {areaId}");
+        return LaunchAreaServer(template);
+    }
+
+    #endregion
+
+    #region Server Registration
+
+    /// <summary>
+    /// Register an area server with the master server
+    /// Called by area servers when they start up
+    /// </summary>
+    public void RegisterAreaServer(AreaServerInfo serverInfo)
+    {
+        serverInfo.lastUpdate = DateTime.Now;
+        registeredServers[serverInfo.areaId] = serverInfo;
+
+        LogDebug($"Registered area server: {serverInfo.areaId} ({serverInfo.address}:{serverInfo.port})");
+
+        // Initialize transfer queue for this server
+        if (!pendingTransfers.ContainsKey(serverInfo.areaId))
+        {
+            pendingTransfers[serverInfo.areaId] = new Queue<PlayerTransferRequest>();
+        }
+
+        // Notify all connected clients about the new server
+        BroadcastServerListUpdate();
+    }
+
+    /// <summary>
+    /// Unregister an area server
+    /// </summary>
+    public void UnregisterAreaServer(string areaId)
+    {
+        if (registeredServers.ContainsKey(areaId))
+        {
+            var serverInfo = registeredServers[areaId];
+            registeredServers.Remove(areaId);
+            LogDebug($"Unregistered area server: {areaId}");
+
+            // Handle players that were connected to this server
+            HandleServerDisconnection(areaId);
+        }
+
+        // Clean up pending transfers
+        if (pendingTransfers.ContainsKey(areaId))
+        {
+            pendingTransfers.Remove(areaId);
+        }
+
+        // Notify clients
+        BroadcastServerListUpdate();
+    }
+
+    /// <summary>
+    /// Update area server status
+    /// </summary>
+    public void UpdateAreaServerStatus(ServerStatusUpdate statusUpdate)
+    {
+        if (registeredServers.ContainsKey(statusUpdate.areaId))
+        {
+            var serverInfo = registeredServers[statusUpdate.areaId];
+            serverInfo.currentPlayers = statusUpdate.currentPlayers;
+            serverInfo.isOnline = statusUpdate.isOnline;
+            serverInfo.lastUpdate = DateTime.Now;
+
+            LogDebug($"Updated status for {statusUpdate.areaId}: {statusUpdate.currentPlayers} players, Online: {statusUpdate.isOnline}");
+        }
+    }
+
+    void HandleServerDisconnection(string areaId)
+    {
+        // Find all players that were connected to this server
+        var affectedPlayers = playerToAreaMapping
+            .Where(kvp => kvp.Value == areaId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var playerId in affectedPlayers)
+        {
+            // Try to find an alternative server
+            var alternativeServer = FindBestServerForPlayer(playerId);
+            if (alternativeServer != null)
+            {
+                // Create a transfer request to move the player
+                var transferRequest = new PlayerTransferRequest
+                {
+                    clientId = playerId,
+                    fromAreaId = areaId,
+                    toAreaId = alternativeServer.areaId,
+                    playerPosition = Vector3.zero // Will be set to spawn position
+                };
+
+                RequestPlayerTransfer(transferRequest);
+                LogDebug($"Relocating player {playerId} from failed server {areaId} to {alternativeServer.areaId}");
+            }
+            else
+            {
+                // No alternative server available, remove from mapping
+                playerToAreaMapping.Remove(playerId);
+                LogWarning($"No alternative server found for player {playerId} from failed server {areaId}");
+            }
+        }
+    }
+
+    #endregion
+
+    #region Player Management
+
+    void OnClientConnectedToMaster(ulong clientId)
+    {
+        LogDebug($"Client {clientId} connected to master server");
+
+        // Send available areas to client
+        SendAvailableAreasToClient(clientId);
+    }
+
+    void OnClientDisconnectedFromMaster(ulong clientId)
+    {
+        LogDebug($"Client {clientId} disconnected from master server");
+
+        // Clean up player mapping
+        if (playerToAreaMapping.ContainsKey(clientId))
+        {
+            playerToAreaMapping.Remove(clientId);
+        }
+    }
+
+    /// <summary>
+    /// Handle player request to join a specific area
+    /// </summary>
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestJoinAreaServerRpc(string areaId, ServerRpcParams rpcParams = default)
+    {
+        var clientId = rpcParams.Receive.SenderClientId;
+
+        if (!registeredServers.ContainsKey(areaId))
+        {
+            LogError($"Area {areaId} not found for client {clientId}");
+            SendJoinAreaResponseClientRpc(false, "", 0, "Area not found",
+                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+            return;
+        }
+
+        var serverInfo = registeredServers[areaId];
+
+        // Check if server is online
+        if (!serverInfo.isOnline)
+        {
+            LogWarning($"Area {areaId} is offline for client {clientId}");
+            SendJoinAreaResponseClientRpc(false, "", 0, "Area is offline",
+                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+            return;
+        }
+
+        // Check if server can accept new players
+        if (serverInfo.currentPlayers >= serverInfo.maxPlayers)
+        {
+            LogWarning($"Area {areaId} is full for client {clientId}");
+
+            // Try to find an alternative server
+            var alternativeServer = FindBestServerForPlayer(clientId);
+            if (alternativeServer != null)
+            {
+                SendJoinAreaResponseClientRpc(true, alternativeServer.address, alternativeServer.port,
+                    $"Redirected to {alternativeServer.areaId}",
+                    new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+                playerToAreaMapping[clientId] = alternativeServer.areaId;
+                return;
+            }
+
+            SendJoinAreaResponseClientRpc(false, "", 0, "All areas are full",
+                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+            return;
+        }
+
+        // Grant access to area server
+        playerToAreaMapping[clientId] = areaId;
+
+        LogDebug($"Granted client {clientId} access to area {areaId}");
+        SendJoinAreaResponseClientRpc(true, serverInfo.address, serverInfo.port, "Success",
+            new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+    }
+
+    /// <summary>
+    /// Find the best available server for a player
+    /// </summary>
+    AreaServerInfo FindBestServerForPlayer(ulong clientId)
+    {
+        return registeredServers.Values
+            .Where(server => server.isOnline && server.currentPlayers < server.maxPlayers)
+            .OrderBy(server => server.currentPlayers) // Prefer less crowded servers
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Handle player transfer between areas
+    /// </summary>
+    public void RequestPlayerTransfer(PlayerTransferRequest transferRequest)
+    {
+        LogDebug($"Processing transfer request: Client {transferRequest.clientId} from {transferRequest.fromAreaId} to {transferRequest.toAreaId}");
+
+        // Validate target area exists and can accept players
+        if (!registeredServers.ContainsKey(transferRequest.toAreaId))
+        {
+            LogError($"Transfer failed: Target area {transferRequest.toAreaId} not found");
+            return;
+        }
+
+        var targetServer = registeredServers[transferRequest.toAreaId];
+        if (!targetServer.isOnline)
+        {
+            LogError($"Transfer failed: Target area {transferRequest.toAreaId} is offline");
+            return;
+        }
+
+        if (targetServer.currentPlayers >= targetServer.maxPlayers)
+        {
+            LogWarning($"Transfer failed: Target area {transferRequest.toAreaId} is full");
+            return;
+        }
+
+        // Add to pending transfers queue
+        pendingTransfers[transferRequest.toAreaId].Enqueue(transferRequest);
+
+        // Update player mapping
+        playerToAreaMapping[transferRequest.clientId] = transferRequest.toAreaId;
+
+        // Notify target server about incoming transfer
+        NotifyAreaServerOfIncomingTransfer(transferRequest);
+
+        LogDebug($"Transfer queued: Client {transferRequest.clientId} -> {transferRequest.toAreaId}");
+    }
+
+    void NotifyAreaServerOfIncomingTransfer(PlayerTransferRequest request)
+    {
+        // In a real implementation, this would send a message to the target area server
+        // For now, we'll assume area servers poll for pending transfers
+        LogDebug($"Notified area server {request.toAreaId} of incoming transfer for client {request.clientId}");
+    }
+
+    #endregion
+
+    #region Client Communication
+
+    void SendAvailableAreasToClient(ulong clientId)
+    {
+        var availableAreas = registeredServers.Values
+            .Where(server => server.isOnline && server.currentPlayers < server.maxPlayers)
+            .Select(server => new AreaInfo
+            {
+                areaId = server.areaId,
+                sceneName = server.sceneName,
+                currentPlayers = server.currentPlayers,
+                maxPlayers = server.maxPlayers,
+                address = server.address,
+                port = server.port
+            })
+            .ToArray();
+
+        SendAvailableAreasClientRpc(availableAreas,
+            new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+    }
+
+    void BroadcastServerListUpdate()
+    {
+        var availableAreas = registeredServers.Values
+            .Where(server => server.isOnline)
+            .Select(server => new AreaInfo
+            {
+                areaId = server.areaId,
+                sceneName = server.sceneName,
+                currentPlayers = server.currentPlayers,
+                maxPlayers = server.maxPlayers,
+                address = server.address,
+                port = server.port
+            })
+            .ToArray();
+
+        SendAvailableAreasClientRpc(availableAreas);
+    }
+
+    [ClientRpc]
+    void SendAvailableAreasClientRpc(AreaInfo[] areas, ClientRpcParams rpcParams = default)
+    {
+        // Client receives list of available areas
+        LogDebug($"Sent {areas.Length} available areas to client(s)");
+    }
+
+    [ClientRpc]
+    void SendJoinAreaResponseClientRpc(bool success, string serverAddress, ushort serverPort, string message, ClientRpcParams rpcParams = default)
+    {
+        if (success)
+        {
+            LogDebug($"Client can join area at {serverAddress}:{serverPort} - {message}");
+            // Client should now connect to the specific area server
+        }
+        else
+        {
+            LogWarning($"Client join request failed: {message}");
+        }
+    }
+
+    #endregion
+
+    #region Monitoring and Load Balancing
+
+    void Update()
+    {
+        // Periodically check server health and handle load balancing
+        if (Time.time - lastHealthCheck >= healthCheckInterval)
+        {
+            lastHealthCheck = Time.time;
+            CheckServerHealth();
+            ProcessPendingTransfers();
+            PerformLoadBalancing();
+        }
+    }
+
+    void CheckServerHealth()
+    {
+        var currentTime = DateTime.Now;
+        var serversToRemove = new List<string>();
+        var serversToRestart = new List<string>();
+
+        foreach (var kvp in registeredServers)
+        {
+            var serverInfo = kvp.Value;
+            var timeSinceLastUpdate = currentTime - serverInfo.lastUpdate;
+
+            // Mark servers as offline if they haven't updated in 30 seconds
+            if (timeSinceLastUpdate.TotalSeconds > 30)
+            {
+                if (serverInfo.isOnline)
+                {
+                    LogWarning($"Server {serverInfo.areaId} appears to be offline (last update: {timeSinceLastUpdate.TotalSeconds:F1}s ago)");
+                    serverInfo.isOnline = false;
+
+                    // Try to restart external server processes
+                    if (externalServerProcesses.ContainsKey(serverInfo.areaId))
+                    {
+                        var process = externalServerProcesses[serverInfo.areaId];
+                        if (process != null && process.HasExited)
+                        {
+                            serversToRestart.Add(serverInfo.areaId);
+                        }
+                    }
+                }
+
+                // Remove completely offline servers after 60 seconds
+                if (timeSinceLastUpdate.TotalSeconds > 60)
+                {
+                    serversToRemove.Add(kvp.Key);
+                }
+            }
+        }
+
+        // Restart failed servers
+        foreach (var areaId in serversToRestart)
+        {
+            LogDebug($"Attempting to restart failed server: {areaId}");
+            RestartAreaServer(areaId);
+        }
+
+        // Clean up dead servers
+        foreach (var areaId in serversToRemove)
+        {
+            LogWarning($"Removing dead server: {areaId}");
+            UnregisterAreaServer(areaId);
+        }
+    }
+
+    void ProcessPendingTransfers()
+    {
+        foreach (var kvp in pendingTransfers)
+        {
+            var areaId = kvp.Key;
+            var transferQueue = kvp.Value;
+
+            // Process up to 5 transfers per area per update to avoid overwhelming
+            int processed = 0;
+            while (transferQueue.Count > 0 && processed < 5)
+            {
+                var transfer = transferQueue.Dequeue();
+                // In a real implementation, complete the transfer process here
+                LogDebug($"Processed transfer for client {transfer.clientId} to {areaId}");
+                processed++;
+            }
+        }
+    }
+
+    void PerformLoadBalancing()
+    {
+        // Find overloaded servers
+        var overloadedServers = registeredServers.Values
+            .Where(server => server.isOnline &&
+                           (float)server.currentPlayers / server.maxPlayers > loadBalanceThreshold)
+            .ToList();
+
+        if (overloadedServers.Count == 0) return;
+
+        // Find underutilized servers
+        var underutilizedServers = registeredServers.Values
+            .Where(server => server.isOnline &&
+                           (float)server.currentPlayers / server.maxPlayers < 0.5f)
+            .OrderBy(server => server.currentPlayers)
+            .ToList();
+
+        foreach (var overloadedServer in overloadedServers)
+        {
+            var targetServer = underutilizedServers.FirstOrDefault();
+            if (targetServer != null)
+            {
+                LogDebug($"Load balancing: Server {overloadedServer.areaId} is overloaded ({overloadedServer.currentPlayers}/{overloadedServer.maxPlayers}), considering redistribution");
+                // In a real implementation, you might suggest player transfers here
+                // For now, just log the recommendation
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get server statistics for monitoring
+    /// </summary>
+    public Dictionary<string, object> GetServerStatistics()
+    {
+        var onlineServers = registeredServers.Values.Where(s => s.isOnline).ToList();
+        var totalPlayers = onlineServers.Sum(s => s.currentPlayers);
+        var totalCapacity = onlineServers.Sum(s => s.maxPlayers);
+
+        var stats = new Dictionary<string, object>
+        {
+            ["totalServers"] = registeredServers.Count,
+            ["onlineServers"] = onlineServers.Count,
+            ["totalPlayers"] = totalPlayers,
+            ["totalCapacity"] = totalCapacity,
+            ["averageLoad"] = totalCapacity > 0 ? (float)totalPlayers / totalCapacity : 0f,
+            ["serverDetails"] = registeredServers.Values.Select(s => new {
+                areaId = s.areaId,
+                isOnline = s.isOnline,
+                players = s.currentPlayers,
+                maxPlayers = s.maxPlayers,
+                load = s.maxPlayers > 0 ? (float)s.currentPlayers / s.maxPlayers : 0f,
+                lastUpdate = s.lastUpdate
+            }).ToList()
+        };
+
+        return stats;
+    }
+
+    /// <summary>
+    /// Get detailed server information for admin interface
+    /// </summary>
+    public List<AreaServerInfo> GetDetailedServerInfo()
+    {
+        return registeredServers.Values.OrderBy(s => s.areaId).ToList();
+    }
+
+    #endregion
 
     #region Login Communication RPCs
     [ServerRpc(RequireOwnership = false)]
@@ -380,147 +1073,15 @@ public class ServerManager : NetworkBehaviour
     #region Waypoint and Zone Communication
     public async void ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
     {
-        //Debug.Log($"ServerManager: ProcessWaypointRequest ENTRY - characterID={characterID}, zoneName={zoneName}, senderClientId={senderClientId}");
-        
-        try
-        {
-            WaypointResult result = await ProcessWaypoint(characterID, zoneName);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveWaypointResultClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send waypoint response!");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during waypoint request: {ex.Message}\n{ex.StackTrace}");
-            WaypointResult errorResult = new WaypointResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during waypoint request: {ex.Message}",
-                WaypointPosition = Vector3.zero,
-                HasWaypoint = false,
-                ZoneName = zoneName
-            };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending waypoint error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveWaypointResultClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
-        }
-        
-        Debug.Log($"ServerManager: ProcessWaypointRequest completed");
+
     }
     public async void ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
     {
-        //Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
-        try
-        {
-            PlayerZoneInfoResult result = await ProcessPlayerZoneInfo(characterID);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceivePlayerZoneInfoClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send player zone info response!");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during player zone info request: {ex.Message}\n{ex.StackTrace}");
-            PlayerZoneInfoResult errorResult = new PlayerZoneInfoResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during player zone info request: {ex.Message}",
-                ZoneInfo = new PlayerZoneInfo
-                {
-                    CharacterID = characterID,
-                    ZoneID = 1,
-                    ZoneName = "IthoriaSouth",
-                    SpawnPosition = null,
-                    RequiresMarketWaypoint = true
-                }
-            };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending player zone info error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceivePlayerZoneInfoClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
-        }
-        
-        Debug.Log($"ServerManager: ProcessPlayerZoneInfoRequest completed");
+
     }
     #endregion
 
-    #region Server-Side Character Logic
+
     private async Task<CharacterListResult> ProcessCharacterList(int accountID)
     {
         //Debug.Log($"ServerManager: ProcessCharacterList ENTRY - accountID={accountID}");        
@@ -1059,283 +1620,6 @@ public class ServerManager : NetworkBehaviour
     // Future: Character creation, inventory sync, etc.
     #endregion
 
-    #region Player Zone Information Logic
-    private async Task<PlayerZoneInfoResult> ProcessPlayerZoneInfo(int characterID)
-    {
-        Debug.Log($"ServerManager: ProcessPlayerZoneInfo ENTRY - characterID={characterID}");
-        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessPlayerZoneInfo called on client! This should only run on server.");
-            return new PlayerZoneInfoResult { Success = false, ErrorMessage = "Server-side method called on client", ZoneInfo = new PlayerZoneInfo { CharacterID = characterID, ZoneID = 1, ZoneName = "IthoriaSouth", SpawnPosition = null, RequiresMarketWaypoint = true } };
-        }
-
-        try
-        {
-            // Step 1: Get character's zone from database
-            string zoneName = await GetCharacterZoneScene(characterID);
-            
-            // Step 2: Get character's spawn position from database
-            Vector3? spawnPosition = await GetCharacterSpawnPosition(characterID, zoneName);
-            
-            // Step 3: Get zone configuration
-            ZoneConfiguration? config = null;
-            if (WorldManager.Instance != null)
-            {
-                config = WorldManager.Instance.GetZoneConfiguration(zoneName);
-            }
-            int zoneID = config?.ZoneID ?? 1; // Default to zone 1
-
-            PlayerZoneInfo zoneInfo = new PlayerZoneInfo
-            {
-                CharacterID = characterID,
-                ZoneID = zoneID,
-                ZoneName = zoneName,
-                SpawnPosition = spawnPosition,
-                RequiresMarketWaypoint = !spawnPosition.HasValue
-            };
-
-            Debug.Log($"ServerManager: Successfully retrieved player zone information for character {characterID} - Zone: {zoneName}, RequiresWaypoint: {zoneInfo.RequiresMarketWaypoint}");
-            return new PlayerZoneInfoResult { Success = true, ErrorMessage = "", ZoneInfo = zoneInfo };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ProcessPlayerZoneInfo: {ex.Message}\n{ex.StackTrace}");
-            return new PlayerZoneInfoResult { Success = false, ErrorMessage = $"Server error retrieving player zone information: {ex.Message}", ZoneInfo = new PlayerZoneInfo { CharacterID = characterID, ZoneID = 1, ZoneName = "IthoriaSouth", SpawnPosition = null, RequiresMarketWaypoint = true } };
-        }
-    }
-
-    private async Task<string> GetCharacterZoneScene(int characterID)
-    {
-        if (CharactersManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: CharactersManager.Instance is null!");
-            return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
-        }
-
-        try
-        {
-            // Get character's stored location from database
-            Dictionary<string, object> locationData = await CharactersManager.Instance.GetCharacterLocationAsync(characterID);
-            
-            if (locationData != null && locationData.ContainsKey("ZoneID"))
-            {
-                int storedZoneID = Convert.ToInt32(locationData["ZoneID"]);
-                
-                // Get scene name from WorldManager configuration
-                string sceneName = "IthoriaSouth"; // Default
-                if (WorldManager.Instance != null)
-                {
-                    sceneName = WorldManager.Instance.GetSceneNameForZone(storedZoneID);
-                }
-                
-                Debug.Log($"ServerManager: Character {characterID} should load zone '{sceneName}' (ZoneID: {storedZoneID})");
-                return sceneName;
-            }
-            else
-            {
-                // No location data found, use default
-                Debug.LogWarning($"ServerManager: No location data found for character {characterID}, using default zone");
-                return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Error getting character zone for CharID {characterID}: {ex.Message}");
-            return WorldManager.Instance?.GetDefaultZoneConfiguration().SceneName ?? "IthoriaSouth";
-        }
-    }
-
-    private async Task<Vector3?> GetCharacterSpawnPosition(int characterID, string zoneName)
-    {
-        if (CharactersManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: CharactersManager.Instance is null!");
-            return null;
-        }
-
-        try
-        {
-            // Get character's stored location from database
-            Dictionary<string, object> locationData = await CharactersManager.Instance.GetCharacterLocationAsync(characterID);
-            
-            if (locationData != null)
-            {
-                int xLoc = Convert.ToInt32(locationData["XLoc"]);
-                int yLoc = Convert.ToInt32(locationData["YLoc"]);
-                int zLoc = Convert.ToInt32(locationData["ZLoc"]);
-                
-                // Check if position is default (0,0,0) - requires MarketWaypoint fallback
-                if (CharactersManager.Instance.IsDefaultLocation(xLoc, yLoc, zLoc))
-                {
-                    Debug.Log($"ServerManager: Character {characterID} has default position (0,0,0), will use MarketWaypoint");
-                    return null; // Null indicates MarketWaypoint should be used
-                }
-                else
-                {
-                    Vector3 storedPosition = new Vector3(xLoc, yLoc, zLoc);
-                    Debug.Log($"ServerManager: Character {characterID} should spawn at stored position {storedPosition}");
-                    return storedPosition;
-                }
-            }
-            else
-            {
-                // No location data found, use MarketWaypoint
-                Debug.LogWarning($"ServerManager: No location data found for character {characterID}, will use MarketWaypoint");
-                return null; // Null indicates MarketWaypoint should be used
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Error getting character spawn position for CharID {characterID}: {ex.Message}");
-            return null; // Fallback to MarketWaypoint on error
-        }
-    }
-    #endregion
-
-    #region Server Zone Loading Communication
-    public async void ProcessServerLoadZoneRequest(string zoneName, ulong senderClientId)
-    {
-        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest ENTRY - zoneName={zoneName}, senderClientId={senderClientId}");
-        
-        try
-        {
-            Debug.Log($"ServerManager: Calling ProcessServerLoadZone...");
-            ServerZoneLoadResult result = await ProcessServerLoadZone(zoneName);
-            
-            Debug.Log($"ServerManager: ProcessServerLoadZone completed. Success={result.Success}");
-            
-            // Find the PlayerManager that belongs to the client who sent the request
-            Debug.Log($"ServerManager: Finding PlayerManager to send server zone load response back to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            Debug.Log($"ServerManager: Found {playerManagers.Length} PlayerManager instances");
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                Debug.Log($"ServerManager: Checking PlayerManager - IsServer={pm.IsServer}, OwnerClientId={pm.OwnerClientId}");
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Found target PlayerManager for client {senderClientId}, sending server zone load response...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveServerLoadZoneResultClientRpc(result, clientRpcParams);
-                    Debug.Log($"ServerManager: Server zone load response sent via PlayerManager successfully");
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send server zone load response!");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during server zone load request: {ex.Message}\n{ex.StackTrace}");
-            ServerZoneLoadResult errorResult = new ServerZoneLoadResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during zone load request: {ex.Message}"
-            };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending server zone load error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveServerLoadZoneResultClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
-        }
-        
-        Debug.Log($"ServerManager: ProcessServerLoadZoneRequest completed for client {senderClientId}");
-    }
-    #endregion
-
-    #region Server Zone Loading Logic
-    private async Task<ServerZoneLoadResult> ProcessServerLoadZone(string zoneName)
-    {
-        Debug.Log($"ServerManager: ProcessServerLoadZone ENTRY - zoneName={zoneName}");
-        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessServerLoadZone called on client! This should only run on server.");
-            return new ServerZoneLoadResult { Success = false, ErrorMessage = "Server-side method called on client" };
-        }
-
-        try
-        {
-            // Check if PersistentSceneManager is available
-            if (PersistentSceneManager.Instance == null)
-            {
-                Debug.LogError("ServerManager: PersistentSceneManager.Instance is null!");
-                return new ServerZoneLoadResult { Success = false, ErrorMessage = "PersistentSceneManager not available on server" };
-            }
-
-            // Check if zone is already loaded on server
-            if (PersistentSceneManager.Instance.IsZoneLoaded(zoneName))
-            {
-                Debug.Log($"ServerManager: Zone '{zoneName}' is already loaded on server");
-                return new ServerZoneLoadResult { Success = true, ErrorMessage = "" };
-            }
-
-            Debug.Log($"ServerManager: Loading zone '{zoneName}' on server...");
-
-            // Use TaskCompletionSource to wait for server zone loading
-            var loadCompletionSource = new TaskCompletionSource<bool>();
-            
-            PersistentSceneManager.Instance.LoadZone(zoneName, (success) =>
-            {
-                Debug.Log($"ServerManager: Server zone load callback - Zone: {zoneName}, Success: {success}");
-                loadCompletionSource.SetResult(success);
-            });
-
-            // Wait for zone loading to complete with timeout
-            bool loadSuccess = await loadCompletionSource.Task;
-
-            if (loadSuccess)
-            {
-                Debug.Log($"ServerManager: Successfully loaded zone '{zoneName}' on server");
-                
-                // Additional delay to ensure WorldManager has time to spawn ZoneManager
-                await Task.Delay(1000);
-                
-                Debug.Log($"ServerManager: Zone '{zoneName}' fully initialized on server");
-                return new ServerZoneLoadResult { Success = true, ErrorMessage = "" };
-            }
-            else
-            {
-                Debug.LogError($"ServerManager: Failed to load zone '{zoneName}' on server");
-                return new ServerZoneLoadResult { Success = false, ErrorMessage = $"Failed to load zone '{zoneName}' on server" };
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ProcessServerLoadZone: {ex.Message}\n{ex.StackTrace}");
-            return new ServerZoneLoadResult { Success = false, ErrorMessage = $"Server error loading zone: {ex.Message}" };
-        }
-    }
-    #endregion
-
     #region Helper Methods
     private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
     {
@@ -1370,153 +1654,29 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Scene Transition and Spawning
-    private struct PendingSpawnInfo
+    #region Utility Methods
+
+    private void LogDebug(string message)
     {
-        public int CharacterId;
-        public int Race;
-        public int Gender;
-    }
-    private Dictionary<ulong, PendingSpawnInfo> _pendingPlayerSpawns = new Dictionary<ulong, PendingSpawnInfo>();
-
-    public async void HandleClientZoneTransitionRequest(ulong clientId, int characterId, int race, int gender)
-    {
-        // 1. Determine the zone the character should be in.
-        string zoneName = await GetCharacterZoneScene(characterId);
-        if (string.IsNullOrEmpty(zoneName))
-        {
-            Debug.LogError($"Could not determine zone for character {characterId}. Aborting transition.");
-            return;
-        }
-
-        // 2. Store the character info for spawning after the scene has loaded.
-        _pendingPlayerSpawns[clientId] = new PendingSpawnInfo { CharacterId = characterId, Race = race, Gender = gender };
-
-        // 3. Subscribe to the scene load completion event.
-        NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnServerSceneLoadComplete;
-
-        // 4. Load the new zone additively. The NetworkSceneManager will replicate this on all clients.
-        var status = NetworkManager.Singleton.SceneManager.LoadScene(zoneName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
-        if (status != SceneEventProgressStatus.Started)
-        {
-             Debug.LogWarning($"Failed to start scene load for scene {zoneName}. Status: {status}");
-             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnServerSceneLoadComplete;
-             _pendingPlayerSpawns.Remove(clientId);
-        }
-        else
-        {
-            // After starting the zone load, also unload the MainMenu scene specifically
-            Scene mainMenuScene = SceneManager.GetSceneByName("MainMenu");
-            if (mainMenuScene.isLoaded)
-            {
-                var unloadStatus = NetworkManager.Singleton.SceneManager.UnloadScene(mainMenuScene);
-                if (unloadStatus != SceneEventProgressStatus.Started)
-                {
-                    Debug.LogWarning($"Failed to start unload of MainMenu scene. Status: {unloadStatus}");
-                }
-                else
-                {
-                    Debug.Log("ServerManager: Successfully queued MainMenu scene for unload.");
-                }
-            }
-        }
+        if (enableDebugLogs)
+            Debug.Log($"[MasterServer] {message}");
     }
 
-    private void OnServerSceneLoadComplete(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+    private void LogWarning(string message)
     {
-        if (!IsServer) return;
-
-        // Iterate over all clients who have successfully loaded the scene
-        foreach (var clientId in clientsCompleted)
-        {
-            // Check if this client was waiting to be spawned
-            if (_pendingPlayerSpawns.TryGetValue(clientId, out PendingSpawnInfo spawnInfo))
-            {
-                Debug.Log($"Client {clientId} finished loading scene {sceneName}. Spawning player...");
-                SpawnPlayerInScene(clientId, spawnInfo);
-                _pendingPlayerSpawns.Remove(clientId);
-            }
-        }
-        
-        foreach (var clientId in clientsTimedOut)
-        {
-            Debug.LogWarning($"Client {clientId} timed out loading scene {sceneName}. They will not be spawned.");
-            if (_pendingPlayerSpawns.ContainsKey(clientId))
-            {
-                _pendingPlayerSpawns.Remove(clientId);
-            }
-        }
-
-        // If no more players are waiting to be spawned, we can unsubscribe from the event.
-        if (_pendingPlayerSpawns.Count == 0)
-        {
-            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnServerSceneLoadComplete;
-            Debug.Log("All pending players have been processed. Unsubscribed from scene load event.");
-        }
+        Debug.LogWarning($"[MasterServer] {message}");
     }
 
-    private void SpawnPlayerInScene(ulong clientId, PendingSpawnInfo spawnInfo)
+    private void LogError(string message)
     {
-        // This logic is adapted from the old PlayerManager.SpawnNetworkedPlayerServerRpc
-
-        // --- Determine Spawn Position ---
-        Vector3 spawnPosition = GetSpawnPositionForCharacter(spawnInfo.CharacterId);
-
-        // --- Instantiate and Spawn Prefab ---
-        GameObject networkedPlayerPrefab = GetNetworkedPlayerPrefab();
-        if (networkedPlayerPrefab == null)
-        {
-            Debug.LogError("ServerManager: networkedPlayerPrefab is not assigned or found! Cannot spawn player.");
-            return;
-        }
-
-        GameObject playerObject = UnityEngine.Object.Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
-        var networkObject = playerObject.GetComponent<NetworkObject>();
-        
-        networkObject.SpawnAsPlayerObject(clientId);
-        Debug.Log($"ServerManager: Spawning NetworkObject for client {clientId} with ownership.");
-
-        // --- Set Visuals and Notify Client ---
-        var networkedPlayer = playerObject.GetComponent<NetworkedPlayer>();
-        if (networkedPlayer != null)
-        {
-            networkedPlayer.SetCharacterVisuals(spawnInfo.Race, spawnInfo.Gender);
-            Debug.Log($"ServerManager: Set character visuals for race {spawnInfo.Race}, gender {spawnInfo.Gender}.");
-        }
-        
-        // Find the client's PlayerManager to call the final notification RPC
-        if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var networkClient))
-        {
-            var playerManager = networkClient.PlayerObject.GetComponent<PlayerManager>();
-            if (playerManager != null)
-            {
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { clientId } }
-                };
-                // This RPC tells the client which NetworkObject is theirs so they can control it.
-                playerManager.NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition, clientRpcParams);
-                Debug.Log($"ServerManager: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
-            }
-        }
+        Debug.LogError($"[MasterServer] {message}");
     }
 
-    private GameObject GetNetworkedPlayerPrefab()
-    {
-        // Find any active PlayerManager instance on the server to get the prefab from.
-        var playerManager = FindAnyObjectByType<PlayerManager>();
-        if (playerManager != null && playerManager.NetworkedPlayerPrefab != null)
-        {
-            return playerManager.NetworkedPlayerPrefab;
-        }
-
-        Debug.LogError("ServerManager could not find a valid NetworkedPlayerPrefab. Searched for a PlayerManager instance but found none or it had no prefab assigned. Spawning will fail.");
-        return null;
-    }
     #endregion
 
-    #endregion
 }
+
+#region Additional Data Structures
 
 /// Player zone information result struct for server-client communication
 [System.Serializable]
@@ -1548,3 +1708,40 @@ public struct ServerZoneLoadResult : INetworkSerializable
     }
 }
 
+[System.Serializable]
+public class AreaServerTemplate
+{
+    public string areaId;
+    public string sceneName;
+    public ushort startingPort;
+    public int maxPlayers = 50;
+    public Vector3 spawnPosition;
+    public bool autoStartOnLaunch = true;
+    [Tooltip("Executable path for standalone server builds")]
+    public string serverExecutablePath;
+    [Tooltip("Additional command line arguments")]
+    public string additionalArgs = "";
+}
+
+[System.Serializable]
+public struct AreaInfo : INetworkSerializable
+{
+    public string areaId;
+    public string sceneName;
+    public int currentPlayers;
+    public int maxPlayers;
+    public string address;
+    public ushort port;
+    public float loadPercentage => maxPlayers > 0 ? (float)currentPlayers / maxPlayers : 0f;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref areaId);
+        serializer.SerializeValue(ref sceneName);
+        serializer.SerializeValue(ref currentPlayers);
+        serializer.SerializeValue(ref maxPlayers);
+        serializer.SerializeValue(ref address);
+        serializer.SerializeValue(ref port);
+    }
+}
+#endregion

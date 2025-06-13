@@ -14,10 +14,8 @@ public class PlayerManager : NetworkBehaviour
     // with multiple clients in the editor (Multiplayer Play Mode).
     private static readonly List<PlayerManager> s_instances = new List<PlayerManager>();
 
-    /// <summary>
     /// Gets the PlayerManager instance that is owned by the local client.
     /// This is the correct way to access the PlayerManager in a multiplayer environment.
-    /// </summary>
     public static PlayerManager LocalInstance
     {
         get
@@ -261,6 +259,7 @@ public class PlayerManager : NetworkBehaviour
     [ServerRpc]
     private void RequestZoneTransitionServerRpc(int characterId, int race, int gender, ServerRpcParams serverRpcParams = default)
     {
+        /*
         if (ServerManager.Instance != null)
         {
             ServerManager.Instance.HandleClientZoneTransitionRequest(serverRpcParams.Receive.SenderClientId, characterId, race, gender);
@@ -268,7 +267,7 @@ public class PlayerManager : NetworkBehaviour
         else
         {
             Debug.LogError("ServerManager not found! Cannot handle zone transition request.");
-        }
+        }*/
     }
     
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
@@ -1003,44 +1002,7 @@ public class PlayerManager : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     internal void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
     {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received server zone load request for zone '{zoneName}'");
-            
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessServerLoadZoneRequest...");
-                ServerManager.Instance.ProcessServerLoadZoneRequest(zoneName, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessServerLoadZoneRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process server zone load request.");
-                
-                // Send error response back to client
-                ServerZoneLoadResult errorResult = new ServerZoneLoadResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available"
-                };
-                
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-                
-                ReceiveServerLoadZoneResultClientRpc(errorResult, clientRpcParams);
-            }
-        }
-        else
-        {
-            Debug.LogError("PlayerManager: RequestServerLoadZoneServerRpc called on client! This should only run on server.");
-        }
+        
     }
 
     [ClientRpc]

@@ -65,7 +65,6 @@ public class ZoneCoordinator
     {
         try
         {
-
             // Use NetworkRequestManager for cleaner request handling
             PlayerZoneInfoResult result = await playerManager.requestManager.SendPlayerZoneInfoRequestAsync(characterID);
             
@@ -158,63 +157,12 @@ public class ZoneCoordinator
 
     private async Task UnloadMainMenuIfNeeded(string zoneName)
     {
-        if (PersistentSceneManager.Instance != null && zoneName != "MainMenu")
-        {
-            if (PersistentSceneManager.Instance.IsSceneLoaded("MainMenu"))
-            {
-                PersistentSceneManager.Instance.UnloadScene("MainMenu");
-                await Task.Delay(500); // Small delay for unloading
-            }
-        }
+
     }
 
     private async Task LoadZoneOnClient(string zoneName)
     {
-        bool loadSuccess = false;
-        
-        if (PersistentSceneManager.Instance != null)
-        {
-            // Load zone additively
-            PersistentSceneManager.Instance.LoadZone(zoneName, (success) =>
-            {
-                loadSuccess = success;
-            });
-
-            // Wait for zone loading to complete (with timeout)
-            float timeout = 30f;
-            float timer = 0f;
-            bool loadComplete = false;
-
-            while (timer < timeout && !loadComplete)
-            {
-                await Task.Delay(100);
-                timer += 0.1f;
-                
-                if (PersistentSceneManager.Instance.IsZoneLoaded(zoneName))
-                {
-                    loadComplete = true;
-                    loadSuccess = true;
-                    break;
-                }
-            }
-
-            if (!loadComplete)
-            {
-                throw new Exception($"Zone loading timeout for '{zoneName}'");
-            }
-        }
-        else
-        {
-            throw new Exception("PersistentSceneManager.Instance is null!");
-        }
-
-        if (!loadSuccess)
-        {
-            throw new Exception($"Failed to load zone '{zoneName}'");
-        }
-
-        // Longer delay to ensure ZoneManager initialization completes on server
-        await Task.Delay(2000);
+       
     }
     #endregion
 

@@ -122,20 +122,7 @@ public class WorldManager : MonoBehaviour
     }
 
     private void OnDestroy()
-    {
-        if (instance == this)
-        {
-            // Unsubscribe from events
-            if (PersistentSceneManager.Instance != null)
-            {
-                PersistentSceneManager.OnZoneLoadCompleted -= OnZoneLoadCompleted;
-                PersistentSceneManager.OnZoneUnloadCompleted -= OnZoneUnloadCompleted;
-            }
-            
-            instance = null;
-        }
-        
-        // Clean up any active ZoneManagers
+    {        
         CleanupAllZoneManagers();
     }
     #endregion
@@ -202,18 +189,6 @@ public class WorldManager : MonoBehaviour
         {
             Debug.LogError("WorldManager: ZoneManager prefab is missing NetworkObject component!");
             return;
-        }
-
-        // Subscribe to PersistentSceneManager events
-        if (PersistentSceneManager.Instance != null)
-        {
-            PersistentSceneManager.OnZoneLoadCompleted += OnZoneLoadCompleted;
-            PersistentSceneManager.OnZoneUnloadCompleted += OnZoneUnloadCompleted;
-            
-            if (debugMode)
-            {
-                Debug.Log("WorldManager: Subscribed to PersistentSceneManager events");
-            }
         }
         else
         {
