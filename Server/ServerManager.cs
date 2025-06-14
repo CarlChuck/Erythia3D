@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using TMPro;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class ServerManager : NetworkBehaviour
 {
@@ -506,7 +504,6 @@ public class ServerManager : NetworkBehaviour
         // For now, we'll assume area servers poll for pending transfers
         LogDebug($"Notified area server {request.toAreaId} of incoming transfer for client {request.clientId}");
     }
-
     #endregion
 
     #region Client Communication
@@ -572,7 +569,6 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Monitoring and Load Balancing
-
     void Update()
     {
         // Periodically check server health and handle load balancing
@@ -726,76 +722,60 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Login Communication RPCs
+    [ClientRpc]
+    private void ReceiveLoginResultClientRpc(LoginResult result, ClientRpcParams clientRpcParams)
+    {
+        // This RPC is now sent directly from the ServerManager to the client.
+        // The client-side code that manages the connection to the master server
+        // should handle this response. For example, it could find the local PlayerManager
+        // and pass the result to it.
+        // This is a placeholder for the client-side logic.
+        Debug.Log($"Client received login result: Success={result.Success}, Name={result.AccountName}, Msg={result.ErrorMessage}");
+        
+        // Example of how a client-side handler might pass this along:
+        // if (PlayerManager.LocalInstance != null)
+        // {
+        //     PlayerManager.LocalInstance.HandleLoginResult(result);
+        // }
+    }
+    
     [ServerRpc(RequireOwnership = false)]
     public void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
     {
         //Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
-        ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, serverRpcParams.Receive.SenderClientId);
+        // Using an anonymous function to call the async task so we don't have to make the RPC async
+        _ = ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, serverRpcParams.Receive.SenderClientId);
     }
 
     // Regular method for server-to-server communication (called by PlayerManager on server)
-    public async void ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
+    public async Task ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessLoginRequest ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={senderClientId}");        
+        LoginResult result;
         try
         {
-            LoginResult result = await ProcessLogin(steamID, accountID, accountName, email, ipAddress, language);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                // Find the PlayerManager that belongs to the client who sent the request
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveLoginResultClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send response!");
-            }
+            result = await ProcessLogin(steamID, accountID, accountName, email, ipAddress, language);
         }
         catch (Exception ex)
         {
             Debug.LogError($"ServerManager: Exception during login request: {ex.Message}\n{ex.StackTrace}");
-            LoginResult errorResult = new LoginResult
+            result = new LoginResult
             {
                 Success = false,
                 ErrorMessage = $"Server error during login: {ex.Message}",
                 AccountName = "" // Initialize to avoid null during serialization
             };
-            
-            // Send error response via PlayerManager as well
-            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveLoginResultClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
         }
+
+        // Send the response directly to the client who requested it.
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { senderClientId }
+            }
+        };
+        ReceiveLoginResultClientRpc(result, clientRpcParams);
         
         Debug.Log($"ServerManager: ProcessLoginRequest completed");
     }
@@ -864,42 +844,56 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Inventory Loading Communication
-    public async void ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
+    [ClientRpc]
+    private void ReceiveAccountInventoryClientRpc(AccountInventoryResult result, ClientRpcParams clientRpcParams)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received account inventory result: Success={result.Success}, Items: {result.Items.Length}");
+    }
+
+    [ClientRpc]
+    private void ReceiveCharacterInventoryClientRpc(CharacterInventoryResult result, ClientRpcParams clientRpcParams)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received character inventory result: Success={result.Success}, Items: {result.Items.Length}");
+    }
+
+    [ClientRpc]
+    private void ReceiveWorkbenchListClientRpc(WorkbenchListResult result, ClientRpcParams clientRpcParams)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received workbench list result: Success={result.Success}, Workbenches: {result.Workbenches.Length}");
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    {
+        _ = ProcessAccountInventoryRequest(accountID, serverRpcParams.Receive.SenderClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestCharacterInventoryServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    {
+        _ = ProcessCharacterInventoryRequest(characterID, serverRpcParams.Receive.SenderClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestWorkbenchListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    {
+        _ = ProcessWorkbenchListRequest(accountID, serverRpcParams.Receive.SenderClientId);
+    }
+    public async Task ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessAccountInventoryRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
-        
+        AccountInventoryResult result;
         try
         {
-            AccountInventoryResult result = await ProcessAccountInventory(accountID);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveAccountInventoryClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send account inventory response!");
-            }
+            result = await ProcessAccountInventory(accountID);
         }
         catch (Exception ex)
         {
             Debug.LogError($"ServerManager: Exception during account inventory request: {ex.Message}\n{ex.StackTrace}");
-            AccountInventoryResult errorResult = new AccountInventoryResult
+            result = new AccountInventoryResult
             {
                 Success = false,
                 ErrorMessage = $"Server error during account inventory request: {ex.Message}",
@@ -908,67 +902,31 @@ public class ServerManager : NetworkBehaviour
                 SubComponents = new InventorySubComponentData[0],
                 Workbenches = new WorkbenchData[0]
             };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send account inventory error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending account inventory error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveAccountInventoryClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
         }
+        
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { senderClientId }
+            }
+        };
+        ReceiveAccountInventoryClientRpc(result, clientRpcParams);
         
         Debug.Log($"ServerManager: ProcessAccountInventoryRequest completed");
     }
-
-    public async void ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
+    public async Task ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessCharacterInventoryRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
+        CharacterInventoryResult result;
         try
         {
-            CharacterInventoryResult result = await ProcessCharacterInventory(characterID);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveCharacterInventoryClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send character inventory response!");
-            }
+            result = await ProcessCharacterInventory(characterID);
         }
         catch (Exception ex)
         {
             Debug.LogError($"ServerManager: Exception during character inventory request: {ex.Message}\n{ex.StackTrace}");
-            CharacterInventoryResult errorResult = new CharacterInventoryResult
+            result = new CharacterInventoryResult
             {
                 Success = false,
                 ErrorMessage = $"Server error during character inventory request: {ex.Message}",
@@ -976,106 +934,57 @@ public class ServerManager : NetworkBehaviour
                 ResourceItems = new InventoryResourceItemData[0],
                 SubComponents = new InventorySubComponentData[0]
             };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send character inventory error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending character inventory error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveCharacterInventoryClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
         }
+        
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { senderClientId }
+            }
+        };
+        ReceiveCharacterInventoryClientRpc(result, clientRpcParams);
         
         Debug.Log($"ServerManager: ProcessCharacterInventoryRequest completed");
     }
-
-    public async void ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
+    public async Task ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessWorkbenchListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
-        
+        WorkbenchListResult result;
         try
         {
-            WorkbenchListResult result = await ProcessWorkbenchList(accountID);
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            bool responseSet = false;
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveWorkbenchListClientRpc(result, clientRpcParams);
-                    responseSet = true;
-                    break;
-                }
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send workbench list response!");
-            }
+            result = await ProcessWorkbenchList(accountID);
         }
         catch (Exception ex)
         {
             Debug.LogError($"ServerManager: Exception during workbench list request: {ex.Message}\n{ex.StackTrace}");
-            WorkbenchListResult errorResult = new WorkbenchListResult
+            result = new WorkbenchListResult
             {
                 Success = false,
                 ErrorMessage = $"Server error during workbench list request: {ex.Message}",
                 Workbenches = new WorkbenchData[0]
             };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send workbench list error response to client {senderClientId}...");
-            PlayerManager[] playerManagers = FindObjectsByType<PlayerManager>(FindObjectsSortMode.None);
-            
-            foreach (PlayerManager pm in playerManagers)
-            {
-                if (pm.IsServer && pm.OwnerClientId == senderClientId)
-                {
-                    Debug.Log($"ServerManager: Sending workbench list error response via PlayerManager...");
-                    ClientRpcParams clientRpcParams = new ClientRpcParams
-                    {
-                        Send = new ClientRpcSendParams
-                        {
-                            TargetClientIds = new ulong[] { senderClientId }
-                        }
-                    };
-                    pm.ReceiveWorkbenchListClientRpc(errorResult, clientRpcParams);
-                    break;
-                }
-            }
         }
+        
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { senderClientId }
+            }
+        };
+        ReceiveWorkbenchListClientRpc(result, clientRpcParams);
         
         Debug.Log($"ServerManager: ProcessWorkbenchListRequest completed");
     }
     #endregion
 
     #region Waypoint and Zone Communication
-    public async void ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
+    public async Task ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
     {
 
     }
-    public async void ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
+    public async Task ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
     {
 
     }
@@ -1192,7 +1101,6 @@ public class ServerManager : NetworkBehaviour
                 return new LoginResult { Success = false, ErrorMessage = "No valid login method available. Both SteamID and AccountID are 0.", AccountName = "" };
         }
     }
-
     private async Task<LoginResult> HandleSteamIDLogin(ulong steamID, string accountName, string email, string ipAddress, string language)
     {
         Debug.Log($"ServerManager: HandleSteamIDLogin ENTRY - steamID={steamID}");
@@ -1229,7 +1137,6 @@ public class ServerManager : NetworkBehaviour
         Debug.Log($"ServerManager: Extracting account info to LoginResult...");
         return ExtractAccountInfoToLoginResult(account);
     }
-
     private async Task<LoginResult> HandleAccountIDLogin(int accountID)
     {
         Debug.Log($"ServerManager: HandleAccountIDLogin ENTRY - accountID={accountID}");
@@ -1251,7 +1158,6 @@ public class ServerManager : NetworkBehaviour
         Debug.Log($"ServerManager: Extracting account info to LoginResult...");
         return ExtractAccountInfoToLoginResult(account);
     }
-
     private LoginResult ExtractAccountInfoToLoginResult(Dictionary<string, object> account)
     {
         Debug.Log($"ServerManager: ExtractAccountInfoToLoginResult ENTRY");
@@ -1361,7 +1267,6 @@ public class ServerManager : NetworkBehaviour
             };
         }
     }
-
     private async Task<CharacterInventoryResult> ProcessCharacterInventory(int characterID)
     {
         Debug.Log($"ServerManager: ProcessCharacterInventory ENTRY - characterID={characterID}");
@@ -1416,72 +1321,10 @@ public class ServerManager : NetworkBehaviour
             };
         }
     }
-
-    // Helper conversion methods
-    private InventoryItemData[] ConvertToInventoryItemData(List<Dictionary<string, object>> dictionaries)
-    {
-        InventoryItemData[] items = new InventoryItemData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
-        {
-            var dict = dictionaries[i];
-            items[i] = new InventoryItemData
-            {
-                ItemID = GetIntValue(dict, "ItemID", 0),
-                SlotID = GetIntValue(dict, "SlotID", 0)
-            };
-        }
-        return items;
-    }
-
-    private InventoryResourceItemData[] ConvertToInventoryResourceItemData(List<Dictionary<string, object>> dictionaries)
-    {
-        InventoryResourceItemData[] items = new InventoryResourceItemData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
-        {
-            var dict = dictionaries[i];
-            items[i] = new InventoryResourceItemData
-            {
-                ResourceItemID = GetIntValue(dict, "ResourceItemID", 0),
-                Quantity = GetIntValue(dict, "Quantity", 1)
-            };
-        }
-        return items;
-    }
-
-    private InventorySubComponentData[] ConvertToInventorySubComponentData(List<Dictionary<string, object>> dictionaries)
-    {
-        InventorySubComponentData[] items = new InventorySubComponentData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
-        {
-            var dict = dictionaries[i];
-            items[i] = new InventorySubComponentData
-            {
-                SubComponentID = GetIntValue(dict, "SubComponentID", 0)
-            };
-        }
-        return items;
-    }
-
-    private WorkbenchData[] ConvertToWorkbenchData(List<Dictionary<string, object>> dictionaries)
-    {
-        WorkbenchData[] items = new WorkbenchData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
-        {
-            var dict = dictionaries[i];
-            items[i] = new WorkbenchData
-            {
-                WorkBenchType = GetIntValue(dict, "WorkBenchType", 1)
-            };
-        }
-        return items;
-    }
-    #endregion
-
-    #region Server-Side Workbench Logic
     private async Task<WorkbenchListResult> ProcessWorkbenchList(int accountID)
     {
         Debug.Log($"ServerManager: ProcessWorkbenchList ENTRY - accountID={accountID}");
-        
+
         if (!IsServer)
         {
             Debug.LogError("ProcessWorkbenchList called on client! This should only run on server.");
@@ -1494,39 +1337,38 @@ public class ServerManager : NetworkBehaviour
             Debug.LogError("ServerManager: InventoryManager.Instance is null!");
             return new WorkbenchListResult { Success = false, ErrorMessage = "InventoryManager not available", Workbenches = new WorkbenchData[0] };
         }
-        
+
         try
         {
             // Load workbench data
             List<Dictionary<string, object>> workbenchDictionaries = await InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync(accountID);
-            
+
             Debug.Log($"ServerManager: Retrieved {workbenchDictionaries.Count} workbench records from database");
-            
+
             // Convert to network structs
             WorkbenchData[] workbenches = ConvertToWorkbenchData(workbenchDictionaries);
-            
+
             Debug.Log($"ServerManager: Successfully processed workbench list. Returning {workbenches.Length} workbenches.");
-            return new WorkbenchListResult 
-            { 
-                Success = true, 
-                ErrorMessage = "", 
-                Workbenches = workbenches 
+            return new WorkbenchListResult
+            {
+                Success = true,
+                ErrorMessage = "",
+                Workbenches = workbenches
             };
         }
         catch (Exception ex)
         {
             Debug.LogError($"ServerManager: Exception during ProcessWorkbenchList: {ex.Message}\n{ex.StackTrace}");
-            return new WorkbenchListResult 
-            { 
-                Success = false, 
-                ErrorMessage = $"Server error loading workbenches: {ex.Message}", 
-                Workbenches = new WorkbenchData[0] 
+            return new WorkbenchListResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error loading workbenches: {ex.Message}",
+                Workbenches = new WorkbenchData[0]
             };
         }
     }
     #endregion
 
-    #region Business Logic
     private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
     {
         Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");
@@ -1615,10 +1457,6 @@ public class ServerManager : NetworkBehaviour
             };
         }
     }
-    
-    // Add other server-specific functionality here as needed
-    // Future: Character creation, inventory sync, etc.
-    #endregion
 
     #region Helper Methods
     private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
@@ -1637,7 +1475,60 @@ public class ServerManager : NetworkBehaviour
         }
         return defaultValue;
     }
-
+    private InventoryItemData[] ConvertToInventoryItemData(List<Dictionary<string, object>> dictionaries)
+    {
+        InventoryItemData[] items = new InventoryItemData[dictionaries.Count];
+        for (int i = 0; i < dictionaries.Count; i++)
+        {
+            var dict = dictionaries[i];
+            items[i] = new InventoryItemData
+            {
+                ItemID = GetIntValue(dict, "ItemID", 0),
+                SlotID = GetIntValue(dict, "SlotID", 0)
+            };
+        }
+        return items;
+    }
+    private InventoryResourceItemData[] ConvertToInventoryResourceItemData(List<Dictionary<string, object>> dictionaries)
+    {
+        InventoryResourceItemData[] items = new InventoryResourceItemData[dictionaries.Count];
+        for (int i = 0; i < dictionaries.Count; i++)
+        {
+            var dict = dictionaries[i];
+            items[i] = new InventoryResourceItemData
+            {
+                ResourceItemID = GetIntValue(dict, "ResourceItemID", 0),
+                Quantity = GetIntValue(dict, "Quantity", 1)
+            };
+        }
+        return items;
+    }
+    private InventorySubComponentData[] ConvertToInventorySubComponentData(List<Dictionary<string, object>> dictionaries)
+    {
+        InventorySubComponentData[] items = new InventorySubComponentData[dictionaries.Count];
+        for (int i = 0; i < dictionaries.Count; i++)
+        {
+            var dict = dictionaries[i];
+            items[i] = new InventorySubComponentData
+            {
+                SubComponentID = GetIntValue(dict, "SubComponentID", 0)
+            };
+        }
+        return items;
+    }
+    private WorkbenchData[] ConvertToWorkbenchData(List<Dictionary<string, object>> dictionaries)
+    {
+        WorkbenchData[] items = new WorkbenchData[dictionaries.Count];
+        for (int i = 0; i < dictionaries.Count; i++)
+        {
+            var dict = dictionaries[i];
+            items[i] = new WorkbenchData
+            {
+                WorkBenchType = GetIntValue(dict, "WorkBenchType", 1)
+            };
+        }
+        return items;
+    }
     public Vector3 GetSpawnPositionForCharacter(int characterID)
     {
         // In a full implementation, you would look up the character's zone
@@ -1673,7 +1564,6 @@ public class ServerManager : NetworkBehaviour
     }
 
     #endregion
-
 }
 
 #region Additional Data Structures

@@ -136,7 +136,6 @@ public class PlayerManager : NetworkBehaviour
 
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
-
     private void InitializeHelpers()
     {
         characterHandler = new CharacterDataHandler(this);
@@ -268,8 +267,7 @@ public class PlayerManager : NetworkBehaviour
         {
             Debug.LogError("ServerManager not found! Cannot handle zone transition request.");
         }*/
-    }
-    
+    }    
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
     {            
         int characterID = playerStatBlock.GetCharacterID();
@@ -945,6 +943,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessPlayerZoneInfoRequest...");
+
+                //TODO sort out how to handle this properly
                 ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessPlayerZoneInfoRequest called successfully");
             }
