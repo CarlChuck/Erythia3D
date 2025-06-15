@@ -39,21 +39,27 @@ public class AreaServerManager : MonoBehaviour
         public DateTime joinTime;
     }
 
-    void Start()
-    {
-        InitializeAreaServer();
-    }
     void OnDestroy()
     {
         ShutdownAreaServer();
     }
-    public void InitializeAreaServer()
+
+    /// <summary>
+    /// This is now the main entry point for setting up the area server.
+    /// It is called by the ServerManager that creates it.
+    /// </summary>
+    public void Initialize(ServerAreaConfig config, NetworkManager networkManager)
     {
-        // Get or create NetworkManager for this area from the child object
-        areaNetworkManager = GetComponentInChildren<NetworkManager>();
+        this.areaConfig = config;
+        this.areaNetworkManager = networkManager;
+        InitializeAreaServer();
+    }
+
+    private void InitializeAreaServer()
+    {
         if (areaNetworkManager == null)
         {
-            LogError("NetworkManager component not found on a child GameObject!");
+            LogError("NetworkManager component was not provided during initialization!");
             return;
         }
 
@@ -94,8 +100,8 @@ public class AreaServerManager : MonoBehaviour
 
         try
         {
-            // Load the area scene
-            UnityEngine.SceneManagement.SceneManager.LoadScene(areaConfig.sceneName);
+            // Load the area scene ADDITIVELY, so it doesn't unload the Persistent scene
+            UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(areaConfig.sceneName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
 
             // Start the network server
             bool started = areaNetworkManager.StartServer();

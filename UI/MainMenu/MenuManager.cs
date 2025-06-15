@@ -58,7 +58,6 @@ public class MenuManager : MonoBehaviour
         {
             menuCamera.SetActive(true);
         }
-        Debug.Log("MenuManager Awake: Ensuring UI and Camera are active for client.");
     }
     #endregion
 
@@ -71,44 +70,40 @@ public class MenuManager : MonoBehaviour
         
         if (menuCanvas != null && menuCanvas.activeSelf)
         {
-            OnAccountLogin();
+            OnAccountLoginPane();
         }
     }
 
 
     #region Panes
-    public void OnAccountLogin()
+    public void OnAccountLoginPane()
     {
         animator.SetBool("Menu", false);
         animator.SetBool("Characters", false);
         animator.SetBool("Settings", false);
         animator.SetBool("Account", true);
     }
-    public void OnCreateButton()
+    public void OnCreateButtonPane()
     {
         animator.SetBool("Menu", false);
         animator.SetBool("Characters", true);
         animator.SetBool("Settings", false);
         spotLight.SetActive(true);
     }
-    public void OnSettingsButton()
+    public void OnSettingsButtonPane()
     {
         animator.SetBool("Menu", false);
         animator.SetBool("Characters", false);
         animator.SetBool("Settings", true);
         OnOpenSettings();
     }
-    public void OnMainMenu()
+    public void OnMainMenuPane()
     {
         spotLight.SetActive(false);
         animator.SetBool("Menu", true);
         animator.SetBool("Characters", false);
         animator.SetBool("Settings", false);
         animator.SetBool("Account", false);
-    }
-    public void OnExitButton()
-    {
-        Application.Quit();
     }
     #endregion
 
@@ -135,7 +130,7 @@ public class MenuManager : MonoBehaviour
         if (hasValidAccountNumber)
         {
             playerManager.OnStartInitialization(accountNumber, 0, "");
-            OnMainMenu();
+            OnMainMenuPane();
             return;
         }
         else
@@ -167,7 +162,7 @@ public class MenuManager : MonoBehaviour
                 return;
             }
             playerManager.OnStartInitialization(accountId, 0, accountNameText);
-            OnMainMenu();
+            OnMainMenuPane();
             return;
         }
     }
@@ -216,6 +211,10 @@ public class MenuManager : MonoBehaviour
             menuCamera.SetActive(true);
             playerManager.PlayerManagerControlSetActive(false);
         }
+    }
+    public void OnExitButton()
+    {
+        Application.Quit();
     }
     public void OnOpenSettings()
     {

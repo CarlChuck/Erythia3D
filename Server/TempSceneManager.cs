@@ -7,7 +7,7 @@ using System;
 
 public class TempSceneManager : NetworkBehaviour
 {
-    /*
+    //*
     #region Constants
     private const string mainMenuSceneName = "MainMenu";
     private const string persistentSceneName = "Persistent";
@@ -96,7 +96,7 @@ public class TempSceneManager : NetworkBehaviour
         }
 
         // The MainMenu is a local, non-networked scene loaded additively.
-        LoadSceneAdditive(mainMenuSceneName, isNetworked: false);
+        //LoadNetworkedSceneForClient(mainMenuSceneName, isNetworked: false);
     }
     #endregion
 
@@ -188,7 +188,6 @@ public class TempSceneManager : NetworkBehaviour
             }
         });
     }
-
     public void LoadNetworkedSceneForServer(string sceneName)
     {
         if (!IsServer)
@@ -215,14 +214,15 @@ public class TempSceneManager : NetworkBehaviour
         }
 
         // First unload from all clients in the scene
+        /*
         if (sceneClients.ContainsKey(sceneName))
         {
             var clientsInScene = sceneClients[sceneName].ToArray();
             foreach (var clientId in clientsInScene)
             {
-                UnloadNetworkedSceneFromClient(clientId, sceneName);
+                //UnloadNetworkedSceneFromClient(clientId, sceneName);
             }
-        }
+        }*/
 
         // Then unload from server using NetworkManager
         NetworkManager.SceneManager.UnloadScene(SceneManager.GetSceneByName(sceneName));
@@ -266,7 +266,7 @@ public class TempSceneManager : NetworkBehaviour
         }
 
         var sceneEventProgress = NetworkManager.Singleton.SceneManager.LoadScene(sceneName, LoadSceneMode.Additive);
-
+        /*
         if (sceneEventProgress == SceneEventProgressStatus.Started)
         {
             sceneEventProgress.OnLoadComplete += (clientId, scene, loadSceneMode) => {
@@ -277,7 +277,7 @@ public class TempSceneManager : NetworkBehaviour
         {
             Debug.LogError($"Failed to start loading networked scene: {sceneName}, status: {sceneEventProgress}");
             onComplete?.Invoke();
-        }
+        }*/
     }
 
     private IEnumerator UnloadSceneAsync(string sceneName, Action onComplete = null)
@@ -314,7 +314,7 @@ public class TempSceneManager : NetworkBehaviour
 
         var scene = SceneManager.GetSceneByName(sceneName);
         var sceneEventProgress = NetworkManager.Singleton.SceneManager.UnloadScene(scene);
-        
+        /*
         if (sceneEventProgress == SceneEventProgressStatus.Started)
         {
             sceneEventProgress.OnUnloadComplete += (unloadedSceneName) => {
@@ -325,7 +325,7 @@ public class TempSceneManager : NetworkBehaviour
         {
             Debug.LogError($"Failed to start unloading networked scene: {sceneName}, status: {sceneEventProgress}");
             onComplete?.Invoke();
-        }
+        }*/
     }
     #endregion
 
@@ -371,5 +371,5 @@ public class TempSceneManager : NetworkBehaviour
         return scene.IsValid() && scene.isLoaded;
     }
     #endregion    
-    */
+    //*/
 } 

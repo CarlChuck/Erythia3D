@@ -12,9 +12,9 @@ public class PlayerManager : NetworkBehaviour
     #region Local Instance Access
     // This replaces the traditional singleton pattern which does not work correctly
     // with multiple clients in the editor (Multiplayer Play Mode).
-    private static readonly List<PlayerManager> s_instances = new List<PlayerManager>();
+    private static readonly List<PlayerManager> SInstances = new List<PlayerManager>();
 
-    /// Gets the PlayerManager instance that is owned by the local client.
+    /// Gets the PlayerManager instance  owned by the local client.
     /// This is the correct way to access the PlayerManager in a multiplayer environment.
     public static PlayerManager LocalInstance
     {
@@ -22,7 +22,7 @@ public class PlayerManager : NetworkBehaviour
         {
             if (NetworkManager.Singleton == null) return null;
             // The IsOwner check is the key to finding the instance for the local player.
-            return s_instances.FirstOrDefault(pm => pm.IsOwner);
+            return SInstances.FirstOrDefault(pm => pm.IsOwner);
         }
     }
     #endregion
@@ -514,12 +514,17 @@ public class PlayerManager : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
-        s_instances.Add(this);
+        SInstances.Add(this);
+
+        if (IsOwner)
+        {
+            SceneManager.LoadSceneAsync("MainMenu", LoadSceneMode.Additive);
+        }
     }
 
     public override void OnNetworkDespawn()
     {
-        s_instances.Remove(this);
+        SInstances.Remove(this);
         base.OnNetworkDespawn();
     }
     public override void OnDestroy()
