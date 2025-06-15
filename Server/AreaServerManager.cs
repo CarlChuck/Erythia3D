@@ -54,11 +54,11 @@ public class AreaServerManager : MonoBehaviour
     /// </summary>
     public void InitializeAreaServer()
     {
-        // Get or create NetworkManager for this area
-        areaNetworkManager = GetComponent<NetworkManager>();
+        // Get or create NetworkManager for this area from the child object
+        areaNetworkManager = GetComponentInChildren<NetworkManager>();
         if (areaNetworkManager == null)
         {
-            LogError("NetworkManager component not found!");
+            LogError("NetworkManager component not found on a child GameObject!");
             return;
         }
 

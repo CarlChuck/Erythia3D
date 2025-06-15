@@ -61,35 +61,32 @@ public class ServerManager : NetworkBehaviour
     void InitializeMasterServer()
     {
         // Set up master server networking
-        masterNetworkManager = GetComponent<NetworkManager>();
+        masterNetworkManager = NetworkManager.Singleton;
         if (masterNetworkManager == null)
         {
-            masterNetworkManager = gameObject.AddComponent<NetworkManager>();
+            LogError("NetworkManager.Singleton not found! Make sure a NetworkManager is active in the scene.");
+            return;
         }
 
-        // Configure transport
-        var transport = masterNetworkManager.GetComponent<UnityTransport>();
-        if (transport != null)
-        {
-            transport.SetConnectionData("0.0.0.0", masterServerPort);
-        }
+        // The global NetworkManager should already be configured and started by a bootstrap script.
+        // We just need to hook into its callbacks.
+        // NOTE: Ensure the bootstrap script starts the server *before* ServerManager is spawned.
 
         // Set up callbacks
         masterNetworkManager.OnClientConnectedCallback += OnClientConnectedToMaster;
         masterNetworkManager.OnClientDisconnectCallback += OnClientDisconnectedFromMaster;
 
         // Start master server
-        bool started = masterNetworkManager.StartServer();
-        if (started)
+        if (masterNetworkManager.IsServer)
         {
-            LogDebug($"Master server started on port {masterServerPort}");
+            LogDebug($"Master server is running on port {masterNetworkManager.GetComponent<UnityTransport>().ConnectionData.Port}");
 
             // Launch area servers if configured to auto-start
             LaunchAreaServers();
         }
         else
         {
-            LogError("Failed to start master server");
+            LogError("Master server was not started before ServerManager was initialized!");
         }
     }
 
@@ -206,16 +203,21 @@ public class ServerManager : NetworkBehaviour
 
     bool LaunchInProcessAreaServer(AreaServerTemplate template)
     {
-        // Create a new GameObject for the area server
+        // Create the root GameObject for the area server
         var areaServerGO = new GameObject($"AreaServer_{template.areaId}");
         areaServerGO.transform.parent = transform;
 
-        // Add NetworkManager for this area
-        var areaNetworkManager = areaServerGO.AddComponent<NetworkManager>();
-        var areaTransport = areaServerGO.AddComponent<UnityTransport>();
-
-        // Add area server manager
+        // Add area server manager and NetworkObject to the root
         var areaManager = areaServerGO.AddComponent<AreaServerManager>();
+        areaServerGO.AddComponent<NetworkObject>();
+
+        // Create the child GameObject for the NetworkManager
+        var areaNetworkManagerGO = new GameObject("NetworkManager_Area");
+        areaNetworkManagerGO.transform.parent = areaServerGO.transform;
+        
+        // Add NetworkManager for this area to the child
+        var areaNetworkManager = areaNetworkManagerGO.AddComponent<NetworkManager>();
+        var areaTransport = areaNetworkManagerGO.AddComponent<UnityTransport>();
 
         // Configure the area server
         var config = new ServerAreaConfig

@@ -57,7 +57,6 @@ public class WorldManager : MonoBehaviour
     #region Private Fields
     [SerializeField] private GameObject zoneManagerPrefab;
     [SerializeField] private bool debugMode = true;
-    [SerializeField] private Transform zoneManagerParent; // Optional parent for organization
     
     // Zone Configuration System
     [SerializeField] private ZoneConfiguration[] zoneConfigurations = new ZoneConfiguration[]
@@ -166,17 +165,6 @@ public class WorldManager : MonoBehaviour
     {
         hasInitialized = true;
         
-        if (debugMode)
-        {
-            Debug.Log("WorldManager: Starting initialization");
-        }
-
-        // Validate prefab assignment
-        if (zoneManagerPrefab == null)
-        {
-            Debug.LogError("WorldManager: ZoneManager prefab is not assigned!");
-            return;
-        }
 
         // Validate prefab has required components
         if (zoneManagerPrefab.GetComponent<ZoneManager>() == null)
@@ -189,15 +177,6 @@ public class WorldManager : MonoBehaviour
         {
             Debug.LogError("WorldManager: ZoneManager prefab is missing NetworkObject component!");
             return;
-        }
-        else
-        {
-            Debug.LogError("WorldManager: PersistentSceneManager.Instance not found!");
-        }
-
-        if (debugMode)
-        {
-            Debug.Log("WorldManager: Initialization complete");
         }
     }
     #endregion
