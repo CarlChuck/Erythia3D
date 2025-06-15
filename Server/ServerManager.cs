@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class ServerManager : NetworkBehaviour
 {
@@ -377,7 +379,24 @@ public class ServerManager : NetworkBehaviour
 
     void OnClientConnectedToMaster(ulong clientId)
     {
+        // We start a coroutine to avoid a race condition where the client receives the RPC
+        // before it has finished spawning the ServerManager NetworkObject.
+        StartCoroutine(OnClientConnectedToMasterCoroutine(clientId));
+    }
+
+    private IEnumerator OnClientConnectedToMasterCoroutine(ulong clientId)
+    {
         LogDebug($"Client {clientId} connected to master server");
+
+        // Wait one frame for the client to be ready
+        yield return null;
+
+        // Tell the client to load the MainMenu scene
+        var clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } }
+        };
+        //LoadSceneClientRpc("MainMenu", clientRpcParams);
 
         // Send available areas to client
         SendAvailableAreasToClient(clientId);
@@ -545,6 +564,14 @@ public class ServerManager : NetworkBehaviour
             .ToArray();
 
         SendAvailableAreasClientRpc(availableAreas);
+    }
+
+    [ClientRpc]
+    private void LoadSceneClientRpc(string sceneName, ClientRpcParams rpcParams = default)
+    {
+        // This executes on the targeted client.
+        // Ensure this scene is included in the Build Settings.
+        SceneManager.LoadScene(sceneName);
     }
 
     [ClientRpc]
@@ -1552,7 +1579,9 @@ public class ServerManager : NetworkBehaviour
     private void LogDebug(string message)
     {
         if (enableDebugLogs)
+        {
             Debug.Log($"[MasterServer] {message}");
+        }
     }
 
     private void LogWarning(string message)

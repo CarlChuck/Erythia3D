@@ -62,7 +62,6 @@ public class DatabaseManager : BaseManager // Inherit from BaseManager
                 MaximumPoolSize = 100
             };
             connectionString = builder.ConnectionString;
-            Debug.Log($"MySQL connection string configured for {server}:{port}/{database}");
             isInitialized = true; // Set initialization status
             NotifyDataLoaded();
         }

@@ -370,6 +370,6 @@ public class TempSceneManager : NetworkBehaviour
         Scene scene = SceneManager.GetSceneByName(sceneName);
         return scene.IsValid() && scene.isLoaded;
     }
-    #endregion
+    #endregion    
     */
 } 

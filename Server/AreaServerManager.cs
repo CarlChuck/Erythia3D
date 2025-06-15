@@ -43,15 +43,10 @@ public class AreaServerManager : MonoBehaviour
     {
         InitializeAreaServer();
     }
-
     void OnDestroy()
     {
         ShutdownAreaServer();
     }
-
-    /// <summary>
-    /// Initialize this area server instance
-    /// </summary>
     public void InitializeAreaServer()
     {
         // Get or create NetworkManager for this area from the child object

@@ -103,7 +103,6 @@ public class ItemManager : BaseManager
             // 5. Mark as Initialized and Notify (on main thread)
             await Task.Factory.StartNew(() => {
                 isInitialized = true;
-                LogInfo("ItemManager Initialization Complete. Invoking OnDataLoaded.");
                 NotifyDataLoaded();
             }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
 
@@ -673,7 +672,10 @@ public class ItemManager : BaseManager
     #region Helpers
     private string DictToString(Dictionary<string, object> dict)
     {
-        if (dict == null) return "null";
+        if (dict == null) 
+        { 
+            return "null"; 
+        }
         return "{" + string.Join(", ", dict.Select(kv => kv.Key + "=" + (kv.Value ?? "NULL"))) + "}";
     }
     private void MapDictionaryToItemTemplate(ItemTemplate template, Dictionary<string, object> data)
@@ -823,7 +825,6 @@ public class ItemManager : BaseManager
                 LogWarning($"SubComponent instance ID {subComponent.SubComponentID} has missing template reference (TemplateID: {subComponent.SubComponentTemplateID}).");
             }
         }
-        LogInfo("Linked sub-component instances to templates.");
     }
     #endregion
 }

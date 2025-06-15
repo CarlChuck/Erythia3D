@@ -18,7 +18,6 @@ public abstract class BaseManager : MonoBehaviour
     {
         if (initializationTask == null || initializationTask.IsCompleted)
         {
-            Debug.Log($"Starting {GetType().Name} Initialization...");
             isInitialized = false;
             initializationTask = InitializeAsync();
 

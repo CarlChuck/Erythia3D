@@ -133,7 +133,11 @@ public class ResourceManager : BaseManager
             }
             return resources;
         }
-        catch (Exception ex) { Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); return null; }
+        catch (Exception ex) 
+        { 
+            Debug.LogError($"Error loading resources from '{ResourceInstancesTableName}': {ex.Message}"); 
+            return null; 
+        }
     }
     public async Task<List<ResourceTemplate>> LoadAllResourceTemplatesAsync()
     {

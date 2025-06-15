@@ -46,8 +46,6 @@ public class WorkBenchManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"WorkBenchManager: Initializing default workbenches from {allRecipesByWorkbenchType.Count} workbench types provided by CraftingManager.");
-
         foreach (KeyValuePair<int, List<Recipe>> entry in allRecipesByWorkbenchType)
         {
             int workbenchType = entry.Key;
@@ -62,7 +60,6 @@ public class WorkBenchManager : MonoBehaviour
                 newWorkBench.InitializeRecipes(recipesForType); // These are already Recipe instances
                 newWorkBench.name = $"WorkBench_Type{workbenchType}";
                 defaultWorkBenches.Add(newWorkBench);
-                Debug.Log($"Instantiated and configured WorkBench Type: {workbenchType} with {recipesForType.Count} recipes.");
             }
             else
             {
