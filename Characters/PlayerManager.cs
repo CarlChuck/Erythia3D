@@ -20,8 +20,6 @@ public class PlayerManager : NetworkBehaviour
     {
         get
         {
-            if (NetworkManager.Singleton == null) return null;
-            // The IsOwner check is the key to finding the instance for the local player.
             return SInstances.FirstOrDefault(pm => pm.IsOwner);
         }
     }
