@@ -61,7 +61,7 @@ public class MenuManager : MonoBehaviour
     }
     #endregion
 
-    void Start()
+    private void Start()
     {
         if (playerManager == null)
         {

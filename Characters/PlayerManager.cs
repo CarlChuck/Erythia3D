@@ -10,17 +10,15 @@ using System.Linq;
 public class PlayerManager : NetworkBehaviour
 {
     #region Local Instance Access
-    // This replaces the traditional singleton pattern which does not work correctly
-    // with multiple clients in the editor (Multiplayer Play Mode).
-    private static readonly List<PlayerManager> SInstances = new List<PlayerManager>();
+    private static readonly List<PlayerManager> SInstances = new();
 
     /// Gets the PlayerManager instance  owned by the local client.
-    /// This is the correct way to access the PlayerManager in a multiplayer environment.
     public static PlayerManager LocalInstance
     {
         get
         {
-            return SInstances.FirstOrDefault(pm => pm.IsOwner);
+            PlayerManager instance = SInstances.FirstOrDefault(pm => pm.IsOwner);
+            return instance;
         }
     }
     #endregion
@@ -33,129 +31,243 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region References
-    [Header("Player Account Info")]
-    [SerializeField] private string accountName = "";
+
+    [Header("Player Account Info")] [SerializeField]
+    private string accountName = "";
+
     [SerializeField] private string email = "";
-    private ulong steamID = 0;
-    private int accountID;
     [SerializeField] private string familyName = "";
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
 
-    [Header("Character Management")]
-    [SerializeField] private CharacterModelManager characterModelManager; // Handles character models
+    [Header("Character Management")] [SerializeField]
+    private CharacterModelManager characterModelManager; // Handles character models
+
     [SerializeField] private GameObject charListParent;
     [SerializeField] private List<PlayerStatBlock> playerCharacters;
     [SerializeField] private PlayerStatBlock selectedPlayerCharacter;
     [SerializeField] private GameObject characterPrefab;
 
-    [Header("Multiplayer Prefabs")]
-    [SerializeField] private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
-    public GameObject NetworkedPlayerPrefab => networkedPlayerPrefab; // Public accessor for ServerManager
-    
-    [Header("Camera and UI (Persistent)")]
-    [SerializeField] private Camera mainCamera;
+    [Header("Multiplayer Prefabs")] [SerializeField]
+    private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
+
+    public GameObject NetworkedPlayerPrefab
+    {
+        get
+        {
+            return networkedPlayerPrefab;
+            // Public accessor for ServerManager
+        }
+    }
+
+    [Header("Camera and UI (Persistent)")] [SerializeField]
+    private Camera mainCamera;
+
     [SerializeField] private GameObject playerFollowCam;
     [SerializeField] private UIManager uiManager;
-    
-    [Header("Current References")]
-    [SerializeField] private NetworkedPlayer currentNetworkedPlayer; // Currently controlled networked player
-    [SerializeField] private List<NetworkedPlayer> allNetworkedPlayers = new List<NetworkedPlayer>(); // All networked players
-    
-    [Header("Legacy References")]
-    [SerializeField] private PlayerController playerController; // Legacy
+
+    [Header("Current References")] [SerializeField]
+    private NetworkedPlayer currentNetworkedPlayer; // Currently controlled networked player
+
+    [SerializeField]
+    private List<NetworkedPlayer> allNetworkedPlayers = new List<NetworkedPlayer>(); // All networked players
+
+    [Header("Legacy References")] [SerializeField]
+    private PlayerController playerController; // Legacy
+
     [SerializeField] private GameObject playerControllerPrefab; // Legacy
     [SerializeField] private GameObject localPlayerControllerPrefab; // Legacy
 
-    [Header("Inventory and Workbenches")]
-    [SerializeField] private Transform workbenchParent;
+    [Header("Inventory and Workbenches")] [SerializeField]
+    private Transform workbenchParent;
+
     [SerializeField] private Inventory homeInventory;
     [SerializeField] private WorkBench workBenchPrefab;
-    private List<WorkBench> ownedWorkbenches = new List<WorkBench>();
-
     #endregion
 
     #region State Management
-    private bool isInitialized = false;
+    private bool isInitialized;
     private Task initializationTask;
 
     // Network response tracking - managed by NetworkRequestManager
-    internal bool loginResultReceived = false;
+    internal bool loginResultReceived;
     internal LoginResult currentLoginResult;
-    
-    internal bool characterListReceived = false;
+
+    internal bool characterListReceived;
     internal CharacterListResult currentCharacterListResult;
-    
-    internal bool accountInventoryReceived = false;
+
+    internal bool accountInventoryReceived;
     internal AccountInventoryResult currentAccountInventoryResult;
 
-    internal bool characterInventoryReceived = false;
+    internal bool characterInventoryReceived;
     internal CharacterInventoryResult currentCharacterInventoryResult;
-    
-    internal bool workbenchListReceived = false;
+
+    internal bool workbenchListReceived;
     internal WorkbenchListResult currentWorkbenchListResult;
 
-    internal bool waypointResultReceived = false;
+    internal bool waypointResultReceived;
     internal WaypointResult currentWaypointResult;
 
-    internal bool playerZoneInfoResultReceived = false;
+    internal bool playerZoneInfoResultReceived;
     internal PlayerZoneInfoResult currentPlayerZoneInfoResult;
 
-    internal bool serverZoneLoadResultReceived = false;
+    internal bool serverZoneLoadResultReceived;
     internal ServerZoneLoadResult currentServerZoneLoadResult;
     #endregion
 
     #region Helper Access Properties
-    internal ulong SteamID { get => steamID; set => steamID = value; }
-    internal int AccountID { get => accountID; set => accountID = value; }
-    internal string AccountName { get => accountName; set => accountName = value; }
-    internal string Email => email;
-    internal string IPAddress => ipAddress;
-    internal string Language => language;
-    internal string FamilyName { get => familyName; set => familyName = value; }
-    
-    internal GameObject CharListParent => charListParent;
-    internal List<PlayerStatBlock> PlayerCharacters => playerCharacters;
-    internal PlayerStatBlock SelectedPlayerCharacter { get => selectedPlayerCharacter; set => selectedPlayerCharacter = value; }
-    internal GameObject CharacterPrefab => characterPrefab;
-    internal GameObject PlayerControllerPrefab => playerControllerPrefab;
-    internal UIManager UIManager => uiManager;
-    
-    internal Inventory HomeInventory => homeInventory;
-    internal WorkBench WorkBenchPrefab => workBenchPrefab;
-    internal Transform WorkbenchParent => workbenchParent;
-    internal List<WorkBench> OwnedWorkbenches => ownedWorkbenches;
+    internal ulong SteamID { get; set; }
+    internal int AccountID { get; set; }
+    internal string AccountName
+    {
+        get
+        {
+            return accountName; 
+            
+        }
+        set
+        {
+            accountName = value; 
+            
+        }
+    }
+    internal string Email
+    {
+        get { return email; }
+    }
+    internal string IPAddress
+    {
+        get
+        {
+            return ipAddress; 
+            
+        }
+    }
+    internal string Language
+    {
+        get
+        {
+            return language; 
+            
+        }
+    }
+    internal string FamilyName
+    {
+        get
+        {
+            return familyName; 
+            
+        }
+        set
+        {
+            familyName = value; 
+            
+        }
+    }
+    internal GameObject CharListParent
+    {
+        get
+        {
+            return charListParent; 
+            
+        }
+    }
+    internal List<PlayerStatBlock> PlayerCharacters
+    {
+        get
+        {
+            return playerCharacters; 
+            
+        }
+    }
+    internal PlayerStatBlock SelectedPlayerCharacter
+    {
+        get
+        {
+            return selectedPlayerCharacter; 
+            
+        }
+        set
+        {
+            selectedPlayerCharacter = value; 
+            
+        }
+    }
+    internal GameObject CharacterPrefab
+    {
+        get
+        {
+            return characterPrefab; 
+            
+        }
+    }
+    internal GameObject PlayerControllerPrefab
+    {
+        get
+        {
+            return playerControllerPrefab; 
+            
+        }
+    }
+    internal UIManager UIManager
+    {
+        get
+        {
+            return uiManager; 
+            
+        }
+    }
+    internal Inventory HomeInventory
+    {
+        get
+        {
+            return homeInventory; 
+            
+        }
+    }
+    internal WorkBench WorkBenchPrefab
+    {
+        get
+        {
+            return workBenchPrefab; 
+            
+        }
+    }
+    internal Transform WorkbenchParent
+    {
+        get
+        {
+            return workbenchParent; 
+            
+        }
+    }
+    internal List<WorkBench> OwnedWorkbenches { get; } = new();
     #endregion
 
     private void Awake()
     {
         // Initialize helper classes
         InitializeHelpers();
-
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
     private void InitializeHelpers()
     {
-        characterHandler = new CharacterDataHandler(this);
-        inventoryHandler = new InventoryDataHandler(this);
-        zoneCoordinator = new ZoneCoordinator(this);
-        requestManager = new NetworkRequestManager(this);
+        characterHandler = new(this);
+        inventoryHandler = new(this);
+        zoneCoordinator = new(this);
+        requestManager = new(this);
     }
 
     #region Initialization
     private void Start()
     {
         Debug.Log($"PlayerManager.Start: IsServer={IsServer}, IsClient={IsClient}, IsHost={IsHost}, IsOwner={IsOwner}");
-        
-        if (playerCharacters == null)
-        {
-            playerCharacters = new List<PlayerStatBlock>();
-        }
+        playerCharacters ??= new();
     }
-    public async void OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
+    public async Task OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
     {
-        accountID = newAccountID;
-        steamID = newSteamID;
+        AccountID = newAccountID;
+        SteamID = newSteamID;
         accountName = newAccountName;
         initializationTask = InitializePlayerManagerAsync();
         await initializationTask;
@@ -195,44 +307,44 @@ public class PlayerManager : NetworkBehaviour
     #region Save To Database
     public async Task SaveCharacter(PlayerStatBlock characterToSave)
     {
-
+        
     }
-    public async Task SaveItem(Item itemToSave) 
-    { 
+    public async Task SaveItem(Item itemToSave)
+    {
         
     }
     public async Task SaveResourceItem(ResourceItem resourceItemToSave)
     {
-
+        
     }
     public async Task SaveSubComponent(SubComponent subComponentToSave)
     {
-
+        
     }
     public async Task SaveCharacterEquipment(PlayerStatBlock characterToSave)
     {
-
+        
     }
     public async Task SaveCharacterInventory(PlayerStatBlock characterToSave)
     {
-
+        
     }
     public async Task SaveAccountInventory()
     {
-
+        
     }
     public async Task SaveWorkbench()
     {
-
+        
     }
     #endregion
 
     #region Load From Database
-
+        //TODO
     #endregion
 
     #region Setters
-    public async void OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
+    public async Task OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
         await characterHandler.CreateCharacterAsync(characterName, charRace, charGender, charFace);
     }
@@ -243,7 +355,7 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
             return;
         }
-        
+
         // The client no longer handles scene transitions.
         // It simply tells the server it's ready and provides the necessary character data.
         Debug.Log($"PlayerManager: Requesting server to transition to zone for character {selectedPlayerCharacter.GetCharacterID()}.");
@@ -251,10 +363,10 @@ public class PlayerManager : NetworkBehaviour
 
         // The old flow of calling ZoneCoordinator and SpawnNetworkedPlayerAsync from the client is now obsolete.
         // The server will handle all of it.
-    }    
-    
+    }
+
     [ServerRpc]
-    private void RequestZoneTransitionServerRpc(int characterId, int race, int gender, ServerRpcParams serverRpcParams = default)
+    private void RequestZoneTransitionServerRpc(int characterId, int species, int gender, ServerRpcParams serverRpcParams = default)
     {
         /*
         if (ServerManager.Instance != null)
@@ -265,11 +377,12 @@ public class PlayerManager : NetworkBehaviour
         {
             Debug.LogError("ServerManager not found! Cannot handle zone transition request.");
         }*/
-    }    
+    }
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
-    {            
+    {
         int characterID = playerStatBlock.GetCharacterID();
-        Debug.Log($"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
+        Debug.Log(
+            $"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
 
         // We no longer need to calculate spawn position on the client.
         // The server will be authoritative for the spawn location.
@@ -290,8 +403,9 @@ public class PlayerManager : NetworkBehaviour
         }
         else
         {
-            Debug.Log($"SpawnNetworkedPlayerAsync: Successfully spawned and registered networked player (ID: {currentNetworkedPlayer.OwnerClientId}).");
-            
+            Debug.Log(
+                $"SpawnNetworkedPlayerAsync: Successfully spawned and registered networked player (ID: {currentNetworkedPlayer.OwnerClientId}).");
+
             // Setup camera for the newly spawned player
             Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
             if (cameraTarget != null)
@@ -330,14 +444,17 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
             await initializationTask;
         }
+
         return selectedPlayerCharacter;
     }
     public PlayerStatBlock GetSelectedPlayerCharacter()
     {
         if (!isInitialized)
         {
-            Debug.LogWarning("Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
+            Debug.LogWarning(
+                "Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
         }
+
         return selectedPlayerCharacter;
     }
     public UIManager GetUIManager()
@@ -352,6 +469,7 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
             await initializationTask;
         }
+
         // If list is still somehow null after init, re-initialize (shouldn't happen)
         if (playerCharacters == null)
         {
@@ -361,21 +479,24 @@ public class PlayerManager : NetworkBehaviour
             // For now, just return the empty list. Consider more robust recovery if needed.
             // await SetCharactersListAsync();
         }
+
         return playerCharacters;
     }
-    public List<PlayerStatBlock> GetCharacters()
+    private List<PlayerStatBlock> GetCharacters()
     {
         if (!isInitialized)
         {
-            Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
+            Debug.LogWarning(
+                "Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
             // Cannot easily await here. Return current state.
             return playerCharacters ?? new List<PlayerStatBlock>(); // Return empty list if null
         }
+
         return playerCharacters;
     }
     public List<WorkBench> GetOwnedWorkbenches()
     {
-        return ownedWorkbenches;
+        return OwnedWorkbenches;
     }
     public Inventory GetHomeInventory()
     {
@@ -384,11 +505,11 @@ public class PlayerManager : NetworkBehaviour
     public PlayerController GetControlledCharacter()
     {
         return playerController;
-    }    
+    }
     public Camera GetMainCamera()
     {
         return mainCamera;
-    }    
+    }
     public void SetCameraTarget(Transform target)
     {
         if (target == null)
@@ -396,45 +517,50 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot set camera target - target transform is null");
             return;
         }
-        
+
         if (playerFollowCam == null)
         {
             Debug.LogError("PlayerManager: Cannot set camera target - playerFollowCam is null");
             return;
         }
-        
+
         var cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
         if (cinemachineCamera != null)
         {
             // Set both Follow and LookAt to the target
             cinemachineCamera.Follow = target;
             cinemachineCamera.LookAt = target;
-            
+
             Debug.Log($"PlayerManager: Camera target set to '{target.name}' at position: {target.position}");
-            Debug.Log($"PlayerManager: Camera Follow: {cinemachineCamera.Follow?.name}, LookAt: {cinemachineCamera.LookAt?.name}");
-            
+            Debug.Log(
+                $"PlayerManager: Camera Follow: {cinemachineCamera.Follow?.name}, LookAt: {cinemachineCamera.LookAt?.name}");
+
             // Additional validation
             if (Vector3.Distance(target.position, Vector3.zero) < 0.1f)
             {
-                Debug.LogWarning($"PlayerManager: Camera target '{target.name}' is at or very close to origin (0,0,0) - this might cause camera issues");
+                Debug.LogWarning(
+                    $"PlayerManager: Camera target '{target.name}' is at or very close to origin (0,0,0) - this might cause camera issues");
             }
         }
         else
         {
-            Debug.LogError($"PlayerManager: PlayerFollowCam '{playerFollowCam.name}' does not have a CinemachineCamera component!");
-            
+            Debug.LogError(
+                $"PlayerManager: PlayerFollowCam '{playerFollowCam.name}' does not have a CinemachineCamera component!");
+
             // Try to find CinemachineCamera in children
             var childCinemachine = playerFollowCam.GetComponentInChildren<CinemachineCamera>();
             if (childCinemachine != null)
             {
-                Debug.Log($"PlayerManager: Found CinemachineCamera in child: '{childCinemachine.name}' - using that instead");
+                Debug.Log(
+                    $"PlayerManager: Found CinemachineCamera in child: '{childCinemachine.name}' - using that instead");
                 childCinemachine.Follow = target;
                 childCinemachine.LookAt = target;
                 Debug.Log($"PlayerManager: Child camera target set to '{target.name}'");
             }
             else
             {
-                Debug.LogError("PlayerManager: No CinemachineCamera component found in PlayerFollowCam or its children!");
+                Debug.LogError(
+                    "PlayerManager: No CinemachineCamera component found in PlayerFollowCam or its children!");
             }
         }
     }
@@ -445,7 +571,7 @@ public class PlayerManager : NetworkBehaviour
     public List<NetworkedPlayer> GetAllNetworkedPlayers()
     {
         return allNetworkedPlayers;
-    }    
+    }
     public void SwitchControlTo(NetworkedPlayer targetPlayer)
     {
         if (targetPlayer == null || !allNetworkedPlayers.Contains(targetPlayer))
@@ -453,30 +579,32 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogWarning("PlayerManager: Cannot switch to invalid networked player");
             return;
         }
-        
+
         // Deactivate current player control
         if (currentNetworkedPlayer != null)
         {
             currentNetworkedPlayer.SetPlayerControlled(false);
         }
-        
+
         // Activate new player control
         currentNetworkedPlayer = targetPlayer;
         currentNetworkedPlayer.SetPlayerControlled(true);
-        
+
         // Update camera target to follow the PlayerCameraRoot (proper camera anchor)
         Transform cameraTargetTransform = currentNetworkedPlayer.GetPlayerCameraRoot();
         if (cameraTargetTransform != null)
         {
             SetCameraTarget(cameraTargetTransform);
-            Debug.Log($"PlayerManager: Switched control to {targetPlayer.name}, camera following PlayerCameraRoot: {cameraTargetTransform.name}");
+            Debug.Log(
+                $"PlayerManager: Switched control to {targetPlayer.name}, camera following PlayerCameraRoot: {cameraTargetTransform.name}");
         }
         else
         {
             // Fallback to movement transform if PlayerCameraRoot not found
             Transform movementTransform = currentNetworkedPlayer.GetMovementTransform();
             SetCameraTarget(movementTransform);
-            Debug.LogWarning($"PlayerManager: PlayerCameraRoot not found for {targetPlayer.name}, using movement transform: {movementTransform.name}");
+            Debug.LogWarning(
+                $"PlayerManager: PlayerCameraRoot not found for {targetPlayer.name}, using movement transform: {movementTransform.name}");
         }
     }
     public void RegisterNetworkedPlayer(NetworkedPlayer networkedPlayer)
@@ -492,13 +620,13 @@ public class PlayerManager : NetworkBehaviour
         if (allNetworkedPlayers.Contains(networkedPlayer))
         {
             allNetworkedPlayers.Remove(networkedPlayer);
-            
+
             // If this was the current player, clear the reference
             if (currentNetworkedPlayer == networkedPlayer)
             {
                 currentNetworkedPlayer = null;
             }
-            
+
             Debug.Log($"PlayerManager: Unregistered networked player {networkedPlayer.name}");
         }
     }
@@ -511,18 +639,22 @@ public class PlayerManager : NetworkBehaviour
     #region Helpers
     public override void OnNetworkSpawn()
     {
-        base.OnNetworkSpawn();
         SInstances.Add(this);
+        Debug.Log(
+            $"PlayerManager.OnNetworkSpawn: Added to instances list. Total instances: {SInstances.Count}, IsOwner: {IsOwner}, IsServer: {IsServer}, IsClient: {IsClient}, NetworkObjectId: {NetworkObjectId}");
 
         if (IsOwner)
         {
             SceneManager.LoadSceneAsync("MainMenu", LoadSceneMode.Additive);
         }
-    }
 
+        base.OnNetworkSpawn();
+    }
     public override void OnNetworkDespawn()
     {
         SInstances.Remove(this);
+        Debug.Log(
+            $"PlayerManager.OnNetworkDespawn: Removed from instances list. Remaining instances: {SInstances.Count}");
         base.OnNetworkDespawn();
     }
     public override void OnDestroy()
@@ -537,11 +669,12 @@ public class PlayerManager : NetworkBehaviour
         {
             mainCamera.gameObject.SetActive(isActive);
         }
+
         if (playerFollowCam != null)
         {
             playerFollowCam.SetActive(isActive);
         }
-        
+
         // Legacy PlayerController support
         if (playerController != null)
         {
@@ -552,39 +685,42 @@ public class PlayerManager : NetworkBehaviour
     {
         // The new zone loading system handles character positioning during SetSelectedCharacterAsync
         // No need to search for ZoneManager here since it's server-only
-        
+
         // Optional: Add any client-side scene setup logic here if needed
         // TODO: End load screen
     }
     #endregion
 
     #region Login Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
-    internal void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
+    internal void RequestLoginServerRpc(ulong steamID, int accountID, string sendAccountName, string sendEmail, string sendIpAddress, string sendLanguage, ServerRpcParams serverRpcParams = default)
     {
+        Debug.Log($"PlayerManager.RequestLoginServerRpc: ENTRY - IsServer={IsServer}, IsClient={IsClient}, NetworkObjectId={NetworkObjectId}");
+
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
         {
             Debug.Log($"PlayerManager (Server): Received login request, calling ServerManager for steamID={steamID}, accountID={accountID}");
-            
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessLoginRequest...");
-                ServerManager.Instance.ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, serverRpcParams.Receive.SenderClientId);
+                ServerManager.Instance.ProcessLoginRequest(steamID, accountID, sendAccountName, sendEmail, sendIpAddress, sendLanguage, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessLoginRequest called successfully");
             }
             else
             {
                 Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process login request.");
-                
+
                 // Send error response back to client
                 LoginResult errorResult = new LoginResult
                 {
                     Success = false,
                     ErrorMessage = "Server error: ServerManager not available"
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -592,7 +728,7 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveLoginResultClientRpc(errorResult, clientRpcParams);
             }
         }
@@ -603,13 +739,13 @@ public class PlayerManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void ReceiveLoginResultClientRpc(LoginResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveLoginResultClientRpc(LoginResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the login result
         Debug.Log($"PlayerManager (Client): Received login result from server. Success: {result.Success}");
         HandleLoginResult(result);
     }
-    public void HandleLoginResult(LoginResult result)
+    private void HandleLoginResult(LoginResult result)
     {
         currentLoginResult = result;
         loginResultReceived = true;
@@ -618,14 +754,16 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Character List Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
     internal void RequestCharacterListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
         {
-            Debug.Log($"PlayerManager (Server): Received character list request, calling ServerManager for accountID={accountID}");
-            
+            Debug.Log(
+                $"PlayerManager (Server): Received character list request, calling ServerManager for accountID={accountID}");
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
@@ -635,16 +773,17 @@ public class PlayerManager : NetworkBehaviour
             }
             else
             {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process character list request.");
-                
+                Debug.LogError(
+                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process character list request.");
+
                 // Send error response back to client
                 CharacterListResult errorResult = new CharacterListResult
                 {
                     Success = false,
                     ErrorMessage = "Server error: ServerManager not available",
-                    Characters = new CharacterData[0]
+                    Characters = Array.Empty<CharacterData>()
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -652,13 +791,14 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveCharacterListClientRpc(errorResult, clientRpcParams);
             }
         }
         else
         {
-            Debug.LogError("PlayerManager: RequestCharacterListServerRpc called on client! This should only run on server.");
+            Debug.LogError(
+                "PlayerManager: RequestCharacterListServerRpc called on client! This should only run on server.");
         }
     }
 
@@ -669,31 +809,40 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log($"PlayerManager (Client): Received character list result from server. Success: {result.Success}, CharacterCount: {result.Characters?.Length ?? 0}");
         HandleCharacterListResult(result);
     }
-    public void HandleCharacterListResult(CharacterListResult result)
+    private void HandleCharacterListResult(CharacterListResult result)
     {
         currentCharacterListResult = result;
         characterListReceived = true;
-        Debug.Log($"PlayerManager: Received character list result. Success: {result.Success}. IsServer: {IsServer}, IsClient: {IsClient}");
-        
-        // For clients, process character data through CharacterDataHandler
-        // Server will receive character data via direct RPC from client
-        if (result.Success && characterHandler != null && (!IsServer || IsClient))
+        Debug.Log(
+            $"PlayerManager: Received character list result. Success: {result.Success}. IsServer: {IsServer}, IsClient: {IsClient}");
+
+        switch (result.Success)
         {
-            Debug.Log($"PlayerManager (Client): Processing character list result through CharacterDataHandler...");
-            _ = characterHandler.ProcessCharacterListResult(result);
-        }
-        else if (!result.Success)
-        {
-            Debug.LogError($"PlayerManager: Character list result failed: {result.ErrorMessage}");
-        }
-        else if (IsServer && !IsClient)
-        {
-            Debug.Log($"PlayerManager (Server): Skipping character list processing - will receive character data via RPC from client");
+            // For clients, process character data through CharacterDataHandler
+            // Server will receive character data via direct RPC from client
+            case true when characterHandler != null && (!IsServer || IsClient):
+                Debug.Log($"PlayerManager (Client): Processing character list result through CharacterDataHandler...");
+                _ = characterHandler.ProcessCharacterListResult(result);
+                break;
+            case false:
+                Debug.LogError($"PlayerManager: Character list result failed: {result.ErrorMessage}");
+                break;
+            default:
+            {
+                if (IsServer && !IsClient)
+                {
+                    Debug.Log(
+                        $"PlayerManager (Server): Skipping character list processing - will receive character data via RPC from client");
+                }
+
+                break;
+            }
         }
     }
     #endregion
 
     #region Inventory Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
     internal void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
     {
@@ -701,7 +850,7 @@ public class PlayerManager : NetworkBehaviour
         if (IsServer)
         {
             Debug.Log($"PlayerManager (Server): Received account inventory request, calling ServerManager for accountID={accountID}");
-            
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
@@ -712,18 +861,18 @@ public class PlayerManager : NetworkBehaviour
             else
             {
                 Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process account inventory request.");
-                
+
                 // Send error response back to client
                 AccountInventoryResult errorResult = new AccountInventoryResult
                 {
                     Success = false,
                     ErrorMessage = "Server error: ServerManager not available",
-                    Items = new InventoryItemData[0],
-                    ResourceItems = new InventoryResourceItemData[0],
-                    SubComponents = new InventorySubComponentData[0],
-                    Workbenches = new WorkbenchData[0]
+                    Items = Array.Empty<InventoryItemData>(),
+                    ResourceItems = Array.Empty<InventoryResourceItemData>(),
+                    SubComponents = Array.Empty<InventorySubComponentData>(),
+                    Workbenches = Array.Empty<WorkbenchData>()
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -731,24 +880,26 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveAccountInventoryClientRpc(errorResult, clientRpcParams);
             }
         }
         else
         {
-            Debug.LogError("PlayerManager: RequestAccountInventoryServerRpc called on client! This should only run on server.");
+            Debug.LogError(
+                "PlayerManager: RequestAccountInventoryServerRpc called on client! This should only run on server.");
         }
     }
 
     [ClientRpc]
-    public void ReceiveAccountInventoryClientRpc(AccountInventoryResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveAccountInventoryClientRpc(AccountInventoryResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the account inventory result
-        Debug.Log($"PlayerManager (Client): Received account inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
+        Debug.Log(
+            $"PlayerManager (Client): Received account inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
         HandleAccountInventoryResult(result);
     }
-    public void HandleAccountInventoryResult(AccountInventoryResult result)
+    private void HandleAccountInventoryResult(AccountInventoryResult result)
     {
         currentAccountInventoryResult = result;
         accountInventoryReceived = true;
@@ -761,19 +912,23 @@ public class PlayerManager : NetworkBehaviour
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
         {
-            Debug.Log($"PlayerManager (Server): Received character inventory request, calling ServerManager for characterID={characterID}");
-            
+            Debug.Log(
+                $"PlayerManager (Server): Received character inventory request, calling ServerManager for characterID={characterID}");
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessCharacterInventoryRequest...");
-                ServerManager.Instance.ProcessCharacterInventoryRequest(characterID, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessCharacterInventoryRequest called successfully");
+                ServerManager.Instance.ProcessCharacterInventoryRequest(characterID,
+                    serverRpcParams.Receive.SenderClientId);
+                Debug.Log(
+                    $"PlayerManager (Server): ServerManager.ProcessCharacterInventoryRequest called successfully");
             }
             else
             {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process character inventory request.");
-                
+                Debug.LogError(
+                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process character inventory request.");
+
                 // Send error response back to client
                 CharacterInventoryResult errorResult = new CharacterInventoryResult
                 {
@@ -783,7 +938,7 @@ public class PlayerManager : NetworkBehaviour
                     ResourceItems = new InventoryResourceItemData[0],
                     SubComponents = new InventorySubComponentData[0]
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -791,24 +946,26 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveCharacterInventoryClientRpc(errorResult, clientRpcParams);
             }
         }
         else
         {
-            Debug.LogError("PlayerManager: RequestCharacterInventoryServerRpc called on client! This should only run on server.");
+            Debug.LogError(
+                "PlayerManager: RequestCharacterInventoryServerRpc called on client! This should only run on server.");
         }
     }
 
     [ClientRpc]
-    public void ReceiveCharacterInventoryClientRpc(CharacterInventoryResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveCharacterInventoryClientRpc(CharacterInventoryResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the character inventory result
-        Debug.Log($"PlayerManager (Client): Received character inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
+        Debug.Log(
+            $"PlayerManager (Client): Received character inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
         HandleCharacterInventoryResult(result);
     }
-    public void HandleCharacterInventoryResult(CharacterInventoryResult result)
+    private void HandleCharacterInventoryResult(CharacterInventoryResult result)
     {
         currentCharacterInventoryResult = result;
         characterInventoryReceived = true;
@@ -822,7 +979,7 @@ public class PlayerManager : NetworkBehaviour
         if (IsServer)
         {
             Debug.Log($"PlayerManager (Server): Received workbench list request, calling ServerManager for accountID={accountID}");
-            
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
@@ -833,15 +990,15 @@ public class PlayerManager : NetworkBehaviour
             else
             {
                 Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process workbench list request.");
-                
+
                 // Send error response back to client
                 WorkbenchListResult errorResult = new WorkbenchListResult
                 {
                     Success = false,
                     ErrorMessage = "Server error: ServerManager not available",
-                    Workbenches = new WorkbenchData[0]
+                    Workbenches = Array.Empty<WorkbenchData>()
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -849,24 +1006,26 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveWorkbenchListClientRpc(errorResult, clientRpcParams);
             }
         }
         else
         {
-            Debug.LogError("PlayerManager: RequestWorkbenchListServerRpc called on client! This should only run on server.");
+            Debug.LogError(
+                "PlayerManager: RequestWorkbenchListServerRpc called on client! This should only run on server.");
         }
     }
 
     [ClientRpc]
-    public void ReceiveWorkbenchListClientRpc(WorkbenchListResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveWorkbenchListClientRpc(WorkbenchListResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the workbench list result
-        Debug.Log($"PlayerManager (Client): Received workbench list result from server. Success: {result.Success}, WorkbenchCount: {result.Workbenches?.Length ?? 0}");
+        Debug.Log(
+            $"PlayerManager (Client): Received workbench list result from server. Success: {result.Success}, WorkbenchCount: {result.Workbenches?.Length ?? 0}");
         HandleWorkbenchListResult(result);
     }
-    public void HandleWorkbenchListResult(WorkbenchListResult result)
+    private void HandleWorkbenchListResult(WorkbenchListResult result)
     {
         currentWorkbenchListResult = result;
         workbenchListReceived = true;
@@ -875,24 +1034,26 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Waypoint Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
     internal void RequestWaypointServerRpc(WaypointRequest request, ServerRpcParams serverRpcParams = default)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
         {
-            
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWaypointRequest...");
-                ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName, serverRpcParams.Receive.SenderClientId);
+                ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName,
+                    serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessWaypointRequest called successfully");
             }
             else
             {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process waypoint request.");
-                
+                Debug.LogError(
+                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process waypoint request.");
+
                 // Send error response back to client
                 WaypointResult errorResult = new WaypointResult
                 {
@@ -902,7 +1063,7 @@ public class PlayerManager : NetworkBehaviour
                     HasWaypoint = false,
                     ZoneName = request.ZoneName
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -910,7 +1071,7 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceiveWaypointResultClientRpc(errorResult, clientRpcParams);
             }
         }
@@ -921,12 +1082,12 @@ public class PlayerManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void ReceiveWaypointResultClientRpc(WaypointResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveWaypointResultClientRpc(WaypointResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the waypoint result
         HandleWaypointResult(result);
     }
-    public void HandleWaypointResult(WaypointResult result)
+    private void HandleWaypointResult(WaypointResult result)
     {
         currentWaypointResult = result;
         waypointResultReceived = true;
@@ -934,6 +1095,7 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Player Zone Info Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
     internal void RequestPlayerZoneInfoServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
     {
@@ -941,20 +1103,22 @@ public class PlayerManager : NetworkBehaviour
         if (IsServer)
         {
             Debug.Log($"PlayerManager (Server): Received player zone info request for character {characterID}");
-            
+
             if (ServerManager.Instance != null)
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessPlayerZoneInfoRequest...");
 
                 //TODO sort out how to handle this properly
-                ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID, serverRpcParams.Receive.SenderClientId);
+                ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID,
+                    serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessPlayerZoneInfoRequest called successfully");
             }
             else
             {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process player zone info request.");
-                
+                Debug.LogError(
+                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process player zone info request.");
+
                 // Send error response back to client
                 PlayerZoneInfoResult errorResult = new PlayerZoneInfoResult
                 {
@@ -969,7 +1133,7 @@ public class PlayerManager : NetworkBehaviour
                         RequiresMarketWaypoint = true
                     }
                 };
-                
+
                 ClientRpcParams clientRpcParams = new ClientRpcParams
                 {
                     Send = new ClientRpcSendParams
@@ -977,24 +1141,25 @@ public class PlayerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
                     }
                 };
-                
+
                 ReceivePlayerZoneInfoClientRpc(errorResult, clientRpcParams);
             }
         }
         else
         {
-            Debug.LogError("PlayerManager: RequestPlayerZoneInfoServerRpc called on client! This should only run on server.");
+            Debug.LogError(
+                "PlayerManager: RequestPlayerZoneInfoServerRpc called on client! This should only run on server.");
         }
     }
 
     [ClientRpc]
-    public void ReceivePlayerZoneInfoClientRpc(PlayerZoneInfoResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceivePlayerZoneInfoClientRpc(PlayerZoneInfoResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the player zone info result
         Debug.Log($"PlayerManager (Client): Received player zone info result from server. Success: {result.Success}");
         HandlePlayerZoneInfoResult(result);
     }
-    public void HandlePlayerZoneInfoResult(PlayerZoneInfoResult result)
+    private void HandlePlayerZoneInfoResult(PlayerZoneInfoResult result)
     {
         currentPlayerZoneInfoResult = result;
         playerZoneInfoResultReceived = true;
@@ -1002,20 +1167,47 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Server Zone Load Communication Bridge RPCs
+
     [ServerRpc(RequireOwnership = false)]
     internal void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
     {
-        
+        // This runs on the server - act as a bridge to ServerManager
+        if (IsServer)
+        {
+            Debug.Log($"PlayerManager (Server): Received server zone load request for zone: {zoneName}");
+
+            // For now, just send a success response as zone loading might be handled differently
+            ServerZoneLoadResult result = new ServerZoneLoadResult
+            {
+                Success = true,
+                ErrorMessage = ""
+            };
+
+            ClientRpcParams clientRpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
+                }
+            };
+
+            ReceiveServerLoadZoneResultClientRpc(result, clientRpcParams);
+        }
+        else
+        {
+            Debug.LogError(
+                "PlayerManager: RequestServerLoadZoneServerRpc called on client! This should only run on server.");
+        }
     }
 
     [ClientRpc]
-    public void ReceiveServerLoadZoneResultClientRpc(ServerZoneLoadResult result, ClientRpcParams clientRpcParams = default)
+    private void ReceiveServerLoadZoneResultClientRpc(ServerZoneLoadResult result, ClientRpcParams clientRpcParams = default)
     {
         // This runs on the client - handle the server zone load result
         Debug.Log($"PlayerManager (Client): Received server zone load result from server. Success: {result.Success}");
         HandleServerLoadZoneResult(result);
     }
-    public void HandleServerLoadZoneResult(ServerZoneLoadResult result)
+    private void HandleServerLoadZoneResult(ServerZoneLoadResult result)
     {
         currentServerZoneLoadResult = result;
         serverZoneLoadResultReceived = true;
@@ -1023,11 +1215,13 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Networked Player Spawning RPCs
+
     [ServerRpc(RequireOwnership = false)]
     private void SpawnNetworkedPlayerServerRpc(int characterID, int characterRace, int characterGender, ServerRpcParams serverRpcParams = default)
     {
-        var clientId = serverRpcParams.Receive.SenderClientId;
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
+        ulong clientId = serverRpcParams.Receive.SenderClientId;
+        Debug.Log(
+            $"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
 
         // --- Server-Authoritative Spawn Position ---
         Vector3 spawnPosition = Vector3.zero;
@@ -1039,7 +1233,8 @@ public class PlayerManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError("SpawnNetworkedPlayerServerRpc: ServerManager.Instance is null! Cannot determine spawn position. Defaulting to origin.");
+            Debug.LogError(
+                "SpawnNetworkedPlayerServerRpc: ServerManager.Instance is null! Cannot determine spawn position. Defaulting to origin.");
         }
         // -----------------------------------------
 
@@ -1047,16 +1242,20 @@ public class PlayerManager : NetworkBehaviour
         GameObject playerObject = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
         if (playerObject == null)
         {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Failed to instantiate networkedPlayerPrefab for client {clientId}.");
+            Debug.LogError(
+                $"SpawnNetworkedPlayerServerRpc: Failed to instantiate networkedPlayerPrefab for client {clientId}.");
             return;
         }
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {spawnPosition}.");
+
+        Debug.Log(
+            $"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {spawnPosition}.");
 
         // Get the NetworkObject component
         var networkObject = playerObject.GetComponent<NetworkObject>();
         if (networkObject == null)
         {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: networkedPlayerPrefab does not have a NetworkObject component. Cannot spawn for client {clientId}.");
+            Debug.LogError(
+                $"SpawnNetworkedPlayerServerRpc: networkedPlayerPrefab does not have a NetworkObject component. Cannot spawn for client {clientId}.");
             Destroy(playerObject);
             return;
         }
@@ -1072,11 +1271,13 @@ public class PlayerManager : NetworkBehaviour
             // Set the character's identity via NetworkVariables.
             // This will trigger the model to spawn on all clients.
             networkedPlayer.SetCharacterVisuals(characterRace, characterGender);
-            Debug.Log($"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
+            Debug.Log(
+                $"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
         }
         else
         {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Could not find NetworkedPlayer component on the spawned object for client {clientId}.");
+            Debug.LogError(
+                $"SpawnNetworkedPlayerServerRpc: Could not find NetworkedPlayer component on the spawned object for client {clientId}.");
         }
 
         // Notify the owning client that their player has been spawned
@@ -1090,19 +1291,22 @@ public class PlayerManager : NetworkBehaviour
         NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition, clientRpcParams);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
-    
+
     [ClientRpc]
-    public void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
+    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
     {
-        Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
-        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObject))
+        Debug.Log(
+            $"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
+        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId,
+                out NetworkObject networkObject))
         {
             if (networkObject != null)
             {
                 currentNetworkedPlayer = networkObject.GetComponent<NetworkedPlayer>();
                 if (currentNetworkedPlayer != null)
                 {
-                    Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Successfully found and assigned NetworkedPlayer (ID: {currentNetworkedPlayer.OwnerClientId}).");
+                    Debug.Log(
+                        $"NotifyNetworkedPlayerSpawnedClientRpc: Successfully found and assigned NetworkedPlayer (ID: {currentNetworkedPlayer.OwnerClientId}).");
                     if (IsOwner)
                     {
                         // The async spawning method will handle setting the camera, but we can do it here as well
@@ -1121,22 +1325,26 @@ public class PlayerManager : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: Found NetworkObject but it doesn't have a NetworkedPlayer component.");
+                    Debug.LogError(
+                        $"NotifyNetworkedPlayerSpawnedClientRpc: Found NetworkObject but it doesn't have a NetworkedPlayer component.");
                 }
             }
             else
             {
-                Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: NetworkObject with ID {networkObjectId} is null after retrieval.");
+                Debug.LogError(
+                    $"NotifyNetworkedPlayerSpawnedClientRpc: NetworkObject with ID {networkObjectId} is null after retrieval.");
             }
         }
         else
         {
-            Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: Could not find spawned NetworkObject with ID {networkObjectId}.");
+            Debug.LogError(
+                $"NotifyNetworkedPlayerSpawnedClientRpc: Could not find spawned NetworkObject with ID {networkObjectId}.");
         }
     }
     #endregion
 
     #region Character Data Sync RPCs
+
     [ServerRpc(RequireOwnership = false)]
     private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData, ServerRpcParams serverRpcParams = default)
     {
@@ -1148,19 +1356,20 @@ public class PlayerManager : NetworkBehaviour
 
         try
         {
-            Debug.Log($"PlayerManager (Server): Received character data sync for character ID: {characterData.CharacterID}");
-            
+            Debug.Log(
+                $"PlayerManager (Server): Received character data sync for character ID: {characterData.CharacterID}");
+
             // Create PlayerStatBlock on server with the received data
             CreateServerPlayerStatBlock(characterData);
-            
-            Debug.Log($"PlayerManager (Server): Successfully synced character data for character: {characterData.CharacterName}");
+
+            Debug.Log(
+                $"PlayerManager (Server): Successfully synced character data for character: {characterData.CharacterName}");
         }
         catch (Exception ex)
         {
             Debug.LogError($"PlayerManager (Server): Error syncing character data: {ex.Message}");
         }
     }
-
     private void CreateServerPlayerStatBlock(PlayerCharacterData characterData)
     {
         if (!IsServer)
@@ -1186,13 +1395,14 @@ public class PlayerManager : NetworkBehaviour
                         Destroy(existingChar.gameObject);
                     }
                 }
+
                 playerCharacters.Clear();
             }
 
             // Create new PlayerStatBlock from character data
             GameObject newCharObj = Instantiate(characterPrefab, charListParent.transform);
             PlayerStatBlock newPlayerChar = newCharObj.GetComponent<PlayerStatBlock>();
-            
+
             if (newPlayerChar == null)
             {
                 Debug.LogError("PlayerManager (Server): Character prefab missing PlayerStatBlock component!");
@@ -1202,30 +1412,31 @@ public class PlayerManager : NetworkBehaviour
 
             // Use the existing SetUpCharacter method which handles all initialization
             newPlayerChar.SetUpCharacter(
-                characterData.CharacterName,           // character name
-                characterData.CharacterID,             // character ID
-                "",                                    // title (empty for now)
-                1,                                     // zone ID (default to 1)
-                characterData.Race,                    // race
-                characterData.Face,                    // face
-                characterData.Gender,                  // gender
-                characterData.CombatExp,               // combat XP
-                characterData.CraftingExp,             // crafting XP
-                characterData.ArcaneExp,               // arcane XP
-                characterData.SpiritExp,               // spirit XP
-                characterData.VeilExp,                 // veil XP
-                characterData.BaseStrength,            // species strength
-                characterData.BaseDexterity,           // species dexterity
-                characterData.BaseConstitution,        // species constitution
-                characterData.BaseIntelligence,        // species intelligence
-                characterData.BaseSpirit               // species spirit
+                characterData.CharacterName, // character name
+                characterData.CharacterID, // character ID
+                "", // title (empty for now)
+                1, // zone ID (default to 1)
+                characterData.Race, // race
+                characterData.Face, // face
+                characterData.Gender, // gender
+                characterData.CombatExp, // combat XP
+                characterData.CraftingExp, // crafting XP
+                characterData.ArcaneExp, // arcane XP
+                characterData.SpiritExp, // spirit XP
+                characterData.VeilExp, // veil XP
+                characterData.BaseStrength, // species strength
+                characterData.BaseDexterity, // species dexterity
+                characterData.BaseConstitution, // species constitution
+                characterData.BaseIntelligence, // species intelligence
+                characterData.BaseSpirit // species spirit
             );
 
             // Add to characters list and set as selected
             playerCharacters.Add(newPlayerChar);
             selectedPlayerCharacter = newPlayerChar;
 
-            Debug.Log($"PlayerManager (Server): Created PlayerStatBlock for character {characterData.CharacterName} (ID: {characterData.CharacterID})");
+            Debug.Log(
+                $"PlayerManager (Server): Created PlayerStatBlock for character {characterData.CharacterName} (ID: {characterData.CharacterID})");
         }
         catch (Exception ex)
         {
@@ -1233,6 +1444,7 @@ public class PlayerManager : NetworkBehaviour
         }
     }
     #endregion
+
     private PlayerCharacterData ConvertToPlayerCharacterData(PlayerStatBlock playerStatBlock)
     {
         if (playerStatBlock == null)
@@ -1251,14 +1463,14 @@ public class PlayerManager : NetworkBehaviour
                 Race = playerStatBlock.GetSpecies(),
                 Gender = playerStatBlock.GetGender(),
                 Face = playerStatBlock.GetFace(),
-                
+
                 // Experience values
                 CombatExp = playerStatBlock.GetCombatExp(),
                 CraftingExp = playerStatBlock.GetCraftingExp(),
                 ArcaneExp = playerStatBlock.GetArcaneExp(),
                 SpiritExp = playerStatBlock.GetSpiritExp(),
                 VeilExp = playerStatBlock.GetVeilExp(),
-                
+
                 // Base stats from species template
                 BaseStrength = playerStatBlock.species?.strength ?? 10,
                 BaseDexterity = playerStatBlock.species?.dexterity ?? 10,
@@ -1267,7 +1479,8 @@ public class PlayerManager : NetworkBehaviour
                 BaseSpirit = playerStatBlock.species?.spirit ?? 10
             };
 
-            Debug.Log($"PlayerManager: Converted PlayerStatBlock '{playerStatBlock.GetCharacterName()}' to network data");
+            Debug.Log(
+                $"PlayerManager: Converted PlayerStatBlock '{playerStatBlock.GetCharacterName()}' to network data");
             return characterData;
         }
         catch (Exception ex)
@@ -1287,14 +1500,14 @@ public struct PlayerCharacterData : INetworkSerializable
     public int Race;
     public int Gender;
     public int Face;
-    
+
     // Experience values
     public int CombatExp;
     public int CraftingExp;
     public int ArcaneExp;
     public int SpiritExp;
     public int VeilExp;
-    
+
     // Base stats
     public int BaseStrength;
     public int BaseDexterity;

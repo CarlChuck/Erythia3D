@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -37,17 +36,18 @@ public class ServerManager : NetworkBehaviour
     [SerializeField] private int healthCheckInterval = 10;
 
     // Runtime data
-    private Dictionary<string, AreaServerInfo> registeredServers = new();
-    private Dictionary<ulong, string> playerToAreaMapping = new();
-    private Dictionary<string, Queue<PlayerTransferRequest>> pendingTransfers = new();
-    private Dictionary<string, System.Diagnostics.Process> externalServerProcesses = new();
+    private readonly Dictionary<string, AreaServerInfo> registeredServers = new();
+    private readonly Dictionary<ulong, string> playerToAreaMapping = new();
+    private readonly Dictionary<string, Queue<PlayerTransferRequest>> pendingTransfers = new();
+    private readonly Dictionary<string, System.Diagnostics.Process> externalServerProcesses = new();
 
     // Network components
     private NetworkManager masterNetworkManager;
-    private float lastHealthCheck = 0f;
+    private float lastHealthCheck;
 
     public override void OnNetworkSpawn()
     {
+        Debug.Log($"ServerManager.OnNetworkSpawn: IsServer={IsServer}, IsClient={IsClient}, IsOwner={IsOwner}, NetworkObjectId={NetworkObjectId}");
         base.OnNetworkSpawn(); 
         InitializeMasterServer();
     }
@@ -57,27 +57,40 @@ public class ServerManager : NetworkBehaviour
         base.OnNetworkDespawn();
     }
 
-
     #region Master Server Initialization
-
-    void InitializeMasterServer()
+    private void InitializeMasterServer()
     {
         masterNetworkManager = NetworkManager.Singleton;
-        masterNetworkManager.OnClientConnectedCallback += OnClientConnectedToMaster;
-        masterNetworkManager.OnClientDisconnectCallback += OnClientDisconnectedFromMaster;
-
-        if (masterNetworkManager.IsServer)
+        LogDebug($"Master server initialization - NetworkManager.Singleton: {(masterNetworkManager != null ? masterNetworkManager.gameObject.name : "null")}");
+        LogDebug($"Master server - IsServer: {masterNetworkManager?.IsServer}, IsClient: {masterNetworkManager?.IsClient}");
+        
+        if (masterNetworkManager == null)
         {
-            LogDebug($"Master server is running on port {masterNetworkManager.GetComponent<UnityTransport>().ConnectionData.Port}");
-            LaunchAreaServers();
+            return;
+        }
+        // Only initialize server-side functionality if this is running on the server
+        if (IsServer)
+        {
+            masterNetworkManager.OnClientConnectedCallback += OnClientConnectedToMaster;
+            masterNetworkManager.OnClientDisconnectCallback += OnClientDisconnectedFromMaster;
+
+            if (masterNetworkManager.IsServer)
+            {
+                LogDebug($"Master server is running on port {masterNetworkManager.GetComponent<UnityTransport>().ConnectionData.Port}");
+                LogDebug($"ServerManager NetworkObject spawned - NetworkObjectId: {NetworkObjectId}, IsSpawned: {IsSpawned}");
+                LaunchAreaServers();
+            }
+            else
+            {
+                LogError("Master server was not started before ServerManager was initialized!");
+            }
         }
         else
         {
-            LogError("Master server was not started before ServerManager was initialized!");
+            LogDebug($"ServerManager spawned on client - NetworkObjectId: {NetworkObjectId}. Ready to receive RPCs.");
         }
     }
-
-    void ShutdownMasterServer()
+    private void ShutdownMasterServer()
     {
         // Shutdown all external server processes
         foreach (var process in externalServerProcesses.Values)
@@ -107,22 +120,48 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Area Server Management
-
-    void LaunchAreaServers()
+    private void LaunchAreaServers()
     {
+        LogDebug($"Attempting to launch {areaServerTemplates.Count} area servers...");
+        
         foreach (var template in areaServerTemplates)
         {
+            // Validate template configuration
+            if (string.IsNullOrEmpty(template.areaId))
+            {
+                LogError($"Area server template has empty areaId. Skipping.");
+                continue;
+            }
+            
+            if (string.IsNullOrEmpty(template.serverExecutablePath))
+            {
+                LogWarning($"Area server '{template.areaId}' has no serverExecutablePath configured. Skipping launch.");
+                LogWarning($"To enable area server '{template.areaId}', configure serverExecutablePath in the AreaServerTemplate.");
+                continue;
+            }
+            
             if (template.autoStartOnLaunch)
             {
-                LaunchAreaServer(template);
+                LogDebug($"Auto-launching area server: {template.areaId}");
+                bool success = LaunchAreaServer(template);
+                if (success)
+                {
+                    LogDebug($"Successfully initiated launch of area server: {template.areaId}");
+                }
+                else
+                {
+                    LogError($"Failed to launch area server: {template.areaId}");
+                }
+            }
+            else
+            {
+                LogDebug($"Area server '{template.areaId}' has autoStartOnLaunch disabled. Skipping.");
             }
         }
+        
+        LogDebug("Area server launch process completed.");
     }
-
-    /// <summary>
-    /// Launch an area server (either in-process or as separate executable)
-    /// </summary>
-    public bool LaunchAreaServer(AreaServerTemplate template)
+    private bool LaunchAreaServer(AreaServerTemplate template)
     {
         try
         {
@@ -133,8 +172,10 @@ public class ServerManager : NetworkBehaviour
             }
             else
             {
-                // Launch in current process
-                return LaunchInProcessAreaServer(template);
+                // IN-PROCESS LAUNCHING DISABLED: Prevents NetworkManager.Singleton conflicts
+                LogError($"Area server {template.areaId} has no serverExecutablePath configured. In-process launching is disabled to prevent NetworkManager conflicts.");
+                LogError($"Please configure serverExecutablePath for area server template: {template.areaId}");
+                return false;
             }
         }
         catch (Exception ex)
@@ -143,8 +184,7 @@ public class ServerManager : NetworkBehaviour
             return false;
         }
     }
-
-    bool LaunchExternalAreaServer(AreaServerTemplate template)
+    private bool LaunchExternalAreaServer(AreaServerTemplate template)
     {
         var args = $"--area=\"{template.areaId}\" --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
         if (!string.IsNullOrEmpty(template.additionalArgs))
@@ -186,49 +226,7 @@ public class ServerManager : NetworkBehaviour
 
         return false;
     }
-
-    bool LaunchInProcessAreaServer(AreaServerTemplate template)
-    {
-        // Create the root GameObject for the area server.
-        // It is NOT parented to the ServerManager to avoid nesting NetworkManagers.
-        var areaServerGO = new GameObject($"AreaServer_{template.areaId}");
-
-        // Add area server manager to the root.
-        // We DO NOT add a NetworkObject, as this AreaServer is not a networked
-        // object from the master server's perspective. It's an independent server.
-        var areaManager = areaServerGO.AddComponent<AreaServerManager>();
-
-        // Create the child GameObject for the NetworkManager
-        var areaNetworkManagerGO = new GameObject("NetworkManager_Area");
-        areaNetworkManagerGO.transform.parent = areaServerGO.transform;
-        
-        // Add NetworkManager for this area to the child
-        var areaNetworkManager = areaNetworkManagerGO.AddComponent<NetworkManager>();
-        var areaTransport = areaNetworkManagerGO.AddComponent<UnityTransport>();
-
-        // Configure the area server
-        var config = new ServerAreaConfig
-        {
-            areaId = template.areaId,
-            sceneName = template.sceneName,
-            port = template.startingPort,
-            maxPlayers = template.maxPlayers,
-            spawnPosition = template.spawnPosition,
-            autoStart = true
-        };
-        
-        // Initialize the AreaServerManager directly, passing it its config and NetworkManager.
-        // This is more robust than using reflection or relying on Start().
-        areaManager.Initialize(config, areaNetworkManager);
-
-        LogDebug($"Launched in-process area server: {template.areaId}");
-        return true;
-    }
-
-    /// <summary>
-    /// Restart a failed area server
-    /// </summary>
-    public bool RestartAreaServer(string areaId)
+    private bool RestartAreaServer(string areaId)
     {
         var template = areaServerTemplates.FirstOrDefault(t => t.areaId == areaId);
         if (template == null)
@@ -255,11 +253,10 @@ public class ServerManager : NetworkBehaviour
         LogDebug($"Restarting area server: {areaId}");
         return LaunchAreaServer(template);
     }
-
     #endregion
 
     #region Server Registration
-    public void RegisterAreaServer(AreaServerInfo serverInfo)
+    private void RegisterAreaServer(AreaServerInfo serverInfo)
     {
         serverInfo.lastUpdate = DateTime.Now;
         registeredServers[serverInfo.areaId] = serverInfo;
@@ -275,11 +272,10 @@ public class ServerManager : NetworkBehaviour
         // Notify all connected clients about the new server
         BroadcastServerListUpdate();
     }
-    public void UnregisterAreaServer(string areaId)
+    private void UnregisterAreaServer(string areaId)
     {
         if (registeredServers.ContainsKey(areaId))
         {
-            var serverInfo = registeredServers[areaId];
             registeredServers.Remove(areaId);
             LogDebug($"Unregistered area server: {areaId}");
 
@@ -296,7 +292,7 @@ public class ServerManager : NetworkBehaviour
         // Notify clients
         BroadcastServerListUpdate();
     }
-    public void UpdateAreaServerStatus(ServerStatusUpdate statusUpdate)
+    private void UpdateAreaServerStatus(ServerStatusUpdate statusUpdate)
     {
         if (registeredServers.ContainsKey(statusUpdate.areaId))
         {
@@ -308,7 +304,7 @@ public class ServerManager : NetworkBehaviour
             LogDebug($"Updated status for {statusUpdate.areaId}: {statusUpdate.currentPlayers} players, Online: {statusUpdate.isOnline}");
         }
     }
-    void HandleServerDisconnection(string areaId)
+    private void HandleServerDisconnection(string areaId)
     {
         // Find all players that were connected to this server
         var affectedPlayers = playerToAreaMapping
@@ -345,12 +341,12 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Player Management
-    void OnClientConnectedToMaster(ulong clientId)
+    private void OnClientConnectedToMaster(ulong clientId)
     {
         LogDebug($"Client {clientId} connected to master server");
         SendAvailableAreasToClient(clientId);
     }
-    void OnClientDisconnectedFromMaster(ulong clientId)
+    private void OnClientDisconnectedFromMaster(ulong clientId)
     {
         LogDebug($"Client {clientId} disconnected from master server");
 
@@ -362,7 +358,7 @@ public class ServerManager : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void RequestJoinAreaServerRpc(string areaId, ServerRpcParams rpcParams = default)
+    private  void RequestJoinAreaServerRpc(string areaId, ServerRpcParams rpcParams = default)
     {
         var clientId = rpcParams.Receive.SenderClientId;
 
@@ -413,14 +409,14 @@ public class ServerManager : NetworkBehaviour
         SendJoinAreaResponseClientRpc(true, serverInfo.address, serverInfo.port, "Success",
             new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
     }
-    AreaServerInfo FindBestServerForPlayer(ulong clientId)
+    private AreaServerInfo FindBestServerForPlayer(ulong clientId)
     {
         return registeredServers.Values
             .Where(server => server.isOnline && server.currentPlayers < server.maxPlayers)
             .OrderBy(server => server.currentPlayers) // Prefer less crowded servers
             .FirstOrDefault();
     }
-    public void RequestPlayerTransfer(PlayerTransferRequest transferRequest)
+    private void RequestPlayerTransfer(PlayerTransferRequest transferRequest)
     {
         LogDebug($"Processing transfer request: Client {transferRequest.clientId} from {transferRequest.fromAreaId} to {transferRequest.toAreaId}");
 
@@ -455,7 +451,7 @@ public class ServerManager : NetworkBehaviour
 
         LogDebug($"Transfer queued: Client {transferRequest.clientId} -> {transferRequest.toAreaId}");
     }
-    void NotifyAreaServerOfIncomingTransfer(PlayerTransferRequest request)
+    private void NotifyAreaServerOfIncomingTransfer(PlayerTransferRequest request)
     {
         // In a real implementation, this would send a message to the target area server
         // For now, we'll assume area servers poll for pending transfers
@@ -464,8 +460,7 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Client Communication
-
-    void SendAvailableAreasToClient(ulong clientId)
+    private void SendAvailableAreasToClient(ulong clientId)
     {
         var availableAreas = registeredServers.Values
             .Where(server => server.isOnline && server.currentPlayers < server.maxPlayers)
@@ -483,7 +478,7 @@ public class ServerManager : NetworkBehaviour
         SendAvailableAreasClientRpc(availableAreas,
             new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
     }
-    void BroadcastServerListUpdate()
+    private void BroadcastServerListUpdate()
     {
         var availableAreas = registeredServers.Values
             .Where(server => server.isOnline)
@@ -510,14 +505,14 @@ public class ServerManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    void SendAvailableAreasClientRpc(AreaInfo[] areas, ClientRpcParams rpcParams = default)
+    private void SendAvailableAreasClientRpc(AreaInfo[] areas, ClientRpcParams rpcParams = default)
     {
         // Client receives list of available areas
         LogDebug($"Sent {areas.Length} available areas to client(s)");
     }
 
     [ClientRpc]
-    void SendJoinAreaResponseClientRpc(bool success, string serverAddress, ushort serverPort, string message, ClientRpcParams rpcParams = default)
+    private void SendJoinAreaResponseClientRpc(bool success, string serverAddress, ushort serverPort, string message, ClientRpcParams rpcParams = default)
     {
         if (success)
         {
@@ -529,11 +524,10 @@ public class ServerManager : NetworkBehaviour
             LogWarning($"Client join request failed: {message}");
         }
     }
-
     #endregion
 
     #region Monitoring and Load Balancing
-    void Update()
+    private  void Update()
     {
         // Periodically check server health and handle load balancing
         if (Time.time - lastHealthCheck >= healthCheckInterval)
@@ -544,8 +538,7 @@ public class ServerManager : NetworkBehaviour
             PerformLoadBalancing();
         }
     }
-
-    void CheckServerHealth()
+    private void CheckServerHealth()
     {
         var currentTime = DateTime.Now;
         var serversToRemove = new List<string>();
@@ -597,8 +590,7 @@ public class ServerManager : NetworkBehaviour
             UnregisterAreaServer(areaId);
         }
     }
-
-    void ProcessPendingTransfers()
+    private void ProcessPendingTransfers()
     {
         foreach (var kvp in pendingTransfers)
         {
@@ -616,8 +608,7 @@ public class ServerManager : NetworkBehaviour
             }
         }
     }
-
-    void PerformLoadBalancing()
+    private void PerformLoadBalancing()
     {
         // Find overloaded servers
         var overloadedServers = registeredServers.Values
@@ -645,11 +636,7 @@ public class ServerManager : NetworkBehaviour
             }
         }
     }
-
-    /// <summary>
-    /// Get server statistics for monitoring
-    /// </summary>
-    public Dictionary<string, object> GetServerStatistics()
+    private Dictionary<string, object> GetServerStatistics()
     {
         var onlineServers = registeredServers.Values.Where(s => s.isOnline).ToList();
         var totalPlayers = onlineServers.Sum(s => s.currentPlayers);
@@ -674,15 +661,10 @@ public class ServerManager : NetworkBehaviour
 
         return stats;
     }
-
-    /// <summary>
-    /// Get detailed server information for admin interface
-    /// </summary>
-    public List<AreaServerInfo> GetDetailedServerInfo()
+    private List<AreaServerInfo> GetDetailedServerInfo()
     {
         return registeredServers.Values.OrderBy(s => s.areaId).ToList();
     }
-
     #endregion
 
     #region Login Communication RPCs
@@ -1508,7 +1490,6 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Utility Methods
-
     private void LogDebug(string message)
     {
         if (enableDebugLogs)
@@ -1516,22 +1497,18 @@ public class ServerManager : NetworkBehaviour
             Debug.Log($"[MasterServer] {message}");
         }
     }
-
     private void LogWarning(string message)
     {
         Debug.LogWarning($"[MasterServer] {message}");
     }
-
     private void LogError(string message)
     {
         Debug.LogError($"[MasterServer] {message}");
     }
-
     #endregion
 }
 
 #region Additional Data Structures
-
 /// Player zone information result struct for server-client communication
 [System.Serializable]
 public struct PlayerZoneInfoResult : INetworkSerializable

@@ -5,7 +5,7 @@ using System;
 
 public class InventoryDataHandler
 {
-    private PlayerManager playerManager;
+    private readonly PlayerManager playerManager;
     public InventoryDataHandler(PlayerManager manager)
     {
         playerManager = manager;

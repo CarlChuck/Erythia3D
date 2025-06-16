@@ -6,7 +6,7 @@ using System.Linq;
 
 public class CharacterDataHandler
 {
-    private PlayerManager playerManager;
+    private readonly PlayerManager playerManager;
     public CharacterDataHandler(PlayerManager manager)
     {
         playerManager = manager;

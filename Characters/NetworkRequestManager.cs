@@ -5,13 +5,13 @@ using UnityEngine;
 
 public class NetworkRequestManager
 {
-    private PlayerManager playerManager;
-    private Dictionary<string, NetworkRequest> activeRequests;
+    private readonly PlayerManager playerManager;
+    private readonly Dictionary<string, NetworkRequest> activeRequests;
 
     public NetworkRequestManager(PlayerManager manager)
     {
         playerManager = manager;
-        activeRequests = new Dictionary<string, NetworkRequest>();
+        activeRequests = new();
     }
 
     #region Generic Request Pattern
@@ -26,7 +26,7 @@ public class NetworkRequestManager
     /// <param name="resetStateAction">Action that resets the response state</param>
     /// <param name="timeout">Timeout in seconds (default 10)</param>
     /// <returns>Response or default value if timeout/error</returns>
-    public async Task<TResponse> SendRequestAsync<TResponse>(
+    private async Task<TResponse> SendRequestAsync<TResponse>(
         string requestType,
         Action sendAction,
         Func<TResponse> getResponseFunc,
@@ -63,18 +63,12 @@ public class NetworkRequestManager
             // Clean up request tracking
             activeRequests.Remove(requestId);
 
-            if (!isResponseReceivedFunc())
-            {
-                Debug.LogError($"NetworkRequestManager: {requestType} request timed out after {timeout} seconds.");
-                return default(TResponse);
-            }
-
-            return getResponseFunc();
+            return isResponseReceivedFunc() ? getResponseFunc() : default;
         }
         catch (Exception ex)
         {
             Debug.LogError($"NetworkRequestManager: Exception during {requestType} request: {ex.Message}\n{ex.StackTrace}");
-            return default(TResponse);
+            return default;
         }
     }
     #endregion
@@ -82,9 +76,17 @@ public class NetworkRequestManager
     #region Specific Request Wrappers
     public async Task<LoginResult> SendLoginRequestAsync(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
     {
+        Debug.Log($"NetworkRequestManager.SendLoginRequestAsync: Starting login request for steamID={steamID}, accountID={accountID}");
+        Debug.Log($"NetworkRequestManager: PlayerManager state - IsSpawned={playerManager.IsSpawned}, IsOwner={playerManager.IsOwner}, NetworkObjectId={playerManager.NetworkObjectId}");
+        Debug.Log($"NetworkRequestManager: NetworkManager.Singleton = {(Unity.Netcode.NetworkManager.Singleton != null ? Unity.Netcode.NetworkManager.Singleton.gameObject.name : "null")}");
+        
         return await SendRequestAsync<LoginResult>(
             "Login",
-            () => playerManager.RequestLoginServerRpc(steamID, accountID, accountName, email, ipAddress, language),
+            () => {
+                Debug.Log($"NetworkRequestManager: About to call PlayerManager.RequestLoginServerRpc");
+                playerManager.RequestLoginServerRpc(steamID, accountID, accountName, email, ipAddress, language);
+                Debug.Log($"NetworkRequestManager: Called PlayerManager.RequestLoginServerRpc successfully");
+            },
             () => playerManager.currentLoginResult,
             () => playerManager.loginResultReceived,
             () => {
@@ -190,10 +192,10 @@ public class NetworkRequestManager
     #region Batch Operations
     public async Task<Dictionary<string, object>> SendBatchRequestsAsync(params (string name, Func<Task<object>> request)[] requests)
     {
-        Dictionary<string, object> results = new Dictionary<string, object>();
-        List<Task> tasks = new List<Task>();
+        Dictionary<string, object> results = new();
+        List<Task> tasks = new();
 
-        foreach (var (name, request) in requests)
+        foreach ((string name, Func<Task<object>> request) in requests)
         {
             tasks.Add(Task.Run(async () =>
             {
@@ -222,7 +224,7 @@ public class NetworkRequestManager
     #endregion
 
     #region Request Monitoring
-    public List<string> GetActiveRequests()
+    private List<string> GetActiveRequests()
     {
         List<string> active = new List<string>();
         float currentTime = Time.time;

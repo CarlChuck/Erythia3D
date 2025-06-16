@@ -4,7 +4,7 @@ using System;
 
 public class ZoneCoordinator
 {
-    private PlayerManager playerManager;
+    private readonly PlayerManager playerManager;
     public ZoneCoordinator(PlayerManager manager)
     {
         playerManager = manager;

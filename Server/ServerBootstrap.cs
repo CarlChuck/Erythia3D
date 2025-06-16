@@ -106,16 +106,18 @@ public class ServerBootstrap : MonoBehaviour
         // Get NetworkObject component
         NetworkObject networkObject = serverManagerInstance.GetComponent<NetworkObject>();
 
-        // Configure the NetworkObject for server-only visibility before spawning
+        // Configure the NetworkObject to be visible to all clients (needed for RPC communication)
         networkObject.CheckObjectVisibility = (clientId) =>
         {
-            // Only visible to the server (return false for all clients)
-            bool isVisible = clientId == NetworkManager.ServerClientId;
-            return isVisible;
+            // Visible to all clients so they can send RPCs to ServerManager
+            Debug.Log($"ServerBootstrap: ServerManager visibility check for clientId {clientId} - returning true");
+            return true;
         };
 
         // Spawn the NetworkObject with server ownership
         networkObject.SpawnWithOwnership(NetworkManager.ServerClientId, false); // false = don't destroy with owner
+        
+        Debug.Log($"ServerBootstrap: ServerManager spawned with NetworkObjectId {networkObject.NetworkObjectId}");
     }
 
     private void OnDestroy()
