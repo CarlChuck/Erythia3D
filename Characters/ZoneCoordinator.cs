@@ -60,7 +60,6 @@ public class ZoneCoordinator
             Debug.LogError($"ZoneCoordinator: Error in SetupSelectedCharacterLegacyAsync: {ex.Message}");
         }
     }
-
     private async Task<PlayerZoneInfo> GetPlayerZoneInfoInternalAsync(int characterID)
     {
         try
@@ -84,7 +83,6 @@ public class ZoneCoordinator
             return GetFallbackZoneInfo(characterID);
         }
     }
-
     private async Task LoadCharacterZoneAsync(PlayerZoneInfo zoneInfo)
     {
         try
@@ -104,7 +102,6 @@ public class ZoneCoordinator
             throw;
         }
     }
-
     private async Task SetupPlayerControllerAsync(PlayerStatBlock selectedCharacter, PlayerZoneInfo zoneInfo)
     {
         try
@@ -154,12 +151,10 @@ public class ZoneCoordinator
             throw new Exception($"Server zone load failed: {result.ErrorMessage}");
         }Debug.Log($"ZoneCoordinator: Server successfully loaded zone '{zoneName}'");        
     }
-
     private async Task UnloadMainMenuIfNeeded(string zoneName)
     {
 
     }
-
     private async Task LoadZoneOnClient(string zoneName)
     {
        

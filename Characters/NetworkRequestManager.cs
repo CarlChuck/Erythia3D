@@ -84,7 +84,7 @@ public class NetworkRequestManager
             "Login",
             () => {
                 Debug.Log($"NetworkRequestManager: About to call PlayerManager.RequestLoginServerRpc");
-                playerManager.RequestLoginServerRpc(steamID, accountID, accountName, email, ipAddress, language);
+                playerManager.RequestLoginRpc(steamID, accountID, accountName, email, ipAddress, language);
                 Debug.Log($"NetworkRequestManager: Called PlayerManager.RequestLoginServerRpc successfully");
             },
             () => playerManager.currentLoginResult,
@@ -99,7 +99,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<CharacterListResult>(
             "CharacterList",
-            () => playerManager.RequestCharacterListServerRpc(accountID),
+            () => playerManager.RequestCharacterListRpc(accountID),
             () => playerManager.currentCharacterListResult,
             () => playerManager.characterListReceived,
             () => {
@@ -112,7 +112,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<AccountInventoryResult>(
             "AccountInventory",
-            () => playerManager.RequestAccountInventoryServerRpc(accountID),
+            () => playerManager.RequestAccountInventoryRpc(accountID),
             () => playerManager.currentAccountInventoryResult,
             () => playerManager.accountInventoryReceived,
             () => {
@@ -125,7 +125,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<CharacterInventoryResult>(
             "CharacterInventory",
-            () => playerManager.RequestCharacterInventoryServerRpc(characterID),
+            () => playerManager.RequestCharacterInventoryRpc(characterID),
             () => playerManager.currentCharacterInventoryResult,
             () => playerManager.characterInventoryReceived,
             () => {
@@ -138,7 +138,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<WorkbenchListResult>(
             "WorkbenchList",
-            () => playerManager.RequestWorkbenchListServerRpc(accountID),
+            () => playerManager.RequestWorkbenchListRpc(accountID),
             () => playerManager.currentWorkbenchListResult,
             () => playerManager.workbenchListReceived,
             () => {
@@ -151,7 +151,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<PlayerZoneInfoResult>(
             "PlayerZoneInfo",
-            () => playerManager.RequestPlayerZoneInfoServerRpc(characterID),
+            () => playerManager.RequestPlayerZoneInfoRpc(characterID),
             () => playerManager.currentPlayerZoneInfoResult,
             () => playerManager.playerZoneInfoResultReceived,
             () => {
@@ -164,7 +164,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<WaypointResult>(
             "Waypoint",
-            () => playerManager.RequestWaypointServerRpc(request),
+            () => playerManager.RequestWaypointRpc(request),
             () => playerManager.currentWaypointResult,
             () => playerManager.waypointResultReceived,
             () => {
@@ -177,7 +177,7 @@ public class NetworkRequestManager
     {
         return await SendRequestAsync<ServerZoneLoadResult>(
             "ServerZoneLoad",
-            () => playerManager.RequestServerLoadZoneServerRpc(zoneName),
+            () => playerManager.RequestServerLoadZoneRpc(zoneName),
             () => playerManager.currentServerZoneLoadResult,
             () => playerManager.serverZoneLoadResultReceived,
             () => {

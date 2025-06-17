@@ -31,7 +31,7 @@ public class ServerBootstrap : MonoBehaviour
         }
     }
 
-    public void InitializeServer()
+    private void InitializeServer()
     {
 
         // Start the server first
@@ -66,13 +66,15 @@ public class ServerBootstrap : MonoBehaviour
             
         // Run server if explicitly set via command line
         string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length; i++)
+        foreach (string t in args)
         {
-            if (args[i] == "-server" || args[i] == "--server")
+            if (t != "-server" && t != "--server")
             {
-                Debug.Log($"ServerBootstrap: Found server command line arg: {args[i]} - should run server");
-                return true;
+                continue;
             }
+
+            Debug.Log($"ServerBootstrap: Found server command line arg: {t} - should run server");
+            return true;
         }
         
         // In editor, always allow server to run for testing
@@ -106,16 +108,11 @@ public class ServerBootstrap : MonoBehaviour
         // Get NetworkObject component
         NetworkObject networkObject = serverManagerInstance.GetComponent<NetworkObject>();
 
-        // Configure the NetworkObject to be visible to all clients (needed for RPC communication)
-        networkObject.CheckObjectVisibility = (clientId) =>
-        {
-            // Visible to all clients so they can send RPCs to ServerManager
-            Debug.Log($"ServerBootstrap: ServerManager visibility check for clientId {clientId} - returning true");
-            return true;
-        };
+        // Configure the NetworkObject to have no visibility to clients.
+        networkObject.CheckObjectVisibility = (clientId) => false;
 
         // Spawn the NetworkObject with server ownership
-        networkObject.SpawnWithOwnership(NetworkManager.ServerClientId, false); // false = don't destroy with owner
+        networkObject.SpawnWithOwnership(NetworkManager.ServerClientId);
         
         Debug.Log($"ServerBootstrap: ServerManager spawned with NetworkObjectId {networkObject.NetworkObjectId}");
     }

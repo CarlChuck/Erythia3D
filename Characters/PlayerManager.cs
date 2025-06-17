@@ -304,45 +304,6 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Save To Database
-    public async Task SaveCharacter(PlayerStatBlock characterToSave)
-    {
-        
-    }
-    public async Task SaveItem(Item itemToSave)
-    {
-        
-    }
-    public async Task SaveResourceItem(ResourceItem resourceItemToSave)
-    {
-        
-    }
-    public async Task SaveSubComponent(SubComponent subComponentToSave)
-    {
-        
-    }
-    public async Task SaveCharacterEquipment(PlayerStatBlock characterToSave)
-    {
-        
-    }
-    public async Task SaveCharacterInventory(PlayerStatBlock characterToSave)
-    {
-        
-    }
-    public async Task SaveAccountInventory()
-    {
-        
-    }
-    public async Task SaveWorkbench()
-    {
-        
-    }
-    #endregion
-
-    #region Load From Database
-        //TODO
-    #endregion
-
     #region Setters
     public async Task OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
@@ -359,14 +320,14 @@ public class PlayerManager : NetworkBehaviour
         // The client no longer handles scene transitions.
         // It simply tells the server it's ready and provides the necessary character data.
         Debug.Log($"PlayerManager: Requesting server to transition to zone for character {selectedPlayerCharacter.GetCharacterID()}.");
-        RequestZoneTransitionServerRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
+        RequestZoneTransitionRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
 
         // The old flow of calling ZoneCoordinator and SpawnNetworkedPlayerAsync from the client is now obsolete.
         // The server will handle all of it.
     }
 
-    [ServerRpc]
-    private void RequestZoneTransitionServerRpc(int characterId, int species, int gender, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    private void RequestZoneTransitionRpc(int characterId, int species, int gender)
     {
         /*
         if (ServerManager.Instance != null)
@@ -386,7 +347,7 @@ public class PlayerManager : NetworkBehaviour
 
         // We no longer need to calculate spawn position on the client.
         // The server will be authoritative for the spawn location.
-        SpawnNetworkedPlayerServerRpc(characterID, playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
+        SpawnNetworkedPlayerRpc(characterID, playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
 
         // Wait for the networked player to be spawned and registered
         float timeout = 10f; // 10 seconds timeout
@@ -693,8 +654,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Login Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestLoginServerRpc(ulong steamID, int accountID, string sendAccountName, string sendEmail, string sendIpAddress, string sendLanguage, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestLoginRpc(ulong steamID, int accountID, string sendAccountName, string sendEmail, string sendIpAddress, string sendLanguage)
     {
         Debug.Log($"PlayerManager.RequestLoginServerRpc: ENTRY - IsServer={IsServer}, IsClient={IsClient}, NetworkObjectId={NetworkObjectId}");
 
@@ -707,7 +668,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessLoginRequest...");
-                ServerManager.Instance.ProcessLoginRequest(steamID, accountID, sendAccountName, sendEmail, sendIpAddress, sendLanguage, serverRpcParams.Receive.SenderClientId);
+                //TODO fix this bs
+                //ServerManager.Instance.ProcessLoginRequest(steamID, accountID, sendAccountName, sendEmail, sendIpAddress, sendLanguage, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessLoginRequest called successfully");
             }
             else
@@ -721,15 +683,7 @@ public class PlayerManager : NetworkBehaviour
                     ErrorMessage = "Server error: ServerManager not available"
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveLoginResultClientRpc(errorResult, clientRpcParams);
+                ReceiveLoginResultRpc(errorResult);
             }
         }
         else
@@ -738,8 +692,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveLoginResultClientRpc(LoginResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveLoginResultRpc(LoginResult result)
     {
         // This runs on the client - handle the login result
         Debug.Log($"PlayerManager (Client): Received login result from server. Success: {result.Success}");
@@ -755,8 +709,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Character List Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestCharacterListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestCharacterListRpc(int accountID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -768,7 +722,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessCharacterListRequest...");
-                ServerManager.Instance.ProcessCharacterListRequest(this, accountID, serverRpcParams.Receive.SenderClientId);
+                //TODO fix this bs
+                //ServerManager.Instance.ProcessCharacterListRequest(this, accountID, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessCharacterListRequest called successfully");
             }
             else
@@ -784,15 +739,7 @@ public class PlayerManager : NetworkBehaviour
                     Characters = Array.Empty<CharacterData>()
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveCharacterListClientRpc(errorResult, clientRpcParams);
+                ReceiveCharacterListRpc(errorResult);
             }
         }
         else
@@ -802,8 +749,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    public void ReceiveCharacterListClientRpc(CharacterListResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    public void ReceiveCharacterListRpc(CharacterListResult result)
     {
         // This runs on the client - handle the character list result
         Debug.Log($"PlayerManager (Client): Received character list result from server. Success: {result.Success}, CharacterCount: {result.Characters?.Length ?? 0}");
@@ -843,8 +790,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Inventory Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestAccountInventoryRpc(int accountID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -855,7 +802,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessAccountInventoryRequest...");
-                ServerManager.Instance.ProcessAccountInventoryRequest(accountID, serverRpcParams.Receive.SenderClientId);
+                //TODO fix this bs
+                //ServerManager.Instance.ProcessAccountInventoryRequest(accountID, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessAccountInventoryRequest called successfully");
             }
             else
@@ -872,16 +820,7 @@ public class PlayerManager : NetworkBehaviour
                     SubComponents = Array.Empty<InventorySubComponentData>(),
                     Workbenches = Array.Empty<WorkbenchData>()
                 };
-
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveAccountInventoryClientRpc(errorResult, clientRpcParams);
+                ReceiveAccountInventoryRpc(errorResult);
             }
         }
         else
@@ -891,8 +830,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveAccountInventoryClientRpc(AccountInventoryResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveAccountInventoryRpc(AccountInventoryResult result)
     {
         // This runs on the client - handle the account inventory result
         Debug.Log(
@@ -906,8 +845,8 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log($"Client: Received account inventory result. Success: {result.Success}");
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestCharacterInventoryServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestCharacterInventoryRpc(int characterID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -919,8 +858,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessCharacterInventoryRequest...");
-                ServerManager.Instance.ProcessCharacterInventoryRequest(characterID,
-                    serverRpcParams.Receive.SenderClientId);
+                //TODO fix this
+                //ServerManager.Instance.ProcessCharacterInventoryRequest(characterID, serverRpcParams.Receive.SenderClientId);
                 Debug.Log(
                     $"PlayerManager (Server): ServerManager.ProcessCharacterInventoryRequest called successfully");
             }
@@ -939,15 +878,7 @@ public class PlayerManager : NetworkBehaviour
                     SubComponents = new InventorySubComponentData[0]
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveCharacterInventoryClientRpc(errorResult, clientRpcParams);
+                ReceiveCharacterInventoryRpc(errorResult);
             }
         }
         else
@@ -957,8 +888,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveCharacterInventoryClientRpc(CharacterInventoryResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveCharacterInventoryRpc(CharacterInventoryResult result)
     {
         // This runs on the client - handle the character inventory result
         Debug.Log(
@@ -972,8 +903,8 @@ public class PlayerManager : NetworkBehaviour
         Debug.Log($"Client: Received character inventory result. Success: {result.Success}");
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestWorkbenchListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestWorkbenchListRpc(int accountID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -984,7 +915,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWorkbenchListRequest...");
-                ServerManager.Instance.ProcessWorkbenchListRequest(accountID, serverRpcParams.Receive.SenderClientId);
+                //TODO do this right
+                //ServerManager.Instance.ProcessWorkbenchListRequest(accountID, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessWorkbenchListRequest called successfully");
             }
             else
@@ -999,15 +931,7 @@ public class PlayerManager : NetworkBehaviour
                     Workbenches = Array.Empty<WorkbenchData>()
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveWorkbenchListClientRpc(errorResult, clientRpcParams);
+                ReceiveWorkbenchListRpc(errorResult);
             }
         }
         else
@@ -1017,8 +941,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveWorkbenchListClientRpc(WorkbenchListResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveWorkbenchListRpc(WorkbenchListResult result)
     {
         // This runs on the client - handle the workbench list result
         Debug.Log(
@@ -1035,8 +959,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Waypoint Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestWaypointServerRpc(WaypointRequest request, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestWaypointRpc(WaypointRequest request)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1045,8 +969,8 @@ public class PlayerManager : NetworkBehaviour
             {
                 // Call regular method on ServerManager (not RPC, since we're already on server)
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWaypointRequest...");
-                ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName,
-                    serverRpcParams.Receive.SenderClientId);
+                //TODO do this right
+                //ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName, serverRpcParams.Receive.SenderClientId);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessWaypointRequest called successfully");
             }
             else
@@ -1064,15 +988,7 @@ public class PlayerManager : NetworkBehaviour
                     ZoneName = request.ZoneName
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceiveWaypointResultClientRpc(errorResult, clientRpcParams);
+                ReceiveWaypointResultRpc(errorResult);
             }
         }
         else
@@ -1081,8 +997,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveWaypointResultClientRpc(WaypointResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveWaypointResultRpc(WaypointResult result)
     {
         // This runs on the client - handle the waypoint result
         HandleWaypointResult(result);
@@ -1096,8 +1012,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Player Zone Info Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestPlayerZoneInfoServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestPlayerZoneInfoRpc(int characterID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1110,8 +1026,7 @@ public class PlayerManager : NetworkBehaviour
                 Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessPlayerZoneInfoRequest...");
 
                 //TODO sort out how to handle this properly
-                ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID,
-                    serverRpcParams.Receive.SenderClientId);
+                //ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID);
                 Debug.Log($"PlayerManager (Server): ServerManager.ProcessPlayerZoneInfoRequest called successfully");
             }
             else
@@ -1134,15 +1049,7 @@ public class PlayerManager : NetworkBehaviour
                     }
                 };
 
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                    }
-                };
-
-                ReceivePlayerZoneInfoClientRpc(errorResult, clientRpcParams);
+                ReceivePlayerZoneInfoRpc(errorResult);
             }
         }
         else
@@ -1152,8 +1059,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceivePlayerZoneInfoClientRpc(PlayerZoneInfoResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceivePlayerZoneInfoRpc(PlayerZoneInfoResult result)
     {
         // This runs on the client - handle the player zone info result
         Debug.Log($"PlayerManager (Client): Received player zone info result from server. Success: {result.Success}");
@@ -1168,8 +1075,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Server Zone Load Communication Bridge RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    internal void RequestServerLoadZoneServerRpc(string zoneName, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    internal void RequestServerLoadZoneRpc(string zoneName)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1183,15 +1090,7 @@ public class PlayerManager : NetworkBehaviour
                 ErrorMessage = ""
             };
 
-            ClientRpcParams clientRpcParams = new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new ulong[] { serverRpcParams.Receive.SenderClientId }
-                }
-            };
-
-            ReceiveServerLoadZoneResultClientRpc(result, clientRpcParams);
+            ReceiveServerLoadZoneResultRpc(result);
         }
         else
         {
@@ -1200,8 +1099,8 @@ public class PlayerManager : NetworkBehaviour
         }
     }
 
-    [ClientRpc]
-    private void ReceiveServerLoadZoneResultClientRpc(ServerZoneLoadResult result, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void ReceiveServerLoadZoneResultRpc(ServerZoneLoadResult result)
     {
         // This runs on the client - handle the server zone load result
         Debug.Log($"PlayerManager (Client): Received server zone load result from server. Success: {result.Success}");
@@ -1216,12 +1115,12 @@ public class PlayerManager : NetworkBehaviour
 
     #region Networked Player Spawning RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    private void SpawnNetworkedPlayerServerRpc(int characterID, int characterRace, int characterGender, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    private void SpawnNetworkedPlayerRpc(int characterID, int characterRace, int characterGender)
     {
-        ulong clientId = serverRpcParams.Receive.SenderClientId;
-        Debug.Log(
-            $"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
+        //TODO
+        ulong clientId = 0;
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
 
         // --- Server-Authoritative Spawn Position ---
         Vector3 spawnPosition = Vector3.zero;
@@ -1279,21 +1178,13 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError(
                 $"SpawnNetworkedPlayerServerRpc: Could not find NetworkedPlayer component on the spawned object for client {clientId}.");
         }
-
-        // Notify the owning client that their player has been spawned
-        ClientRpcParams clientRpcParams = new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { clientId }
-            }
-        };
-        NotifyNetworkedPlayerSpawnedClientRpc(networkObject.NetworkObjectId, spawnPosition, clientRpcParams);
+        
+        NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, spawnPosition);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
 
-    [ClientRpc]
-    private void NotifyNetworkedPlayerSpawnedClientRpc(ulong networkObjectId, Vector3 spawnPosition, ClientRpcParams clientRpcParams = default)
+    [Rpc(SendTo.Owner)]
+    private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
     {
         Debug.Log(
             $"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
@@ -1345,8 +1236,8 @@ public class PlayerManager : NetworkBehaviour
 
     #region Character Data Sync RPCs
 
-    [ServerRpc(RequireOwnership = false)]
-    private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData, ServerRpcParams serverRpcParams = default)
+    [Rpc(SendTo.Server)]
+    private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData)
     {
         if (!IsServer)
         {
@@ -1471,7 +1362,7 @@ public class PlayerManager : NetworkBehaviour
                 SpiritExp = playerStatBlock.GetSpiritExp(),
                 VeilExp = playerStatBlock.GetVeilExp(),
 
-                // Base stats from species template
+                // Base stats from SpeciesTemplate
                 BaseStrength = playerStatBlock.species?.strength ?? 10,
                 BaseDexterity = playerStatBlock.species?.dexterity ?? 10,
                 BaseConstitution = playerStatBlock.species?.constitution ?? 10,

@@ -357,57 +357,9 @@ public class ServerManager : NetworkBehaviour
         }
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    private  void RequestJoinAreaServerRpc(string areaId, ServerRpcParams rpcParams = default)
+    private void RequestJoinArea(string areaId)
     {
-        var clientId = rpcParams.Receive.SenderClientId;
-
-        if (!registeredServers.ContainsKey(areaId))
-        {
-            LogError($"Area {areaId} not found for client {clientId}");
-            SendJoinAreaResponseClientRpc(false, "", 0, "Area not found",
-                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
-            return;
-        }
-
-        var serverInfo = registeredServers[areaId];
-
-        // Check if server is online
-        if (!serverInfo.isOnline)
-        {
-            LogWarning($"Area {areaId} is offline for client {clientId}");
-            SendJoinAreaResponseClientRpc(false, "", 0, "Area is offline",
-                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
-            return;
-        }
-
-        // Check if server can accept new players
-        if (serverInfo.currentPlayers >= serverInfo.maxPlayers)
-        {
-            LogWarning($"Area {areaId} is full for client {clientId}");
-
-            // Try to find an alternative server
-            var alternativeServer = FindBestServerForPlayer(clientId);
-            if (alternativeServer != null)
-            {
-                SendJoinAreaResponseClientRpc(true, alternativeServer.address, alternativeServer.port,
-                    $"Redirected to {alternativeServer.areaId}",
-                    new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
-                playerToAreaMapping[clientId] = alternativeServer.areaId;
-                return;
-            }
-
-            SendJoinAreaResponseClientRpc(false, "", 0, "All areas are full",
-                new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
-            return;
-        }
-
-        // Grant access to area server
-        playerToAreaMapping[clientId] = areaId;
-
-        LogDebug($"Granted client {clientId} access to area {areaId}");
-        SendJoinAreaResponseClientRpc(true, serverInfo.address, serverInfo.port, "Success",
-            new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+        //TODO
     }
     private AreaServerInfo FindBestServerForPlayer(ulong clientId)
     {
@@ -475,8 +427,7 @@ public class ServerManager : NetworkBehaviour
             })
             .ToArray();
 
-        SendAvailableAreasClientRpc(availableAreas,
-            new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } });
+        SendAvailableAreas(availableAreas);
     }
     private void BroadcastServerListUpdate()
     {
@@ -493,26 +444,20 @@ public class ServerManager : NetworkBehaviour
             })
             .ToArray();
 
-        SendAvailableAreasClientRpc(availableAreas);
+        SendAvailableAreas(availableAreas);
     }
-
-    [ClientRpc]
-    private void LoadSceneClientRpc(string sceneName, ClientRpcParams rpcParams = default)
+    private void LoadSceneToClient(string sceneName)
     {
         // This executes on the targeted client.
         // Ensure this scene is included in the Build Settings.
         SceneManager.LoadScene(sceneName);
     }
-
-    [ClientRpc]
-    private void SendAvailableAreasClientRpc(AreaInfo[] areas, ClientRpcParams rpcParams = default)
+    private void SendAvailableAreas(AreaInfo[] areas)
     {
         // Client receives list of available areas
         LogDebug($"Sent {areas.Length} available areas to client(s)");
     }
-
-    [ClientRpc]
-    private void SendJoinAreaResponseClientRpc(bool success, string serverAddress, ushort serverPort, string message, ClientRpcParams rpcParams = default)
+    private void SendJoinAreaResponse(bool success, string serverAddress, ushort serverPort, string message, ClientRpcParams rpcParams = default)
     {
         if (success)
         {
@@ -668,8 +613,7 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Login Communication RPCs
-    [ClientRpc]
-    private void ReceiveLoginResultClientRpc(LoginResult result, ClientRpcParams clientRpcParams)
+    private void ReceiveLoginResult(LoginResult result)
     {
         // This RPC is now sent directly from the ServerManager to the client.
         // The client-side code that manages the connection to the master server
@@ -684,17 +628,17 @@ public class ServerManager : NetworkBehaviour
         //     PlayerManager.LocalInstance.HandleLoginResult(result);
         // }
     }
-    
-    [ServerRpc(RequireOwnership = false)]
-    public void RequestLoginServerRpc(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ServerRpcParams serverRpcParams = default)
-    {
-        //Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
+    public void RequestLogin(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
+    { 
+        //TODO fix this
+        ulong clientId = 0;
+        // Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
         // Using an anonymous function to call the async task so we don't have to make the RPC async
-        _ = ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, serverRpcParams.Receive.SenderClientId);
+        _ = ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, clientId);
     }
 
     // Regular method for server-to-server communication (called by PlayerManager on server)
-    public async Task ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
+    private async Task ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
     {
         //Debug.Log($"ServerManager: ProcessLoginRequest ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={senderClientId}");        
         LoginResult result;
@@ -721,7 +665,7 @@ public class ServerManager : NetworkBehaviour
                 TargetClientIds = new ulong[] { senderClientId }
             }
         };
-        ReceiveLoginResultClientRpc(result, clientRpcParams);
+        ReceiveLoginResult(result);
         
         Debug.Log($"ServerManager: ProcessLoginRequest completed");
     }
@@ -748,7 +692,7 @@ public class ServerManager : NetworkBehaviour
                         }
                     }
                 };
-                pManager.ReceiveCharacterListClientRpc(result, clientRpcParams);
+                pManager.ReceiveCharacterListRpc(result);
                 responseSet = true;
             }
             
@@ -780,7 +724,7 @@ public class ServerManager : NetworkBehaviour
                         TargetClientIds = new ulong[] { senderClientId }
                     }
                 };
-                pManager.ReceiveCharacterListClientRpc(errorResult, clientRpcParams);
+                pManager.ReceiveCharacterListRpc(errorResult);
             }
             
         }
@@ -790,43 +734,20 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Inventory Loading Communication
-    [ClientRpc]
-    private void ReceiveAccountInventoryClientRpc(AccountInventoryResult result, ClientRpcParams clientRpcParams)
+    private void ReceiveAccountInventory(AccountInventoryResult result)
     {
         // Placeholder for client-side handling.
         Debug.Log($"Client received account inventory result: Success={result.Success}, Items: {result.Items.Length}");
     }
-
-    [ClientRpc]
-    private void ReceiveCharacterInventoryClientRpc(CharacterInventoryResult result, ClientRpcParams clientRpcParams)
+    private void ReceiveCharacterInventory(CharacterInventoryResult result)
     {
         // Placeholder for client-side handling.
         Debug.Log($"Client received character inventory result: Success={result.Success}, Items: {result.Items.Length}");
     }
-
-    [ClientRpc]
-    private void ReceiveWorkbenchListClientRpc(WorkbenchListResult result, ClientRpcParams clientRpcParams)
+    private void ReceiveWorkbenchList(WorkbenchListResult result)
     {
         // Placeholder for client-side handling.
         Debug.Log($"Client received workbench list result: Success={result.Success}, Workbenches: {result.Workbenches.Length}");
-    }
-
-    [ServerRpc(RequireOwnership = false)]
-    public void RequestAccountInventoryServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
-    {
-        _ = ProcessAccountInventoryRequest(accountID, serverRpcParams.Receive.SenderClientId);
-    }
-
-    [ServerRpc(RequireOwnership = false)]
-    public void RequestCharacterInventoryServerRpc(int characterID, ServerRpcParams serverRpcParams = default)
-    {
-        _ = ProcessCharacterInventoryRequest(characterID, serverRpcParams.Receive.SenderClientId);
-    }
-
-    [ServerRpc(RequireOwnership = false)]
-    public void RequestWorkbenchListServerRpc(int accountID, ServerRpcParams serverRpcParams = default)
-    {
-        _ = ProcessWorkbenchListRequest(accountID, serverRpcParams.Receive.SenderClientId);
     }
     public async Task ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
     {
@@ -849,15 +770,7 @@ public class ServerManager : NetworkBehaviour
                 Workbenches = new WorkbenchData[0]
             };
         }
-        
-        ClientRpcParams clientRpcParams = new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { senderClientId }
-            }
-        };
-        ReceiveAccountInventoryClientRpc(result, clientRpcParams);
+        ReceiveAccountInventory(result);
         
         Debug.Log($"ServerManager: ProcessAccountInventoryRequest completed");
     }
@@ -881,15 +794,7 @@ public class ServerManager : NetworkBehaviour
                 SubComponents = new InventorySubComponentData[0]
             };
         }
-        
-        ClientRpcParams clientRpcParams = new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { senderClientId }
-            }
-        };
-        ReceiveCharacterInventoryClientRpc(result, clientRpcParams);
+        ReceiveCharacterInventory(result);
         
         Debug.Log($"ServerManager: ProcessCharacterInventoryRequest completed");
     }
@@ -911,15 +816,7 @@ public class ServerManager : NetworkBehaviour
                 Workbenches = new WorkbenchData[0]
             };
         }
-        
-        ClientRpcParams clientRpcParams = new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { senderClientId }
-            }
-        };
-        ReceiveWorkbenchListClientRpc(result, clientRpcParams);
+        ReceiveWorkbenchList(result);
         
         Debug.Log($"ServerManager: ProcessWorkbenchListRequest completed");
     }
