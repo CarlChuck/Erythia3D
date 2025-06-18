@@ -3,6 +3,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.Threading.Tasks;
+using System.Threading;
 using System;
 using Unity.Cinemachine;
 using System.Linq;
@@ -85,10 +86,9 @@ public class PlayerManager : NetworkBehaviour
     #region State Management
     private bool isInitialized;
     private Task initializationTask;
-
-    // Network response tracking - managed by NetworkRequestManager
-    internal bool loginResultReceived;
-    internal LoginResult currentLoginResult;
+    
+    // Login completion tracking
+    private TaskCompletionSource<bool> loginCompletionSource;
 
     internal bool characterListReceived;
     internal CharacterListResult currentCharacterListResult;
@@ -113,9 +113,9 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Helper Access Properties
-    internal ulong SteamID { get; set; }
-    internal int AccountID { get; set; }
-    internal string AccountName
+    private ulong SteamID { get; set; }
+    private int AccountID { get; set; }
+    private string AccountName
     {
         get
         {
@@ -128,11 +128,11 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal string Email
+    private string Email
     {
         get { return email; }
     }
-    internal string IPAddress
+    private string IPAddress
     {
         get
         {
@@ -140,7 +140,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal string Language
+    private string Language
     {
         get
         {
@@ -148,7 +148,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal string FamilyName
+    private string FamilyName
     {
         get
         {
@@ -161,7 +161,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal GameObject CharListParent
+    private GameObject CharListParent
     {
         get
         {
@@ -169,7 +169,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal List<PlayerStatBlock> PlayerCharacters
+    private List<PlayerStatBlock> PlayerCharacters
     {
         get
         {
@@ -177,7 +177,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal PlayerStatBlock SelectedPlayerCharacter
+    private PlayerStatBlock SelectedPlayerCharacter
     {
         get
         {
@@ -190,7 +190,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal GameObject CharacterPrefab
+    private GameObject CharacterPrefab
     {
         get
         {
@@ -198,7 +198,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal GameObject PlayerControllerPrefab
+    private GameObject PlayerControllerPrefab
     {
         get
         {
@@ -206,7 +206,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal UIManager UIManager
+    private UIManager UIManager
     {
         get
         {
@@ -214,7 +214,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal Inventory HomeInventory
+    private Inventory HomeInventory
     {
         get
         {
@@ -222,7 +222,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal WorkBench WorkBenchPrefab
+    private WorkBench WorkBenchPrefab
     {
         get
         {
@@ -230,7 +230,7 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal Transform WorkbenchParent
+    private Transform WorkbenchParent
     {
         get
         {
@@ -238,13 +238,8 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    internal List<WorkBench> OwnedWorkbenches { get; } = new();
+    private List<WorkBench> OwnedWorkbenches { get; } = new();
     #endregion
-
-    private void Awake()
-    {
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
 
     #region Initialization
     private void Start()
@@ -263,17 +258,10 @@ public class PlayerManager : NetworkBehaviour
     private async Task InitializePlayerManagerAsync()
     {
         isInitialized = false;
-        bool loginSuccess = await LoginAsync();
-        if (!loginSuccess)
-        {
-            Debug.LogError("Login failed. PlayerManager initialization halted.");
-            return;
-        }
-
+        await LoginAsync();
         await LoadCharactersAsync();
         await SetupInitialCharacterUI();
         await LoadAllInventoriesAsync();
-
         isInitialized = true;
         Debug.Log("PlayerManager Initialization Complete.");
     }
@@ -289,6 +277,53 @@ public class PlayerManager : NetworkBehaviour
         {
             MenuManager.Instance.SetCharCreationButton(selectedPlayerCharacter == null);
         }
+    }
+    #endregion
+
+    #region Login
+    private async Task LoginAsync()
+    {
+        if (!IsServer)
+        {
+            loginCompletionSource = new();
+            LoginRpc();
+            
+            // Wait for login response with timeout (10 seconds)
+            Task delayTask = Task.Delay(10000);
+            Task completedTask = await Task.WhenAny(loginCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
+            {
+                Debug.LogError("LoginAsync: Login timeout after 10 seconds");
+                throw new TimeoutException("Login request timed out");
+            }
+            
+            // Check if login was successful
+            bool loginSuccess = await loginCompletionSource.Task;
+            if (!loginSuccess)
+            {
+                Debug.LogError("LoginAsync: Login failed");
+                throw new InvalidOperationException("Login failed");
+            }
+            
+            Debug.Log("PlayerManager: Login completed successfully");
+        }
+    }
+    
+    [Rpc(SendTo.Server)]
+    private void LoginRpc()
+    {
+        ServerManager.HandleLogin(this, SteamID, AccountID);
+    }
+
+    [Rpc(SendTo.Owner)]
+    public void ReceiveLoginRpc(LoginResult result)
+    {
+        AccountID = result.AccountID;
+        AccountName = result.AccountName;
+        SteamID = result.SteamID;
+        // Complete the login task with the result
+        loginCompletionSource?.SetResult(result.Success);
     }
     #endregion
 
@@ -350,110 +385,6 @@ public class PlayerManager : NetworkBehaviour
     public void OnSetAccountName(string newAccountName)
     {
         accountName = newAccountName;
-    }
-    #endregion
-
-    #region Login
-    public async Task<bool> LoginAsync()
-    {
-        try
-        {
-            Debug.Log("CharacterDataHandler: Requesting login from server...");
-            
-            // Use NetworkRequestManager for cleaner request handling
-            LoginResult result = await requestManager.SendLoginRequestAsync(
-                SteamID,
-                AccountID,
-                AccountName,
-                Email,
-                IPAddress,
-                Language
-            );
-            
-            if (result.Success)
-            {
-                return ProcessLoginResult(result);
-            }
-            else
-            {
-                Debug.LogError($"CharacterDataHandler: Login failed: {result.ErrorMessage}");
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"CharacterDataHandler: Exception during LoginAsync: {ex.Message}\n{ex.StackTrace}");
-            return false;
-        }
-    }
-    private bool ProcessLoginResult(LoginResult result)
-    {
-        try
-        {
-            AccountID = result.AccountID;
-            AccountName = result.AccountName;
-            SteamID = result.SteamID;
-            
-            Debug.Log($"CharacterDataHandler: Login successful. AccountID: {AccountID}, AccountName: {AccountName}");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"CharacterDataHandler: Exception during ProcessLoginResult: {ex.Message}\n{ex.StackTrace}");
-            return false;
-        }
-    }
-    
-    [Rpc(SendTo.Server)]
-    internal void RequestLoginRpc(ulong steamID, int accountID, string sendAccountName, string sendEmail, string sendIpAddress, string sendLanguage)
-    {
-        Debug.Log($"PlayerManager.RequestLoginServerRpc: ENTRY - IsServer={IsServer}, IsClient={IsClient}, NetworkObjectId={NetworkObjectId}");
-
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received login request, calling ServerManager for steamID={steamID}, accountID={accountID}");
-
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessLoginRequest...");
-                //TODO fix this bs
-                //ServerManager.Instance.ProcessLoginRequest(steamID, accountID, sendAccountName, sendEmail, sendIpAddress, sendLanguage, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessLoginRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process login request.");
-
-                // Send error response back to client
-                LoginResult errorResult = new LoginResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available"
-                };
-
-                ReceiveLoginResultRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError("PlayerManager: RequestLoginServerRpc called on client! This should only run on server.");
-        }
-    }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceiveLoginResultRpc(LoginResult result)
-    {
-        // This runs on the client - handle the login result
-        Debug.Log($"PlayerManager (Client): Received login result from server. Success: {result.Success}");
-        HandleLoginResult(result);
-    }
-    private void HandleLoginResult(LoginResult result)
-    {
-        currentLoginResult = result;
-        loginResultReceived = true;
-        Debug.Log($"Client: Received login result. Success: {result.Success}");
     }
     #endregion
 
@@ -538,21 +469,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task LoadCharactersAsync()
     {
-        if (AccountID <= 0)
-        {
-            Debug.LogError("CharacterDataHandler: Cannot load characters: Invalid AccountID.");
-            return;
-        }
-        CharacterListResult result = await requestManager.SendCharacterListRequestAsync(AccountID);
-        
-        if (result.Success)
-        {
-            await ProcessCharacterListResult(result);
-        }
-        else
-        {
-            Debug.LogError($"CharacterDataHandler: Character list request failed: {result.ErrorMessage}");
-        }
+
     }
     private async Task ProcessCharacterListResult(CharacterListResult result)
     {
@@ -957,36 +874,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task LoadCharacterInventoryAsync(PlayerStatBlock character)
     {
-        int charId = character.GetCharacterID();
-        Inventory inventory = character.GetInventory();
-        EquipmentProfile equipment = character.GetEquipmentProfile();
 
-        if (charId <= 0)
-        {
-            Debug.LogError($"InventoryDataHandler: Invalid character ID: {charId} for character {character.GetCharacterName()}");
-            return;
-        }
-        if (inventory == null)
-        {
-            Debug.LogError($"InventoryDataHandler: Inventory component not found for character {character.GetCharacterName()} (ID: {charId}).");
-            return;
-        }
-        if (equipment == null)
-        {
-            Debug.LogError($"InventoryDataHandler: EquipmentProfile component not found for character {character.GetCharacterName()} (ID: {charId}).");
-            return;
-        }
-        
-        CharacterInventoryResult result = await requestManager.SendCharacterInventoryRequestAsync(charId);
-        
-        if (result.Success)
-        {
-            await ProcessCharacterInventoryResult(result, character, inventory, equipment);
-        }
-        else
-        {
-            Debug.LogError($"InventoryDataHandler: Character inventory request failed for character {character.GetCharacterName()}: {result.ErrorMessage}");
-        }
     }
     private async Task ProcessCharacterInventoryResult(CharacterInventoryResult result, PlayerStatBlock character, Inventory inventory, EquipmentProfile equipment)
     {
@@ -1118,16 +1006,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task LoadAccountInventoryAsync()
     {
-        AccountInventoryResult result = await requestManager.SendAccountInventoryRequestAsync(AccountID);
-        
-        if (result.Success)
-        {
-            await ProcessAccountInventoryResult(result);
-        }
-        else
-        {
-            Debug.LogError($"InventoryDataHandler: Account inventory request failed: {result.ErrorMessage}");
-        }
+
     }
     private async Task ProcessAccountInventoryResult(AccountInventoryResult result)
     {
@@ -1248,16 +1127,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task LoadOwnedWorkbenchesAsync()
     {
-        WorkbenchListResult result = await requestManager.SendWorkbenchListRequestAsync(AccountID);
 
-        if (result.Success)
-        {
-            await ProcessOwnedWorkbenches(result.Workbenches);
-        }
-        else
-        {
-            Debug.LogError($"InventoryDataHandler: Workbench list request failed: {result.ErrorMessage}");
-        }
     }
     private async Task ProcessOwnedWorkbenches(WorkbenchData[] workbenches)
     {
@@ -1576,26 +1446,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task<PlayerZoneInfo> GetPlayerZoneInfoInternalAsync(int characterID)
     {
-        try
-        {
-            // Use NetworkRequestManager for cleaner request handling
-            PlayerZoneInfoResult result = await requestManager.SendPlayerZoneInfoRequestAsync(characterID);
-            
-            if (result.Success)
-            {
-                return result.ZoneInfo;
-            }
-            else
-            {
-                Debug.LogError($"ZoneCoordinator: Zone info request failed: {result.ErrorMessage}");
-                return GetFallbackZoneInfo(characterID);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error getting player zone info via RPC: {ex.Message}");
-            return GetFallbackZoneInfo(characterID);
-        }
+        return new PlayerZoneInfo();
     }
     private async Task LoadCharacterZoneAsync(PlayerZoneInfo zoneInfo)
     {
@@ -1653,14 +1504,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task RequestServerLoadZoneAsync(string zoneName)
     {
-        // Use NetworkRequestManager for cleaner request handling
-        ServerZoneLoadResult result = await requestManager.SendServerZoneLoadRequestAsync(zoneName);
-
-        if (!result.Success)
-        {
-            Debug.LogError($"ZoneCoordinator: Server failed to load zone '{zoneName}': {result.ErrorMessage}");
-            throw new Exception($"Server zone load failed: {result.ErrorMessage}");
-        }Debug.Log($"ZoneCoordinator: Server successfully loaded zone '{zoneName}'");        
+        //TODO
     }
     private async Task UnloadMainMenuIfNeeded(string zoneName)
     {
@@ -1758,40 +1602,7 @@ public class PlayerManager : NetworkBehaviour
     }
     private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
     {
-        if (SelectedPlayerCharacter == null)
-        {
-            Debug.LogError("ZoneCoordinator: Cannot get waypoint - no character selected");
-            return null;
-        }
-
-        int characterID = SelectedPlayerCharacter.GetCharacterID();
-
-        try
-        {
-            // Create waypoint request
-            WaypointRequest request = new WaypointRequest
-            {
-                CharacterID = characterID,
-                ZoneName = zoneName
-            };
-            
-            // Use NetworkRequestManager for cleaner request handling
-            WaypointResult result = await requestManager.SendWaypointRequestAsync(request);
-            
-            if (result.Success && result.HasWaypoint)
-            {
-                return result.WaypointPosition;
-            }
-            else
-            {
-                return null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error getting MarketWaypoint position via RPC: {ex.Message}");
-            return null;
-        }
+        return null;
     }
     private PlayerZoneInfo GetFallbackZoneInfo(int characterID)
     {
@@ -2069,14 +1880,8 @@ public class PlayerManager : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         SInstances.Remove(this);
-        Debug.Log(
-            $"PlayerManager.OnNetworkDespawn: Removed from instances list. Remaining instances: {SInstances.Count}");
+        Debug.Log($"PlayerManager.OnNetworkDespawn: Removed from instances list. Remaining instances: {SInstances.Count}");
         base.OnNetworkDespawn();
-    }
-    public override void OnDestroy()
-    {
-        SceneManager.sceneLoaded -= OnSceneLoaded; // Unsubscribe to avoid memory leaks
-        base.OnDestroy();
     }
     public void PlayerManagerControlSetActive(bool isActive)
     {
@@ -2149,7 +1954,6 @@ public class PlayerManager : NetworkBehaviour
             return new PlayerCharacterData();
         }
     }
-        
     private bool CheckIfCharacterExists(int characterID)
     {
         if (SelectedPlayerCharacter != null && SelectedPlayerCharacter.GetCharacterID() == characterID)
@@ -2230,7 +2034,6 @@ public class PlayerManager : NetworkBehaviour
 
         return newCharacter;
     }
-
     #endregion
 }
 

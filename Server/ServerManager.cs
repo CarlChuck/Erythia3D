@@ -612,62 +612,43 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Login Communication RPCs
-    private void ReceiveLoginResult(LoginResult result)
+    #region Login Communication
+    public static async Task HandleLogin(PlayerManager playerManager, ulong steamID, int accountID)
     {
-        // This RPC is now sent directly from the ServerManager to the client.
-        // The client-side code that manages the connection to the master server
-        // should handle this response. For example, it could find the local PlayerManager
-        // and pass the result to it.
-        // This is a placeholder for the client-side logic.
-        Debug.Log($"Client received login result: Success={result.Success}, Name={result.AccountName}, Msg={result.ErrorMessage}");
-        
-        // Example of how a client-side handler might pass this along:
-        // if (PlayerManager.LocalInstance != null)
-        // {
-        //     PlayerManager.LocalInstance.HandleLoginResult(result);
-        // }
-    }
-    public void RequestLogin(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
-    { 
-        //TODO fix this
-        ulong clientId = 0;
-        // Debug.Log($"ServerManager: RequestLoginServerRpc ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={serverRpcParams.Receive.SenderClientId}");
-        // Using an anonymous function to call the async task so we don't have to make the RPC async
-        _ = ProcessLoginRequest(steamID, accountID, accountName, email, ipAddress, language, clientId);
-    }
-
-    // Regular method for server-to-server communication (called by PlayerManager on server)
-    private async Task ProcessLoginRequest(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language, ulong senderClientId)
-    {
-        //Debug.Log($"ServerManager: ProcessLoginRequest ENTRY - steamID={steamID}, accountID={accountID}, senderClientId={senderClientId}");        
         LoginResult result;
-        try
-        {
-            result = await ProcessLogin(steamID, accountID, accountName, email, ipAddress, language);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during login request: {ex.Message}\n{ex.StackTrace}");
-            result = new LoginResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during login: {ex.Message}",
-                AccountName = "" // Initialize to avoid null during serialization
-            };
-        }
-
-        // Send the response directly to the client who requested it.
-        ClientRpcParams clientRpcParams = new ClientRpcParams
-        {
-            Send = new ClientRpcSendParams
-            {
-                TargetClientIds = new ulong[] { senderClientId }
-            }
-        };
-        ReceiveLoginResult(result);
         
-        Debug.Log($"ServerManager: ProcessLoginRequest completed");
+        if (steamID > 0)
+        {
+            // Handle Steam login - TODO implement
+            result = new LoginResult { Success = false, ErrorMessage = "Steam login not implemented", AccountName = "" };
+        }
+        else if (accountID > 0)
+        {
+            Dictionary<string, object> account = await AccountManager.Instance.GetAccountByAccountIDAsync(accountID);
+            if (account != null)
+            {
+                result = new LoginResult 
+                { 
+                    Success = true,
+                    ErrorMessage = "",
+                    AccountID = Convert.ToInt32(account["AccountID"]),
+                    AccountName = account["Username"].ToString(),
+                    SteamID = account.TryGetValue("SteamID", out object steamObj) && steamObj != DBNull.Value ? Convert.ToUInt64(steamObj) : 0
+                };
+                Debug.Log($"ServerManager: Account found for AccountID {accountID}: {result.AccountName}");
+            }
+            else
+            {
+                Debug.LogError($"ServerManager: No account found for AccountID {accountID}");
+                result = new LoginResult { Success = false, ErrorMessage = $"No account found for AccountID {accountID}", AccountName = "" };
+            }
+        }
+        else
+        {
+            result = new LoginResult { Success = false, ErrorMessage = "No valid login method available. Both SteamID and AccountID are 0.", AccountName = "" };
+        }
+        
+        playerManager.ReceiveLoginRpc(result);
     }
     #endregion
 
@@ -909,145 +890,6 @@ public class ServerManager : NetworkBehaviour
         return charData;
     }
 
-    #region Server-Side Login Logic
-    private async Task<LoginResult> ProcessLogin(ulong steamID, int accountID, string accountName, string email, string ipAddress, string language)
-    {
-        //Debug.Log($"ServerManager: ProcessLogin ENTRY - steamID={steamID}, accountID={accountID}");        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessLogin called on client! This should only run on server.");
-            return new LoginResult { Success = false, ErrorMessage = "Server-side method called on client", AccountName = "" };
-        }
-        if (AccountManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: AccountManager.Instance is null!");
-            return new LoginResult { Success = false, ErrorMessage = "AccountManager not available", AccountName = "" };
-        }
-        
-        LoginMethod loginMethod = AccountManager.Instance.DetermineLoginMethod(steamID, accountID);
-        
-        switch (loginMethod)
-        {
-            case LoginMethod.SteamID:
-                Debug.Log($"ServerManager: Processing Steam ID login for SteamID: {steamID}");
-                return await HandleSteamIDLogin(steamID, accountName, email, ipAddress, language);
-                
-            case LoginMethod.AccountID:
-                Debug.Log($"ServerManager: Processing Account ID login for AccountID: {accountID}");
-                return await HandleAccountIDLogin(accountID);
-                
-            case LoginMethod.None:
-            default:
-                Debug.LogError("ServerManager: No valid login method available. Both SteamID and AccountID are 0.");
-                return new LoginResult { Success = false, ErrorMessage = "No valid login method available. Both SteamID and AccountID are 0.", AccountName = "" };
-        }
-    }
-    private async Task<LoginResult> HandleSteamIDLogin(ulong steamID, string accountName, string email, string ipAddress, string language)
-    {
-        Debug.Log($"ServerManager: HandleSteamIDLogin ENTRY - steamID={steamID}");
-        Debug.Log($"ServerManager: Attempting login with SteamID: {steamID}");
-        
-        Debug.Log($"ServerManager: Calling AccountManager.GetAccountBySteamIDAsync...");
-        Dictionary<string, object> account = await AccountManager.Instance.GetAccountBySteamIDAsync(steamID);
-
-        if (account != null)
-        {
-            Debug.Log($"ServerManager: Account found via SteamID.");
-        }
-        else
-        {
-            Debug.Log($"ServerManager: No account found for SteamID {steamID}. Attempting to create...");
-            bool created = await AccountManager.Instance.CreateNewAccountAsync(accountName, AccountManager.Instance.GenerateRandomPassword(), email, steamID, language, ipAddress);
-            if (created)
-            {
-                Debug.Log($"ServerManager: Created new account for Steam user: {accountName}. Fetching account info...");
-                account = await AccountManager.Instance.GetAccountByUsernameAsync(accountName);
-                if (account == null)
-                {
-                    Debug.LogError("ServerManager: Failed to fetch newly created account info!");
-                    return new LoginResult { Success = false, ErrorMessage = "Failed to fetch newly created account info!", AccountName = "" };
-                }
-            }
-            else
-            {
-                Debug.LogError($"ServerManager: Failed to create new account for Steam user: {accountName}");
-                return new LoginResult { Success = false, ErrorMessage = $"Failed to create new account for Steam user: {accountName}", AccountName = "" };
-            }
-        }
-
-        Debug.Log($"ServerManager: Extracting account info to LoginResult...");
-        return ExtractAccountInfoToLoginResult(account);
-    }
-    private async Task<LoginResult> HandleAccountIDLogin(int accountID)
-    {
-        Debug.Log($"ServerManager: HandleAccountIDLogin ENTRY - accountID={accountID}");
-        Debug.Log($"ServerManager: Attempting login with AccountID: {accountID}");
-        
-        Debug.Log($"ServerManager: Calling AccountManager.GetAccountByAccountIDAsync...");
-        Dictionary<string, object> account = await AccountManager.Instance.GetAccountByAccountIDAsync(accountID);
-
-        if (account != null)
-        {
-            Debug.Log($"ServerManager: Account found via AccountID.");
-        }
-        else
-        {
-            Debug.LogError($"ServerManager: No account found for AccountID {accountID}. Cannot create account without SteamID.");
-            return new LoginResult { Success = false, ErrorMessage = $"No account found for AccountID {accountID}. Cannot create account without SteamID.", AccountName = "" };
-        }
-
-        Debug.Log($"ServerManager: Extracting account info to LoginResult...");
-        return ExtractAccountInfoToLoginResult(account);
-    }
-    private LoginResult ExtractAccountInfoToLoginResult(Dictionary<string, object> account)
-    {
-        Debug.Log($"ServerManager: ExtractAccountInfoToLoginResult ENTRY");
-        try
-        {
-            LoginResult result = new LoginResult 
-            { 
-                Success = true,
-                ErrorMessage = "" // Initialize to empty string to avoid null during serialization
-            };
-
-            if (account.TryGetValue("AccountID", out object idObj) && idObj != DBNull.Value)
-            {
-                result.AccountID = Convert.ToInt32(idObj);
-                Debug.Log($"ServerManager: Extracted AccountID: {result.AccountID}");
-            }
-            else
-            {
-                Debug.LogError("ServerManager: Could not retrieve AccountID from account data.");
-                return new LoginResult { Success = false, ErrorMessage = "Could not retrieve AccountID from account data.", AccountName = "" };
-            }
-
-            if (account.TryGetValue("Username", out object nameObj) && nameObj != DBNull.Value)
-            {
-                result.AccountName = nameObj.ToString();
-                Debug.Log($"ServerManager: Extracted AccountName: {result.AccountName}");
-            }
-            else
-            {
-                Debug.LogError("ServerManager: Could not retrieve Username from account data.");
-                return new LoginResult { Success = false, ErrorMessage = "Could not retrieve Username from account data.", AccountName = "" };
-            }
-
-            if (account.TryGetValue("SteamID", out object steamIdObj) && steamIdObj != DBNull.Value)
-            {
-                result.SteamID = Convert.ToUInt64(steamIdObj);
-                Debug.Log($"ServerManager: Extracted SteamID: {result.SteamID}");
-            }
-
-            Debug.Log($"ServerManager: Successfully extracted all account info. Returning success result.");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ExtractAccountInfoToLoginResult: {ex.Message}\n{ex.StackTrace}");
-            return new LoginResult { Success = false, ErrorMessage = $"Server error extracting account info: {ex.Message}", AccountName = "" };
-        }
-    }
-    #endregion
 
     #region Server-Side Inventory Logic
     private async Task<AccountInventoryResult> ProcessAccountInventory(int accountID)

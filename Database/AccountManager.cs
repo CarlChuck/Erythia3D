@@ -7,31 +7,6 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Unity.Netcode;
 
-public enum LoginMethod
-{
-    None,
-    SteamID,
-    AccountID
-}
-
-[System.Serializable]
-public struct LoginResult : INetworkSerializable
-{
-    public bool Success;
-    public string ErrorMessage;
-    public int AccountID;
-    public string AccountName;
-    public ulong SteamID;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref Success);
-        serializer.SerializeValue(ref ErrorMessage);
-        serializer.SerializeValue(ref AccountID);
-        serializer.SerializeValue(ref AccountName);
-        serializer.SerializeValue(ref SteamID);
-    }
-}
 
 public class AccountManager : BaseManager
 {
@@ -400,4 +375,30 @@ public class AccountManager : BaseManager
         }
     }
     #endregion
+}
+
+public enum LoginMethod
+{
+    None,
+    SteamID,
+    AccountID
+}
+
+[System.Serializable]
+public struct LoginResult : INetworkSerializable
+{
+    public bool Success;
+    public string ErrorMessage;
+    public int AccountID;
+    public string AccountName;
+    public ulong SteamID;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Success);
+        serializer.SerializeValue(ref ErrorMessage);
+        serializer.SerializeValue(ref AccountID);
+        serializer.SerializeValue(ref AccountName);
+        serializer.SerializeValue(ref SteamID);
+    }
 }

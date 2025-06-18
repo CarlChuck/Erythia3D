@@ -27,8 +27,15 @@ public class AreaServerManager : MonoBehaviour
     private Dictionary<ulong, PlayerData> connectedPlayers = new();
 
     public ServerAreaConfig AreaConfig => areaConfig;
-    public bool IsRunning => areaNetworkManager != null && areaNetworkManager.IsServer;
-    public int ConnectedPlayersCount => connectedPlayers.Count;
+    private bool IsRunning
+    {
+        get { return areaNetworkManager != null && areaNetworkManager.IsServer; }
+    }
+
+    private int ConnectedPlayersCount
+    {
+        get { return connectedPlayers.Count; }
+    }
 
     [System.Serializable]
     public class PlayerData

@@ -5,6 +5,7 @@ using UnityEngine;
 
 public class NetworkRequestManager
 {
+    /*
     private readonly PlayerManager playerManager;
     private readonly Dictionary<string, NetworkRequest> activeRequests;
 
@@ -259,10 +260,13 @@ public class NetworkRequestManager
         };
     }
     #endregion
+    */
 }
 
+/*
 public struct NetworkRequestStats
 {
     public int ActiveRequestCount;
     public List<string> ActiveRequestTypes;
 } 
+*/
