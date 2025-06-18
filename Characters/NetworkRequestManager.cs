@@ -238,37 +238,6 @@ public class NetworkRequestManager
 
         return active;
     }
-    public void CancelAllRequests()
-    {
-        if (activeRequests.Count > 0)
-        {
-            Debug.LogWarning($"NetworkRequestManager: Cancelling {activeRequests.Count} active requests.");
-            activeRequests.Clear();
-        }
-    }
-    public void CheckForTimeouts()
-    {
-        float currentTime = Time.time;
-        List<string> timedOut = new List<string>();
-
-        foreach (var kvp in activeRequests)
-        {
-            NetworkRequest request = kvp.Value;
-            float elapsed = currentTime - request.StartTime;
-            
-            if (elapsed > request.Timeout)
-            {
-                timedOut.Add(kvp.Key);
-                Debug.LogWarning($"NetworkRequestManager: Request '{request.RequestType}' has timed out after {elapsed:F1} seconds.");
-            }
-        }
-
-        // Clean up timed out requests
-        foreach (string requestId in timedOut)
-        {
-            activeRequests.Remove(requestId);
-        }
-    }
     #endregion
 
     #region Helper Classes
