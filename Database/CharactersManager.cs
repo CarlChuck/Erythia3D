@@ -66,12 +66,17 @@ public class CharactersManager : BaseManager
     }
     #endregion
 
-    public async Task<bool> CreateNewCharacterAsync(int accountID, string familyName, string characterName, string title = null, int startingArea = 1, int race = 1, int gender = 1, int face = 1)
+    public async Task<bool> CreateNewCharacterAsync(int accountID, string familyName, string characterName, int race = 1, int gender = 1, int face = 1)
     {
-        int xLoc = 0; // TODO: Get actual starting location based on startingArea
+        string title = "";
+        int startingArea = GetStartingZoneByRace(race);
+        
+        int xLoc = 0; 
         int yLoc = 0;
         int zLoc = 0;
-
+        
+        // TODO: Get actual starting location based on startingArea
+        
         Dictionary<string, object> values = new Dictionary<string, object>
         {
             {"AccountID", accountID},
@@ -95,12 +100,13 @@ public class CharactersManager : BaseManager
         try
         {
             bool characterAdded = await SaveDataAsync(CharacterDataTableName, values);
-
-            if (characterAdded == false)
+            if (characterAdded != false)
             {
-                LogWarning($"Failed to create new character '{characterName}'. Check DatabaseManager logs or constraints (e.g., duplicate Familyname?).");
+                return true;
             }
-            return characterAdded;
+
+            LogWarning($"Failed to create new character '{characterName}'. Check DatabaseManager logs or constraints (e.g., duplicate Familyname?).");
+            return false;
         }
         catch (Exception ex)
         {
@@ -168,7 +174,7 @@ public class CharactersManager : BaseManager
             return new List<Dictionary<string, object>>();
         }
     }
-    private Dictionary<string, string> GetCharacterTableDefinition()
+    private static Dictionary<string, string> GetCharacterTableDefinition()
     {
         return new Dictionary<string, string>
         {
@@ -236,7 +242,6 @@ public class CharactersManager : BaseManager
             return null;
         }
     }
-
     public async Task<bool> UpdateCharacterLocationAsync(int characterID, int zoneID, int xLoc, int yLoc, int zLoc)
     {
         if (characterID <= 0)
@@ -274,7 +279,6 @@ public class CharactersManager : BaseManager
             return false;
         }
     }
-
     public async Task<bool> UpdateCharacterZoneAsync(int characterID, int zoneID)
     {
         if (characterID <= 0)
@@ -309,7 +313,6 @@ public class CharactersManager : BaseManager
             return false;
         }
     }
-
     public Dictionary<string, object> GetDefaultCharacterLocation()
     {
         return new Dictionary<string, object>
@@ -320,10 +323,47 @@ public class CharactersManager : BaseManager
             { "ZLoc", 0 } 
         };
     }
-
     public bool IsDefaultLocation(int xLoc, int yLoc, int zLoc)
     {
         return xLoc == 0 && yLoc == 0 && zLoc == 0;
+    }
+    private static int GetStartingZoneByRace(int race)
+    {
+        int toReturn = 1; // Default starting zone
+        switch (race)
+        {
+            case 1: // Aelystian
+                toReturn = 1; // IthoriaSouth
+                break;
+            case 2: // Anurian
+                toReturn = 2; // ShiftingWastes
+                break;
+            case 3: // Getaii
+                toReturn = 3; // PurrgishWoodlands
+                break;
+            case 4: // Hivernian
+                toReturn = 4; // HiverniaForestNorth
+                break;
+            case 5: // Kasmiran
+                toReturn = 5; // CanaGrasslands
+                break;
+            case 6: // Meliviaen
+                toReturn = 6; // GreatForestSouth
+                break;
+            case 7: // Qadian
+                toReturn = 7; // QadianDelta
+                break;
+            case 8: // Tkyan
+                toReturn = 8; // TkyanDepths
+                break;
+            case 9: // Valahoran
+                toReturn = 9; // ValahorSouth
+                break;
+            default:
+                toReturn = 1; // IthoriaSouth - can be default for now
+                break;
+        }
+        return toReturn; 
     }
     #endregion
 }

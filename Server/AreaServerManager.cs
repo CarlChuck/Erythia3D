@@ -216,18 +216,16 @@ public class AreaServerManager : MonoBehaviour
     /// <summary>
     /// Transfer a player to another area server
     /// </summary>
-    public void TransferPlayerToArea(ulong clientId, string targetAreaId)
+    public void TransferPlayerToArea(ulong clientId, int targetAreaId)
     {
-        if (!connectedPlayers.ContainsKey(clientId))
+        if (!connectedPlayers.TryGetValue(clientId, out PlayerData playerData))
         {
             LogError($"Cannot transfer unknown client {clientId}");
             return;
         }
 
-        var playerData = connectedPlayers[clientId];
-
         // Request transfer through master server
-        var transferRequest = new PlayerTransferRequest
+        PlayerTransferRequest transferRequest = new PlayerTransferRequest
         {
             clientId = clientId,
             playerName = playerData.playerName,
@@ -360,7 +358,7 @@ public class AreaServerManager : MonoBehaviour
 [System.Serializable]
 public class ServerAreaConfig
 {
-    public string areaId;
+    public int areaId;
     public string sceneName;
     public ushort port;
     public int maxPlayers = 50;
@@ -371,7 +369,7 @@ public class ServerAreaConfig
 [System.Serializable]
 public class AreaServerInfo
 {
-    public string areaId;
+    public int areaId;
     public string sceneName;
     public string address;
     public ushort port;
@@ -386,8 +384,8 @@ public class PlayerTransferRequest
 {
     public ulong clientId;
     public string playerName;
-    public string fromAreaId;
-    public string toAreaId;
+    public int fromAreaId;
+    public int toAreaId;
     public Vector3 playerPosition;
     public Dictionary<string, object> playerData;
 }
@@ -395,7 +393,7 @@ public class PlayerTransferRequest
 [System.Serializable]
 public class ServerStatusUpdate
 {
-    public string areaId;
+    public int areaId;
     public int currentPlayers;
     public bool isOnline;
     public DateTime timestamp;
@@ -404,7 +402,7 @@ public class ServerStatusUpdate
 [System.Serializable]
 public class AreaWelcomeData
 {
-    public string areaId;
+    public int areaId;
     public string sceneName;
     public Vector3 spawnPosition;
     public string serverMessage;
@@ -455,7 +453,7 @@ public class MasterServerConnection
         Debug.Log($"[MasterServerConnection] Registering server: {serverInfo.areaId}");
     }
 
-    public void UnregisterServer(string areaId)
+    public void UnregisterServer(int areaId)
     {
         if (!isConnected) return;
 

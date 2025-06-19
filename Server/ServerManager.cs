@@ -36,10 +36,10 @@ public class ServerManager : NetworkBehaviour
     [SerializeField] private int healthCheckInterval = 10;
 
     // Runtime data
-    private readonly Dictionary<string, AreaServerInfo> registeredServers = new();
-    private readonly Dictionary<ulong, string> playerToAreaMapping = new();
-    private readonly Dictionary<string, Queue<PlayerTransferRequest>> pendingTransfers = new();
-    private readonly Dictionary<string, System.Diagnostics.Process> externalServerProcesses = new();
+    private readonly Dictionary<int, AreaServerInfo> registeredServers = new();
+    private readonly Dictionary<ulong, int> playerToAreaMapping = new();
+    private readonly Dictionary<int, Queue<PlayerTransferRequest>> pendingTransfers = new();
+    private readonly Dictionary<int, System.Diagnostics.Process> externalServerProcesses = new();
 
     // Network components
     private NetworkManager masterNetworkManager;
@@ -124,10 +124,10 @@ public class ServerManager : NetworkBehaviour
     {
         LogDebug($"Attempting to launch {areaServerTemplates.Count} area servers...");
         
-        foreach (var template in areaServerTemplates)
+        foreach (AreaServerTemplate template in areaServerTemplates)
         {
             // Validate template configuration
-            if (string.IsNullOrEmpty(template.areaId))
+            if (template.areaId == 0)
             {
                 LogError($"Area server template has empty areaId. Skipping.");
                 continue;
@@ -186,7 +186,7 @@ public class ServerManager : NetworkBehaviour
     }
     private bool LaunchExternalAreaServer(AreaServerTemplate template)
     {
-        var args = $"--area=\"{template.areaId}\" --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
+        var args = $"--area={template.areaId} --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
         if (!string.IsNullOrEmpty(template.additionalArgs))
         {
             args += " " + template.additionalArgs;
@@ -210,11 +210,11 @@ public class ServerManager : NetworkBehaviour
             // Set up output monitoring
             process.OutputDataReceived += (sender, e) => {
                 if (!string.IsNullOrEmpty(e.Data))
-                    LogDebug($"[{template.areaId}] {e.Data}");
+                    LogDebug($"[Area{template.areaId}] {e.Data}");
             };
             process.ErrorDataReceived += (sender, e) => {
                 if (!string.IsNullOrEmpty(e.Data))
-                    LogError($"[{template.areaId}] {e.Data}");
+                    LogError($"[Area{template.areaId}] {e.Data}");
             };
 
             process.BeginOutputReadLine();
@@ -226,7 +226,7 @@ public class ServerManager : NetworkBehaviour
 
         return false;
     }
-    private bool RestartAreaServer(string areaId)
+    private bool RestartAreaServer(int areaId)
     {
         var template = areaServerTemplates.FirstOrDefault(t => t.areaId == areaId);
         if (template == null)
@@ -272,7 +272,7 @@ public class ServerManager : NetworkBehaviour
         // Notify all connected clients about the new server
         BroadcastServerListUpdate();
     }
-    private void UnregisterAreaServer(string areaId)
+    private void UnregisterAreaServer(int areaId)
     {
         if (registeredServers.ContainsKey(areaId))
         {
@@ -304,7 +304,7 @@ public class ServerManager : NetworkBehaviour
             LogDebug($"Updated status for {statusUpdate.areaId}: {statusUpdate.currentPlayers} players, Online: {statusUpdate.isOnline}");
         }
     }
-    private void HandleServerDisconnection(string areaId)
+    private void HandleServerDisconnection(int areaId)
     {
         // Find all players that were connected to this server
         var affectedPlayers = playerToAreaMapping
@@ -357,7 +357,7 @@ public class ServerManager : NetworkBehaviour
         }
     }
 
-    private void RequestJoinArea(string areaId)
+    private void RequestJoinArea(int areaId)
     {
         //TODO
     }
@@ -486,8 +486,8 @@ public class ServerManager : NetworkBehaviour
     private void CheckServerHealth()
     {
         var currentTime = DateTime.Now;
-        var serversToRemove = new List<string>();
-        var serversToRestart = new List<string>();
+        var serversToRemove = new List<int>();
+        var serversToRestart = new List<int>();
 
         foreach (var kvp in registeredServers)
         {
@@ -653,181 +653,29 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Character Loading Communication
-    public async void ProcessCharacterListRequest(PlayerManager pManager, int accountID, ulong senderClientId)
+    public async Task HandleCharacterCreation(PlayerManager playerManager, string familyName, string charName, int charRace, int charGender, int charFace)
     {
-        //Debug.Log($"ServerManager: ProcessCharacterListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");        
-        try
-        {
-            CharacterListResult result = await ProcessCharacterList(accountID);
-            
-            bool responseSet = false;
-            if (pManager.IsServer && pManager.OwnerClientId == senderClientId)
-            {
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] 
-                        { 
-                            senderClientId 
-                        }
-                    }
-                };
-                pManager.ReceiveCharacterListRpc(result);
-                responseSet = true;
-            }
-            
-            if (!responseSet)
-            {
-                Debug.LogError($"ServerManager: Could not find PlayerManager for client {senderClientId} to send character list response!");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during character list request: {ex.Message}\n{ex.StackTrace}");
-            CharacterListResult errorResult = new CharacterListResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during character list request: {ex.Message}",
-                Characters = new CharacterData[0] // Empty array instead of null
-            };
-            
-            // Send error response via PlayerManager
-            Debug.Log($"ServerManager: Finding PlayerManager to send error response to client {senderClientId}...");
-
-            if (pManager.IsServer && pManager.OwnerClientId == senderClientId)
-            {
-                Debug.Log($"ServerManager: Sending character list error response via PlayerManager...");
-                ClientRpcParams clientRpcParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new ulong[] { senderClientId }
-                    }
-                };
-                pManager.ReceiveCharacterListRpc(errorResult);
-            }
-            
-        }
+        bool success = await CharactersManager.Instance.CreateNewCharacterAsync(playerManager.AccountID, familyName, charName, charRace, charGender, charFace);
         
-        Debug.Log($"ServerManager: ProcessCharacterListRequest completed");
+        if (success)
+        {
+            Debug.Log($"ServerManager: Character '{charName}' created successfully");
+            playerManager.ReceiveCharacterCreationResult(true, "");
+        }
+        else
+        {
+            Debug.LogError($"ServerManager: Character creation failed for '{charName}'");
+            playerManager.ReceiveCharacterCreationResult(false, "Failed to create character");
+        }
     }
-    #endregion
+    public async Task ProcessCharacterListRequest(PlayerManager pManager, int accountID)
+    {      
+        CharacterListResult result = await ProcessCharacterList(accountID);
 
-    #region Inventory Loading Communication
-    private void ReceiveAccountInventory(AccountInventoryResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received account inventory result: Success={result.Success}, Items: {result.Items.Length}");
+        pManager.ReceiveCharacterListRpc(result);
     }
-    private void ReceiveCharacterInventory(CharacterInventoryResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received character inventory result: Success={result.Success}, Items: {result.Items.Length}");
-    }
-    private void ReceiveWorkbenchList(WorkbenchListResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received workbench list result: Success={result.Success}, Workbenches: {result.Workbenches.Length}");
-    }
-    public async Task ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
-    {
-        //Debug.Log($"ServerManager: ProcessAccountInventoryRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
-        AccountInventoryResult result;
-        try
-        {
-            result = await ProcessAccountInventory(accountID);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during account inventory request: {ex.Message}\n{ex.StackTrace}");
-            result = new AccountInventoryResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during account inventory request: {ex.Message}",
-                Items = new InventoryItemData[0],
-                ResourceItems = new InventoryResourceItemData[0],
-                SubComponents = new InventorySubComponentData[0],
-                Workbenches = new WorkbenchData[0]
-            };
-        }
-        ReceiveAccountInventory(result);
-        
-        Debug.Log($"ServerManager: ProcessAccountInventoryRequest completed");
-    }
-    public async Task ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
-    {
-        //Debug.Log($"ServerManager: ProcessCharacterInventoryRequest ENTRY - characterID={characterID}, senderClientId={senderClientId}");        
-        CharacterInventoryResult result;
-        try
-        {
-            result = await ProcessCharacterInventory(characterID);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during character inventory request: {ex.Message}\n{ex.StackTrace}");
-            result = new CharacterInventoryResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during character inventory request: {ex.Message}",
-                Items = new InventoryItemData[0],
-                ResourceItems = new InventoryResourceItemData[0],
-                SubComponents = new InventorySubComponentData[0]
-            };
-        }
-        ReceiveCharacterInventory(result);
-        
-        Debug.Log($"ServerManager: ProcessCharacterInventoryRequest completed");
-    }
-    public async Task ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
-    {
-        //Debug.Log($"ServerManager: ProcessWorkbenchListRequest ENTRY - accountID={accountID}, senderClientId={senderClientId}");
-        WorkbenchListResult result;
-        try
-        {
-            result = await ProcessWorkbenchList(accountID);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during workbench list request: {ex.Message}\n{ex.StackTrace}");
-            result = new WorkbenchListResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during workbench list request: {ex.Message}",
-                Workbenches = new WorkbenchData[0]
-            };
-        }
-        ReceiveWorkbenchList(result);
-        
-        Debug.Log($"ServerManager: ProcessWorkbenchListRequest completed");
-    }
-    #endregion
-
-    #region Waypoint and Zone Communication
-    public async Task ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
-    {
-
-    }
-    public async Task ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
-    {
-
-    }
-    #endregion
-
     private async Task<CharacterListResult> ProcessCharacterList(int accountID)
     {
-        //Debug.Log($"ServerManager: ProcessCharacterList ENTRY - accountID={accountID}");        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessCharacterList called on client! This should only run on server.");
-            return new CharacterListResult { Success = false, ErrorMessage = "Server-side method called on client", Characters = new CharacterData[0] };
-        }
-        if (CharactersManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: CharactersManager.Instance is null!");
-            return new CharacterListResult { Success = false, ErrorMessage = "CharactersManager not available", Characters = new CharacterData[0] };
-        }
-        
         try
         {
             List<Dictionary<string, object>> characterDictionaries = await CharactersManager.Instance.GetCharactersByAccountIDAsync(accountID);
@@ -852,7 +700,7 @@ public class ServerManager : NetworkBehaviour
             { 
                 Success = false, 
                 ErrorMessage = $"Server error loading characters: {ex.Message}", 
-                Characters = new CharacterData[0] 
+                Characters = Array.Empty<CharacterData>() 
             };
         }
     }
@@ -889,9 +737,86 @@ public class ServerManager : NetworkBehaviour
         
         return charData;
     }
+    #endregion
 
-
-    #region Server-Side Inventory Logic
+    #region Inventory Loading Communication
+    private void ReceiveAccountInventory(AccountInventoryResult result)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received account inventory result: Success={result.Success}, Items: {result.Items.Length}");
+    }
+    private void ReceiveCharacterInventory(CharacterInventoryResult result)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received character inventory result: Success={result.Success}, Items: {result.Items.Length}");
+    }
+    private void ReceiveWorkbenchList(WorkbenchListResult result)
+    {
+        // Placeholder for client-side handling.
+        Debug.Log($"Client received workbench list result: Success={result.Success}, Workbenches: {result.Workbenches.Length}");
+    }
+    public async Task ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
+    {
+        AccountInventoryResult result;
+        try
+        {
+            result = await ProcessAccountInventory(accountID);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during account inventory request: {ex.Message}\n{ex.StackTrace}");
+            result = new AccountInventoryResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during account inventory request: {ex.Message}",
+                Items = Array.Empty<InventoryItemData>(),
+                ResourceItems = Array.Empty<InventoryResourceItemData>(),
+                SubComponents = Array.Empty<InventorySubComponentData>(),
+                Workbenches = Array.Empty<WorkbenchData>()
+            };
+        }
+        ReceiveAccountInventory(result);
+    }
+    public async Task ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
+    {  
+        CharacterInventoryResult result;
+        try
+        {
+            result = await ProcessCharacterInventory(characterID);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during character inventory request: {ex.Message}\n{ex.StackTrace}");
+            result = new CharacterInventoryResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during character inventory request: {ex.Message}",
+                Items = Array.Empty<InventoryItemData>(),
+                ResourceItems = Array.Empty<InventoryResourceItemData>(),
+                SubComponents = Array.Empty<InventorySubComponentData>()
+            };
+        }
+        ReceiveCharacterInventory(result);
+    }
+    public async Task ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
+    {
+        WorkbenchListResult result;
+        try
+        {
+            result = await ProcessWorkbenchList(accountID);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during workbench list request: {ex.Message}\n{ex.StackTrace}");
+            result = new WorkbenchListResult
+            {
+                Success = false,
+                ErrorMessage = $"Server error during workbench list request: {ex.Message}",
+                Workbenches = Array.Empty<WorkbenchData>()
+            };
+        }
+        ReceiveWorkbenchList(result);
+    }
     private async Task<AccountInventoryResult> ProcessAccountInventory(int accountID)
     {
         Debug.Log($"ServerManager: ProcessAccountInventory ENTRY - accountID={accountID}");
@@ -899,14 +824,14 @@ public class ServerManager : NetworkBehaviour
         if (!IsServer)
         {
             Debug.LogError("ProcessAccountInventory called on client! This should only run on server.");
-            return new AccountInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = new InventoryItemData[0], ResourceItems = new InventoryResourceItemData[0], SubComponents = new InventorySubComponentData[0], Workbenches = new WorkbenchData[0] };
+            return new AccountInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>(), Workbenches = Array.Empty<WorkbenchData>() };
         }
 
         Debug.Log($"ServerManager: Calling InventoryManager.Instance methods...");
         if (InventoryManager.Instance == null)
         {
             Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new AccountInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = new InventoryItemData[0], ResourceItems = new InventoryResourceItemData[0], SubComponents = new InventorySubComponentData[0], Workbenches = new WorkbenchData[0] };
+            return new AccountInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>(), Workbenches = Array.Empty<WorkbenchData>() };
         }
         
         try
@@ -943,10 +868,10 @@ public class ServerManager : NetworkBehaviour
             { 
                 Success = false, 
                 ErrorMessage = $"Server error loading account inventory: {ex.Message}", 
-                Items = new InventoryItemData[0],
-                ResourceItems = new InventoryResourceItemData[0],
-                SubComponents = new InventorySubComponentData[0],
-                Workbenches = new WorkbenchData[0]
+                Items = Array.Empty<InventoryItemData>(),
+                ResourceItems = Array.Empty<InventoryResourceItemData>(),
+                SubComponents = Array.Empty<InventorySubComponentData>(),
+                Workbenches = Array.Empty<WorkbenchData>()
             };
         }
     }
@@ -957,14 +882,14 @@ public class ServerManager : NetworkBehaviour
         if (!IsServer)
         {
             Debug.LogError("ProcessCharacterInventory called on client! This should only run on server.");
-            return new CharacterInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = new InventoryItemData[0], ResourceItems = new InventoryResourceItemData[0], SubComponents = new InventorySubComponentData[0] };
+            return new CharacterInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>() };
         }
 
         Debug.Log($"ServerManager: Calling InventoryManager.Instance methods for character...");
         if (InventoryManager.Instance == null)
         {
             Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new CharacterInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = new InventoryItemData[0], ResourceItems = new InventoryResourceItemData[0], SubComponents = new InventorySubComponentData[0] };
+            return new CharacterInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>() };
         }
         
         try
@@ -998,9 +923,9 @@ public class ServerManager : NetworkBehaviour
             { 
                 Success = false, 
                 ErrorMessage = $"Server error loading character inventory: {ex.Message}", 
-                Items = new InventoryItemData[0],
-                ResourceItems = new InventoryResourceItemData[0],
-                SubComponents = new InventorySubComponentData[0]
+                Items = Array.Empty<InventoryItemData>(),
+                ResourceItems = Array.Empty<InventoryResourceItemData>(),
+                SubComponents = Array.Empty<InventorySubComponentData>()
             };
         }
     }
@@ -1011,14 +936,14 @@ public class ServerManager : NetworkBehaviour
         if (!IsServer)
         {
             Debug.LogError("ProcessWorkbenchList called on client! This should only run on server.");
-            return new WorkbenchListResult { Success = false, ErrorMessage = "Server-side method called on client", Workbenches = new WorkbenchData[0] };
+            return new WorkbenchListResult { Success = false, ErrorMessage = "Server-side method called on client", Workbenches = Array.Empty<WorkbenchData>() };
         }
 
         Debug.Log($"ServerManager: Calling InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync...");
         if (InventoryManager.Instance == null)
         {
             Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new WorkbenchListResult { Success = false, ErrorMessage = "InventoryManager not available", Workbenches = new WorkbenchData[0] };
+            return new WorkbenchListResult { Success = false, ErrorMessage = "InventoryManager not available", Workbenches = Array.Empty<WorkbenchData>() };
         }
 
         try
@@ -1046,12 +971,21 @@ public class ServerManager : NetworkBehaviour
             {
                 Success = false,
                 ErrorMessage = $"Server error loading workbenches: {ex.Message}",
-                Workbenches = new WorkbenchData[0]
+                Workbenches = Array.Empty<WorkbenchData>()
             };
         }
     }
     #endregion
 
+    #region Waypoint and Zone Communication
+    public async Task ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
+    {
+
+    }
+    public async Task ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
+    {
+
+    }
     private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
     {
         Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");
@@ -1140,6 +1074,19 @@ public class ServerManager : NetworkBehaviour
             };
         }
     }
+    public Vector3 GetWaypointByZoneID(int zoneID)
+    {
+        foreach (AreaServerTemplate template in areaServerTemplates)
+        {
+            if (zoneID == template.areaId)
+            {
+                return template.spawnPosition;
+            }
+        }
+        Debug.LogError($"ServerManager: GetWaypointByZoneID: No waypoint found for zoneID={zoneID}");
+        return Vector3.zero;
+    }
+    #endregion
 
     #region Helper Methods
     private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
@@ -1281,7 +1228,7 @@ public struct ServerZoneLoadResult : INetworkSerializable
 [System.Serializable]
 public class AreaServerTemplate
 {
-    public string areaId;
+    public int areaId;
     public string sceneName;
     public ushort startingPort;
     public int maxPlayers = 50;
@@ -1296,7 +1243,7 @@ public class AreaServerTemplate
 [System.Serializable]
 public struct AreaInfo : INetworkSerializable
 {
-    public string areaId;
+    public int areaId;
     public string sceneName;
     public int currentPlayers;
     public int maxPlayers;

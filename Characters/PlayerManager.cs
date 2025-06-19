@@ -31,11 +31,7 @@ public class PlayerManager : NetworkBehaviour
 
     #region References
 
-    [Header("Player Account Info")] [SerializeField]
-    private string accountName = "";
-
-    [SerializeField] private string email = "";
-    [SerializeField] private string familyName = "";
+    [Header("Player Account Info")]
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
 
@@ -89,9 +85,8 @@ public class PlayerManager : NetworkBehaviour
     
     // Login completion tracking
     private TaskCompletionSource<bool> loginCompletionSource;
-
-    internal bool characterListReceived;
-    internal CharacterListResult currentCharacterListResult;
+    private TaskCompletionSource<bool> charCreateCompletionSource;
+    private TaskCompletionSource<bool> charListCompletionSource;
 
     internal bool accountInventoryReceived;
     internal AccountInventoryResult currentAccountInventoryResult;
@@ -114,53 +109,12 @@ public class PlayerManager : NetworkBehaviour
 
     #region Helper Access Properties
     private ulong SteamID { get; set; }
-    private int AccountID { get; set; }
-    private string AccountName
-    {
-        get
-        {
-            return accountName; 
-            
-        }
-        set
-        {
-            accountName = value; 
-            
-        }
-    }
-    private string Email
-    {
-        get { return email; }
-    }
-    private string IPAddress
-    {
-        get
-        {
-            return ipAddress; 
-            
-        }
-    }
-    private string Language
-    {
-        get
-        {
-            return language; 
-            
-        }
-    }
-    private string FamilyName
-    {
-        get
-        {
-            return familyName; 
-            
-        }
-        set
-        {
-            familyName = value; 
-            
-        }
-    }
+    public int AccountID { get; private set; }
+    public string AccountName { get; private set; }
+    private string Email { get; set; }
+    private string IPAddress { get; set; }
+    private string Language { get; set; }
+    private string FamilyName { get; set; }
     private GameObject CharListParent
     {
         get
@@ -251,7 +205,7 @@ public class PlayerManager : NetworkBehaviour
     {
         AccountID = newAccountID;
         SteamID = newSteamID;
-        accountName = newAccountName;
+        AccountName = newAccountName;
         initializationTask = InitializePlayerManagerAsync();
         await initializationTask;
     }
@@ -330,149 +284,115 @@ public class PlayerManager : NetworkBehaviour
     #region Character Creation
     public async Task OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
     {
-        int charStartingZone = 1; // Use the player's starting zone
-        charStartingZone = GetStartingZoneByRace(charRace);
-        if (string.IsNullOrEmpty(FamilyName) || string.IsNullOrEmpty(characterName))
-        {
-            Debug.LogError("CharacterDataHandler: Character or Family Name cannot be empty");
-            return;
-        }
-
-        if (AccountID <= 0)
-        {
-            Debug.LogError("CharacterDataHandler: Cannot create character: Invalid AccountID.");
-            return;
-        }
-        
-        // Use CharactersManager directly for character creation
-        bool created = await CharactersManager.Instance.CreateNewCharacterAsync(
-            AccountID, 
-            FamilyName, 
-            characterName, 
-            null,
-            charStartingZone, 
-            charRace, 
-            charGender, 
-            charFace
-        );
-
-        if (created)
-        {
-            await LoadCharactersAsync();
-            
-            // Only update UI on client side
-            if (SelectedPlayerCharacter != null && UIManager != null && !IsServer)
+        if (!IsServer)
+        {            
+            if (string.IsNullOrEmpty(FamilyName) || string.IsNullOrEmpty(characterName))
             {
-                UIManager.SetupUI(SelectedPlayerCharacter);
+                Debug.LogError("CharacterDataHandler: Character or Family Name cannot be empty");
+                return;
+            }
+            
+            charCreateCompletionSource = new();
+            CreateCharacterRpc(characterName, charRace, charGender, charFace);
+
+            // Wait for login response with timeout (10 seconds)
+            Task delayTask = Task.Delay(10000);
+            Task completedTask = await Task.WhenAny(charCreateCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
+            {
+                Debug.LogError("PlayerManager: Character creation timeout after 10 seconds");
+                throw new TimeoutException("Character creation request timed out");
+            }
+            
+            // Check if creation was successful
+            bool creationSuccess = await charCreateCompletionSource.Task;
+            
+            if (creationSuccess)
+            {
+                await LoadCharactersAsync();
+                if (SelectedPlayerCharacter != null && UIManager != null && !IsServer)
+                {
+                    UIManager.SetupUI(SelectedPlayerCharacter);
+                }
+            }
+            else
+            {
+                Debug.LogError($"PlayerManager: Failed to create character: {characterName}");
             }
         }
-        else
-        {
-            Debug.LogError($"CharacterDataHandler: Failed to create character: {characterName}");
-        }
     }
-    public async Task CreateCharacterAsync(string characterName, int charRace, int charGender, int charFace)
+
+    [Rpc(SendTo.Server)]
+    private void CreateCharacterRpc(string characterName, int charRace, int charGender, int charFace)
     {
-        
+        ServerManager.Instance.HandleCharacterCreation(this, FamilyName ,characterName, charRace, charGender, charFace);
+    }
+
+    [Rpc(SendTo.Owner)]
+    public void ReceiveCharacterCreationResult(bool success, string errorMessage)
+    {
+        Debug.Log($"PlayerManager: Character creation result - Success: {success}");
+        if (!success)
+        {
+            Debug.LogError($"PlayerManager: Character creation failed: {errorMessage}");
+        }
+        charCreateCompletionSource?.SetResult(success);
     }
     public void OnSetFamilyName(string newFamilyName)
     {
         if (GetCharacters().Count == 0)
         {
-            familyName = newFamilyName;
+            FamilyName = newFamilyName;
         }
     }
-    public void OnSetAccountName(string newAccountName)
-    {
-        accountName = newAccountName;
-    }
+
     #endregion
 
     #region Character List
-
-    [Rpc(SendTo.Server)]
-    internal void RequestCharacterListRpc(int accountID)
+    private async Task LoadCharactersAsync()
     {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log(
-                $"PlayerManager (Server): Received character list request, calling ServerManager for accountID={accountID}");
+        if (!IsServer)
+        { 
+            charListCompletionSource = new();
+            RequestCharacterListRpc(AccountID);
 
-            if (ServerManager.Instance != null)
+            // Wait for login response with timeout (10 seconds)
+            Task delayTask = Task.Delay(10000);
+            Task completedTask = await Task.WhenAny(charListCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
             {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessCharacterListRequest...");
-                //TODO fix this bs
-                //ServerManager.Instance.ProcessCharacterListRequest(this, accountID, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessCharacterListRequest called successfully");
+                Debug.LogError("PlayerManager: Character List Load timeout after 10 seconds");
+                throw new TimeoutException("Character List Load request timed out");
             }
-            else
+            
+            // Check if creation was successful
+            bool creationSuccess = await charListCompletionSource.Task;
+            
+            if (!creationSuccess)
             {
-                Debug.LogError(
-                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process character list request.");
-
-                // Send error response back to client
-                CharacterListResult errorResult = new CharacterListResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    Characters = Array.Empty<CharacterData>()
-                };
-
-                ReceiveCharacterListRpc(errorResult);
+                Debug.LogError($"PlayerManager: Failed to load characterList");
             }
         }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestCharacterListServerRpc called on client! This should only run on server.");
-        }
+    }
+    
+    [Rpc(SendTo.Server)]
+    private void RequestCharacterListRpc(int accountID)
+    {
+        ServerManager.Instance.ProcessCharacterListRequest(this, accountID);
     }
 
     [Rpc(SendTo.Owner)]
     public void ReceiveCharacterListRpc(CharacterListResult result)
     {
-        // This runs on the client - handle the character list result
-        Debug.Log($"PlayerManager (Client): Received character list result from server. Success: {result.Success}, CharacterCount: {result.Characters?.Length ?? 0}");
-        HandleCharacterListResult(result);
-    }
-    private void HandleCharacterListResult(CharacterListResult result)
-    {
-        currentCharacterListResult = result;
-        characterListReceived = true;
-        Debug.Log(
-            $"PlayerManager: Received character list result. Success: {result.Success}. IsServer: {IsServer}, IsClient: {IsClient}");
-
-        switch (result.Success)
+        if (!result.Success)
         {
-            // For clients, process character data through CharacterDataHandler
-            // Server will receive character data via direct RPC from client
-            case true when (!IsServer || IsClient):
-                Debug.Log($"PlayerManager (Client): Processing character list result through CharacterDataHandler...");
-                _ = ProcessCharacterListResult(result);
-                break;
-            case false:
-                Debug.LogError($"PlayerManager: Character list result failed: {result.ErrorMessage}");
-                break;
-            default:
-            {
-                if (IsServer && !IsClient)
-                {
-                    Debug.Log(
-                        $"PlayerManager (Server): Skipping character list processing - will receive character data via RPC from client");
-                }
-
-                break;
-            }
+            Debug.LogError($"PlayerManager: Character list request failed: {result.ErrorMessage ?? "Unknown error"}");
+            charListCompletionSource?.SetResult(false);
+            return;
         }
-    }
-    private async Task LoadCharactersAsync()
-    {
 
-    }
-    private async Task ProcessCharacterListResult(CharacterListResult result)
-    {
         try
         {
             ClearPlayerListExceptSelected();
@@ -492,22 +412,29 @@ public class PlayerManager : NetworkBehaviour
                 }
 
                 PlayerStatBlock newCharacter = InstantiateCharacter(characterData);
-                if (newCharacter != null)
+                if (newCharacter == null)
                 {
-                    PlayerCharacters.Add(newCharacter);
+                    continue;
+                }
 
-                    //Sets the first character loaded as the selected character if none is selected
-                    if (SelectedPlayerCharacter == null)
-                    {
-                        SelectedPlayerCharacter = newCharacter;
-                    }
+                PlayerCharacters.Add(newCharacter);
+
+                //Sets the first character loaded as the selected character if none is selected
+                if (SelectedPlayerCharacter == null)
+                {
+                    SelectedPlayerCharacter = newCharacter;
                 }
             }
             EnsureSelectedCharacterInList();
+            
+            // Complete the task successfully
+            charListCompletionSource?.SetResult(true);
         }
         catch (Exception ex)
         {
             Debug.LogError($"CharacterDataHandler: Exception during ProcessCharacterListResult: {ex.Message}\n{ex.StackTrace}");
+            // Complete the task with failure on exception
+            charListCompletionSource?.SetResult(false);
         }
     }
     #endregion
@@ -612,7 +539,6 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"PlayerManager (Server): Error creating server PlayerStatBlock: {ex.Message}");
         }
     }
-   
     #endregion
     
     #region Character Spawning
@@ -1618,10 +1544,6 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Getters
-    public string GetFamilyName()
-    {
-        return familyName;
-    }
     public async Task<PlayerStatBlock> GetSelectedPlayerCharacterAsync()
     {
         if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
@@ -1819,48 +1741,7 @@ public class PlayerManager : NetworkBehaviour
     {
         return characterModelManager;
     }
-    private int GetStartingZoneByRace(int race)
-    {
-        int toReturn = 1; // Default starting zone
-        if (SelectedPlayerCharacter != null)
-        {
-            switch (SelectedPlayerCharacter.GetSpecies())
-            {
-                case 1: // Aelystian
-                    toReturn = 1; // IthoriaSouth
-                    break;
-                case 2: // Anurian
-                    toReturn = 2; // ShiftingWastes
-                    break;
-                case 3: // Getaii
-                    toReturn = 3; // PurrgishWoodlands
-                    break;
-                case 4: // Hivernian
-                    toReturn = 4; // HiverniaForestNorth
-                    break;
-                case 5: // Kasmiran
-                    toReturn = 5; // CanaGrasslands
-                    break;
-                case 6: // Meliviaen
-                    toReturn = 6; // GreatForestSouth
-                    break;
-                case 7: // Qadian
-                    toReturn = 7; // QadianDelta
-                    break;
-                case 8: // Tkyan
-                    toReturn = 8; // TkyanDepths
-                    break;
-                case 9: // Valahoran
-                    toReturn = 9; // ValahorSouth
-                    break;
-                default:
-                    toReturn = 1; // IthoriaSouth - can be default for now
-                    break;
-            }
-        }
-
-        return toReturn;
-    }
+    
     #endregion
     
     #region Helpers

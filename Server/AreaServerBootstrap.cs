@@ -78,8 +78,8 @@ public class AreaServerBootstrap : MonoBehaviour
             switch (args[i])
             {
                 case "--area":
-                    if (i + 1 < args.Length)
-                        result.areaId = args[i + 1].Trim('"');
+                    if (i + 1 < args.Length && int.TryParse(args[i + 1].Trim('"'), out int areaId))
+                        result.areaId = areaId;
                     break;
                 case "--scene":
                     if (i + 1 < args.Length)
@@ -97,7 +97,7 @@ public class AreaServerBootstrap : MonoBehaviour
         }
 
         // Validate required arguments
-        if (string.IsNullOrEmpty(result.areaId) || 
+        if (result.areaId == 0 || 
             string.IsNullOrEmpty(result.sceneName) || 
             result.port == 0)
         {
@@ -121,7 +121,7 @@ public class AreaServerBootstrap : MonoBehaviour
 
     private class AreaServerArgs
     {
-        public string areaId;
+        public int areaId;
         public string sceneName;
         public ushort port;
         public string masterAddress = "127.0.0.1:8888";
