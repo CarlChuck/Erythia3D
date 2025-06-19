@@ -1,7 +1,6 @@
 using UnityEngine;
 using System; // For NonSerialized
 
-// Represents an instance of a sub-component
 public class SubComponent : MonoBehaviour // Or just public class SubComponent
 {
     public int SubComponentID { get; private set; }

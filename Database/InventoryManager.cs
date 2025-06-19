@@ -78,7 +78,7 @@ public class InventoryManager : BaseManager
         {
             {"InventoryResourceItemID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"CharID", "INT"},
-            {"ResourceItemID", "INT"},
+            {"ResourceID", "INT"},
             {"Quantity", "INT"}
         };
     }
@@ -106,7 +106,7 @@ public class InventoryManager : BaseManager
         {
             {"AccountInvResourceItemID", "INT AUTO_INCREMENT PRIMARY KEY"},
             {"AccountID", "INT"},
-            {"ResourceItemID", "INT"},
+            {"ResourceID", "INT"},
             {"Quantity", "INT"}
         };
     }
@@ -141,7 +141,6 @@ public class InventoryManager : BaseManager
 
         string query = $"SELECT * FROM `{InventoryItemsTableName}` WHERE CharID = @CharID";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@CharID", charId } };
-
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
@@ -262,7 +261,7 @@ public class InventoryManager : BaseManager
         Dictionary<string, object> linkedItemsParams = new Dictionary<string, object> 
         { 
             { "@CharID", charId },
-            { "@ResourceItemID", resourceItemIdToAdd },
+            { "@ResourceID", resourceItemIdToAdd },
             { "@Quantity", quantity }
         };
         try
@@ -294,11 +293,11 @@ public class InventoryManager : BaseManager
             return await AddInventoryResourceItemAsync(charId, resourceItemIdToAdd, quantity);
         }
 
-        string whereCondition = "CharID = @CharID AND ResourceItemID = @ResourceItemID";
+        string whereCondition = "CharID = @CharID AND ResourceID = @ResourceID";
         Dictionary<string, object> whereParams = new Dictionary<string, object>
         {
             {"@CharID", charId},
-            {"@ResourceItemID", resourceItemIdToAdd}
+            {"@ResourceID", resourceItemIdToAdd}
         };
 
         Dictionary<string, object> valuesToUpdate = new Dictionary<string, object>
@@ -321,19 +320,19 @@ public class InventoryManager : BaseManager
             return false;
         }
     }
-    public async Task<bool> RemoveInventoryResourceItemAsync(int charId, int resourceItemId)
+    public async Task<bool> RemoveInventoryResourceItemAsync(int charId, int resourceId)
     {
-        if (charId <= 0 || resourceItemId <= 0)
+        if (charId <= 0 || resourceId <= 0)
         {
             LogError("Invalid parameters provided for RemoveInventoryResourceItemAsync.");
             return false;
         }
 
-        string whereCondition = "CharID = @CharID AND ResourceItemID = @ResourceItemID";
+        string whereCondition = "CharID = @CharID AND ResourceID = @ResourceItemID";
         Dictionary<string, object> whereParams = new Dictionary<string, object>
         {
             {"@CharID", charId},
-            {"@ResourceItemID", resourceItemId}
+            {"@ResourceID", resourceId}
         };
 
         try
@@ -341,7 +340,7 @@ public class InventoryManager : BaseManager
             bool success = await DeleteDataAsync(InventoryResourceItemsTableName, whereCondition, whereParams);
             if (success == false)
             {
-                LogWarning($"Failed to remove resource item {resourceItemId} from inventory for character {charId}");
+                LogWarning($"Failed to remove resource item {resourceId} from inventory for character {charId}");
             }
             return success;
         }
@@ -845,13 +844,13 @@ public class InventoryManager : BaseManager
             return true; // Assume it exists on error to prevent potential duplicates
         }
     }
-    private async Task<bool> CheckIfInventoryResourceItemExistsAsync(int charId, int resourceItemId)
+    private async Task<bool> CheckIfInventoryResourceItemExistsAsync(int charId, int resourceId)
     {
         string query = $"SELECT COUNT(*) FROM `{InventoryResourceItemsTableName}` WHERE CharID = @CharID AND ResourceItemID = @ResourceItemID";
         Dictionary<string, object> parameters = new Dictionary<string, object>
         {
             {"@CharID", charId},
-            {"@ResourceItemID", resourceItemId}
+            {"@ResourceID", resourceId}
         };
 
         try
@@ -862,7 +861,7 @@ public class InventoryManager : BaseManager
         }
         catch (Exception ex)
         {
-            LogError($"Error checking if inventory resource item exists (CharID: {charId}, ResourceItemID: {resourceItemId})", ex);
+            LogError($"Error checking if inventory resource item exists (CharID: {charId}, ResourceItemID: {resourceId})", ex);
             return true; // Assume it exists on error to prevent potential duplicates
         }
     }
@@ -935,13 +934,13 @@ public class InventoryManager : BaseManager
             return true; // Assume it exists on error to prevent potential duplicates
         }
     }
-    private async Task<bool> CheckIfAccountInventoryResourceItemExistsAsync(int accountId, int resourceItemId)
+    private async Task<bool> CheckIfAccountInventoryResourceItemExistsAsync(int accountId, int resourceId)
     {
         string query = $"SELECT COUNT(*) FROM `{AccountInventoryResourceItemsTableName}` WHERE AccountID = @AccountID AND ResourceItemID = @ResourceItemID";
         Dictionary<string, object> parameters = new Dictionary<string, object>
         {
             {"@AccountID", accountId},
-            {"@ResourceItemID", resourceItemId}
+            {"@ResourceItemID", resourceId}
         };
 
         try
@@ -952,7 +951,7 @@ public class InventoryManager : BaseManager
         }
         catch (Exception ex)
         {
-            LogError($"Error checking if account inventory resource item exists (AccountID: {accountId}, ResourceItemID: {resourceItemId})", ex);
+            LogError($"Error checking if account inventory resource item exists (AccountID: {accountId}, ResourceItemID: {resourceId})", ex);
             return true; // Assume it exists on error to prevent potential duplicates
         }
     }
@@ -982,39 +981,166 @@ public class InventoryManager : BaseManager
 }
 
 [System.Serializable]
-public struct InventoryItemData : INetworkSerializable
+public struct ItemData : INetworkSerializable
 {
     public int ItemID;
+    public int ItemTemplateID;
+    public string ItemName;
+    public int ItemType;
+    public int Durability;
+    public int MaxDurability;
+    public float Damage;
+    public float Speed;
+    public int DamageType;
+    public int SlotType;
+    public float SlashResist;
+    public float ThrustResist;
+    public float CrushResist;
+    public float HeatResist;
+    public float ShockResist;
+    public float ColdResist;
+    public float MindResist;
+    public float CorruptResist;
+    public int Icon;
+    public string Colour;
+    public int Weight;
+    public int Model;
+    public bool Stackable;
+    public int StackSizeMax;
+    public int Price;
     public int SlotID;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {
         serializer.SerializeValue(ref ItemID);
+        serializer.SerializeValue(ref ItemTemplateID);
+        serializer.SerializeValue(ref ItemName);
+        serializer.SerializeValue(ref ItemType);
+        serializer.SerializeValue(ref Durability);
+        serializer.SerializeValue(ref MaxDurability);
+        serializer.SerializeValue(ref Damage);
+        serializer.SerializeValue(ref Speed);
+        serializer.SerializeValue(ref DamageType);
+        serializer.SerializeValue(ref SlotType);
+        serializer.SerializeValue(ref SlashResist);
+        serializer.SerializeValue(ref ThrustResist);
+        serializer.SerializeValue(ref CrushResist);
+        serializer.SerializeValue(ref HeatResist);
+        serializer.SerializeValue(ref ShockResist);
+        serializer.SerializeValue(ref ColdResist);
+        serializer.SerializeValue(ref MindResist);
+        serializer.SerializeValue(ref CorruptResist);
+        serializer.SerializeValue(ref Icon);
+        serializer.SerializeValue(ref Colour);
+        serializer.SerializeValue(ref Weight);
+        serializer.SerializeValue(ref Model);
+        serializer.SerializeValue(ref Stackable);
+        serializer.SerializeValue(ref StackSizeMax);
+        serializer.SerializeValue(ref Price);
         serializer.SerializeValue(ref SlotID);
     }
 }
 
 [System.Serializable]
-public struct InventoryResourceItemData : INetworkSerializable
+public struct ResourceItemData : INetworkSerializable
 {
-    public int ResourceItemID;
-    public int Quantity;
-
+    public ResourceData ResourceData;
+    public int ResourceSpawnID;
+    public int CurrentStackSize;
+    public int StackSizeMax;
+    public float Weight;
+    
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {
-        serializer.SerializeValue(ref ResourceItemID);
-        serializer.SerializeValue(ref Quantity);
+        serializer.SerializeValue(ref ResourceData);
+        serializer.SerializeValue(ref ResourceSpawnID);
+        serializer.SerializeValue(ref CurrentStackSize);
+        serializer.SerializeValue(ref StackSizeMax);
+        serializer.SerializeValue(ref Weight);
     }
 }
 
 [System.Serializable]
-public struct InventorySubComponentData : INetworkSerializable
+public struct ResourceData : INetworkSerializable
+{
+    public int ResourceSpawnID;
+    public string ResourceName;
+    public int ResourceTemplateID;
+    public int Type;
+    public int SubType;
+    public int Order;
+    public int Family;
+    public int Quality;
+    public int Toughness;
+    public int Strength;
+    public int Density;
+    public int Aura;
+    public int Energy;
+    public int Protein;
+    public int Carbohydrate;
+    public int Flavour;
+    public int Weight;
+    public int Value;
+    public DateTime StartDate;
+    public DateTime EndDate;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref ResourceSpawnID);
+        serializer.SerializeValue(ref ResourceName);
+        serializer.SerializeValue(ref ResourceTemplateID);
+        serializer.SerializeValue(ref Type);
+        serializer.SerializeValue(ref SubType);
+        serializer.SerializeValue(ref Order);
+        serializer.SerializeValue(ref Family);
+        serializer.SerializeValue(ref Quality);
+        serializer.SerializeValue(ref Toughness);
+        serializer.SerializeValue(ref Strength);
+        serializer.SerializeValue(ref Density);
+        serializer.SerializeValue(ref Aura);
+        serializer.SerializeValue(ref Energy);
+        serializer.SerializeValue(ref Protein);
+        serializer.SerializeValue(ref Carbohydrate);
+        serializer.SerializeValue(ref Flavour);
+        serializer.SerializeValue(ref Weight);
+        serializer.SerializeValue(ref Value);
+        serializer.SerializeValue(ref StartDate);
+        serializer.SerializeValue(ref EndDate);
+    }
+}
+
+[System.Serializable]
+public struct SubComponentData : INetworkSerializable
 {
     public int SubComponentID;
+    public string Name;
+    public int SubComponentTemplateID;
+    public int ComponentType;
+    public int Quality;
+    public int Toughness;
+    public int Strength;
+    public int Density;
+    public int Aura;
+    public int Energy;
+    public int Protein;
+    public int Carbohydrate;
+    public int Flavour;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {
         serializer.SerializeValue(ref SubComponentID);
+        serializer.SerializeValue(ref Name);
+        serializer.SerializeValue(ref SubComponentTemplateID);
+        serializer.SerializeValue(ref ComponentType);
+        serializer.SerializeValue(ref Quality);
+        serializer.SerializeValue(ref Toughness);
+        serializer.SerializeValue(ref Strength);
+        serializer.SerializeValue(ref Density);
+        serializer.SerializeValue(ref Aura);
+        serializer.SerializeValue(ref Energy);
+        serializer.SerializeValue(ref Protein);
+        serializer.SerializeValue(ref Carbohydrate);
+        serializer.SerializeValue(ref Flavour);
     }
 }
 
@@ -1034,9 +1160,9 @@ public struct AccountInventoryResult : INetworkSerializable
 {
     public bool Success;
     public string ErrorMessage;
-    public InventoryItemData[] Items;
-    public InventoryResourceItemData[] ResourceItems;
-    public InventorySubComponentData[] SubComponents;
+    public ItemData[] Items;
+    public ResourceItemData[] ResourceItems;
+    public SubComponentData[] SubComponents;
     public WorkbenchData[] Workbenches;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
@@ -1055,9 +1181,9 @@ public struct CharacterInventoryResult : INetworkSerializable
 {
     public bool Success;
     public string ErrorMessage;
-    public InventoryItemData[] Items;
-    public InventoryResourceItemData[] ResourceItems;
-    public InventorySubComponentData[] SubComponents;
+    public ItemData[] Items;
+    public ResourceItemData[] ResourceItems;
+    public SubComponentData[] SubComponents;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {
@@ -1066,20 +1192,5 @@ public struct CharacterInventoryResult : INetworkSerializable
         serializer.SerializeValue(ref Items);
         serializer.SerializeValue(ref ResourceItems);
         serializer.SerializeValue(ref SubComponents);
-    }
-}
-
-[System.Serializable]
-public struct WorkbenchListResult : INetworkSerializable
-{
-    public bool Success;
-    public string ErrorMessage;
-    public WorkbenchData[] Workbenches;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref Success);
-        serializer.SerializeValue(ref ErrorMessage);
-        serializer.SerializeValue(ref Workbenches);
     }
 }

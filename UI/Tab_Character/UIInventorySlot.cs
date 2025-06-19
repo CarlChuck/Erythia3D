@@ -61,7 +61,7 @@ public class UIInventorySlot : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             else
             {
                  // If icon not found in library, maybe show a default or hide?
-                Debug.LogWarning($"Icon not found in IconLibrary for ResourceType: {resourceItem.Resource.GetResourceType()}");
+                Debug.LogWarning($"Icon not found in IconLibrary for ResourceType: {resourceItem.Resource.Type}");
                 itemIconImage.color = Color.clear; // Hide if not found
                 itemIconImage.enabled = false;
             }

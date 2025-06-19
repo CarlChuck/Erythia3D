@@ -69,7 +69,6 @@ public class WorkBenchManager : MonoBehaviour
         }
         Debug.Log($"WorkBenchManager: Finished initializing {defaultWorkBenches.Count} default workbenches.");
     }
-
     public void GetAllWorkBenches()
     {
         List<WorkBench> allWorkBenches = new List<WorkBench>();
@@ -78,17 +77,18 @@ public class WorkBenchManager : MonoBehaviour
             allWorkBenches.Add(workBench);
         }
     }
-
     public WorkBench GetWorkbenchByType(int workbenchType) 
     {
         WorkBench workBench = null;
         foreach (WorkBench newWorkBench in defaultWorkBenches)
         {
-            if (newWorkBench.GetWorkbenchType() == workbenchType)
+            if (newWorkBench.GetWorkbenchType() != workbenchType)
             {
-                workBench = newWorkBench;
-                break;
+                continue;
             }
+
+            workBench = newWorkBench;
+            break;
         }
         return workBench;
     }

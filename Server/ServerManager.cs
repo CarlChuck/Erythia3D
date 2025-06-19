@@ -660,12 +660,12 @@ public class ServerManager : NetworkBehaviour
         if (success)
         {
             Debug.Log($"ServerManager: Character '{charName}' created successfully");
-            playerManager.ReceiveCharacterCreationResult(true, "");
+            playerManager.ReceiveCharacterCreationResultRpc(true, "");
         }
         else
         {
             Debug.LogError($"ServerManager: Character creation failed for '{charName}'");
-            playerManager.ReceiveCharacterCreationResult(false, "Failed to create character");
+            playerManager.ReceiveCharacterCreationResultRpc(false, "Failed to create character");
         }
     }
     public async Task ProcessCharacterListRequest(PlayerManager pManager, int accountID)
@@ -740,44 +740,7 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Inventory Loading Communication
-    private void ReceiveAccountInventory(AccountInventoryResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received account inventory result: Success={result.Success}, Items: {result.Items.Length}");
-    }
-    private void ReceiveCharacterInventory(CharacterInventoryResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received character inventory result: Success={result.Success}, Items: {result.Items.Length}");
-    }
-    private void ReceiveWorkbenchList(WorkbenchListResult result)
-    {
-        // Placeholder for client-side handling.
-        Debug.Log($"Client received workbench list result: Success={result.Success}, Workbenches: {result.Workbenches.Length}");
-    }
-    public async Task ProcessAccountInventoryRequest(int accountID, ulong senderClientId)
-    {
-        AccountInventoryResult result;
-        try
-        {
-            result = await ProcessAccountInventory(accountID);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during account inventory request: {ex.Message}\n{ex.StackTrace}");
-            result = new AccountInventoryResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error during account inventory request: {ex.Message}",
-                Items = Array.Empty<InventoryItemData>(),
-                ResourceItems = Array.Empty<InventoryResourceItemData>(),
-                SubComponents = Array.Empty<InventorySubComponentData>(),
-                Workbenches = Array.Empty<WorkbenchData>()
-            };
-        }
-        ReceiveAccountInventory(result);
-    }
-    public async Task ProcessCharacterInventoryRequest(int characterID, ulong senderClientId)
+    public async Task ProcessCharacterInventoryRequest(PlayerManager pManager, int characterID)
     {  
         CharacterInventoryResult result;
         try
@@ -791,73 +754,170 @@ public class ServerManager : NetworkBehaviour
             {
                 Success = false,
                 ErrorMessage = $"Server error during character inventory request: {ex.Message}",
-                Items = Array.Empty<InventoryItemData>(),
-                ResourceItems = Array.Empty<InventoryResourceItemData>(),
-                SubComponents = Array.Empty<InventorySubComponentData>()
+                Items = Array.Empty<ItemData>(),
+                ResourceItems = Array.Empty<ResourceItemData>(),
+                SubComponents = Array.Empty<SubComponentData>()
             };
         }
-        ReceiveCharacterInventory(result);
+        pManager.ReceiveCharacterInventoryRpc(result, characterID);
     }
-    public async Task ProcessWorkbenchListRequest(int accountID, ulong senderClientId)
+    public async Task ProcessAccountInventoryRequest(PlayerManager pManager, int accountID)
     {
-        WorkbenchListResult result;
+        AccountInventoryResult result;
         try
         {
-            result = await ProcessWorkbenchList(accountID);
+            result = await ProcessAccountInventory(accountID);
         }
         catch (Exception ex)
         {
-            Debug.LogError($"ServerManager: Exception during workbench list request: {ex.Message}\n{ex.StackTrace}");
-            result = new WorkbenchListResult
+            Debug.LogError($"ServerManager: Exception during account inventory request: {ex.Message}\n{ex.StackTrace}");
+            result = new AccountInventoryResult
             {
                 Success = false,
-                ErrorMessage = $"Server error during workbench list request: {ex.Message}",
+                ErrorMessage = $"Server error during account inventory request: {ex.Message}",
+                Items = Array.Empty<ItemData>(),
+                ResourceItems = Array.Empty<ResourceItemData>(),
+                SubComponents = Array.Empty<SubComponentData>(),
                 Workbenches = Array.Empty<WorkbenchData>()
             };
         }
-        ReceiveWorkbenchList(result);
+        pManager.ReceiveAccountInventoryRpc(result);
+    }
+    private async Task<CharacterInventoryResult> ProcessCharacterInventory(int characterID)
+    {
+        try
+        {
+            // Load all character inventory data (association tables)
+            List<Dictionary<string, object>> itemDictionaries = await InventoryManager.Instance.GetCharacterInventoryItemsAsync(characterID);
+            List<Dictionary<string, object>> resourceItemDictionaries = await InventoryManager.Instance.GetCharacterInventoryResourceItemsAsync(characterID);
+            List<Dictionary<string, object>> subComponentDictionaries = await InventoryManager.Instance.GetCharacterInventorySubComponentsAsync(characterID);
+
+            // Retrieve actual items from ItemManager
+            List<ItemData> itemDataList = new List<ItemData>();
+            foreach (Dictionary<string, object> itemDict in itemDictionaries)
+            {
+                int itemID = GetIntValue(itemDict, "ItemID", 0);
+                int slotID = GetIntValue(itemDict, "SlotID", 0);
+
+                Item item = ItemManager.Instance.GetItemInstanceByID(itemID);
+                if (item != null)
+                {
+                    ItemData itemData = ConvertToItemData(item, slotID);
+                    itemDataList.Add(itemData);
+                }
+            }
+
+            // Retrieve actual resources from ResourceManager
+            List<ResourceItemData> resourceDataList = new List<ResourceItemData>();
+            foreach (var resourceDict in resourceItemDictionaries)
+            {
+                int resourceID = GetIntValue(resourceDict, "ResourceID", 0);
+                int quantity = GetIntValue(resourceDict, "Quantity", 1);
+                
+                Resource resource = ResourceManager.Instance.GetResourceById(resourceID);
+                if (resource != null)
+                {
+                    ResourceItemData resourceItemData = ConvertToResourceData(resource, resourceID, quantity);
+                    resourceDataList.Add(resourceItemData);
+                }
+            }
+
+            // Retrieve actual subcomponents from ItemManager
+            List<SubComponentData> subComponentDataList = new List<SubComponentData>();
+            foreach (var subCompDict in subComponentDictionaries)
+            {
+                int subComponentID = GetIntValue(subCompDict, "SubComponentID", 0);
+                
+                SubComponent subComponent = ItemManager.Instance.GetSubComponentInstanceByID(subComponentID);
+                if (subComponent != null)
+                {
+                    SubComponentData subComponentData = ConvertToSubComponentData(subComponent);
+                    subComponentDataList.Add(subComponentData);
+                }
+            }
+            
+            return new CharacterInventoryResult 
+            { 
+                Success = true, 
+                ErrorMessage = "", 
+                Items = itemDataList.ToArray(),
+                ResourceItems = resourceDataList.ToArray(),
+                SubComponents = subComponentDataList.ToArray()
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"ServerManager: Exception during ProcessCharacterInventory: {ex.Message}\n{ex.StackTrace}");
+            return new CharacterInventoryResult 
+            { 
+                Success = false, 
+                ErrorMessage = $"Server error loading character inventory: {ex.Message}", 
+                Items = Array.Empty<ItemData>(),
+                ResourceItems = Array.Empty<ResourceItemData>(),
+                SubComponents = Array.Empty<SubComponentData>()
+            };
+        }
     }
     private async Task<AccountInventoryResult> ProcessAccountInventory(int accountID)
     {
-        Debug.Log($"ServerManager: ProcessAccountInventory ENTRY - accountID={accountID}");
-        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessAccountInventory called on client! This should only run on server.");
-            return new AccountInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>(), Workbenches = Array.Empty<WorkbenchData>() };
-        }
-
-        Debug.Log($"ServerManager: Calling InventoryManager.Instance methods...");
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new AccountInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>(), Workbenches = Array.Empty<WorkbenchData>() };
-        }
-        
         try
         {
-            // Load all account inventory data
             List<Dictionary<string, object>> itemDictionaries = await InventoryManager.Instance.GetAccountInventoryItemsAsync(accountID);
             List<Dictionary<string, object>> resourceItemDictionaries = await InventoryManager.Instance.GetAccountInventoryResourceItemsAsync(accountID);
             List<Dictionary<string, object>> subComponentDictionaries = await InventoryManager.Instance.GetAccountInventorySubComponentsAsync(accountID);
             List<Dictionary<string, object>> workbenchDictionaries = await InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync(accountID);
-            
-            Debug.Log($"ServerManager: Retrieved {itemDictionaries.Count} items, {resourceItemDictionaries.Count} resource items, {subComponentDictionaries.Count} subcomponents, {workbenchDictionaries.Count} workbenches");
-            
-            // Convert to network structs
-            InventoryItemData[] items = ConvertToInventoryItemData(itemDictionaries);
-            InventoryResourceItemData[] resourceItems = ConvertToInventoryResourceItemData(resourceItemDictionaries);
-            InventorySubComponentData[] subComponents = ConvertToInventorySubComponentData(subComponentDictionaries);
             WorkbenchData[] workbenches = ConvertToWorkbenchData(workbenchDictionaries);
             
-            Debug.Log($"ServerManager: Successfully processed account inventory. Returning {items.Length} items, {resourceItems.Length} resource items, {subComponents.Length} subcomponents, {workbenches.Length} workbenches.");
+            // Retrieve actual items from ItemManager
+            List<ItemData> itemDataList = new List<ItemData>();
+            foreach (Dictionary<string, object> itemDict in itemDictionaries)
+            {
+                int itemID = GetIntValue(itemDict, "ItemID", 0);
+                
+                Item item = ItemManager.Instance.GetItemInstanceByID(itemID);
+                if (item != null)
+                {
+                    ItemData itemData = ConvertToItemData(item, 0);
+                    itemDataList.Add(itemData);
+                }
+            }
+
+            // Retrieve actual resources from ResourceManager
+            List<ResourceItemData> resourceDataList = new List<ResourceItemData>();
+            foreach (var resourceDict in resourceItemDictionaries)
+            {
+                int resourceID = GetIntValue(resourceDict, "ResourceID", 0);
+                int quantity = GetIntValue(resourceDict, "Quantity", 1);
+                
+                Resource resource = ResourceManager.Instance.GetResourceById(resourceID);
+                if (resource != null)
+                {
+                    ResourceItemData resourceItemData = ConvertToResourceData(resource, resourceID, quantity);
+                    resourceDataList.Add(resourceItemData);
+                }
+            }
+
+            // Retrieve actual subcomponents from ItemManager
+            List<SubComponentData> subComponentDataList = new List<SubComponentData>();
+            foreach (var subCompDict in subComponentDictionaries)
+            {
+                int subComponentID = GetIntValue(subCompDict, "SubComponentID", 0);
+                
+                SubComponent subComponent = ItemManager.Instance.GetSubComponentInstanceByID(subComponentID);
+                if (subComponent != null)
+                {
+                    SubComponentData subComponentData = ConvertToSubComponentData(subComponent);
+                    subComponentDataList.Add(subComponentData);
+                }
+            }
+            
             return new AccountInventoryResult 
             { 
                 Success = true, 
                 ErrorMessage = "", 
-                Items = items,
-                ResourceItems = resourceItems,
-                SubComponents = subComponents,
+                Items = itemDataList.ToArray(),
+                ResourceItems = resourceDataList.ToArray(),
+                SubComponents = subComponentDataList.ToArray(),
                 Workbenches = workbenches
             };
         }
@@ -868,109 +928,9 @@ public class ServerManager : NetworkBehaviour
             { 
                 Success = false, 
                 ErrorMessage = $"Server error loading account inventory: {ex.Message}", 
-                Items = Array.Empty<InventoryItemData>(),
-                ResourceItems = Array.Empty<InventoryResourceItemData>(),
-                SubComponents = Array.Empty<InventorySubComponentData>(),
-                Workbenches = Array.Empty<WorkbenchData>()
-            };
-        }
-    }
-    private async Task<CharacterInventoryResult> ProcessCharacterInventory(int characterID)
-    {
-        Debug.Log($"ServerManager: ProcessCharacterInventory ENTRY - characterID={characterID}");
-        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessCharacterInventory called on client! This should only run on server.");
-            return new CharacterInventoryResult { Success = false, ErrorMessage = "Server-side method called on client", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>() };
-        }
-
-        Debug.Log($"ServerManager: Calling InventoryManager.Instance methods for character...");
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new CharacterInventoryResult { Success = false, ErrorMessage = "InventoryManager not available", Items = Array.Empty<InventoryItemData>(), ResourceItems = Array.Empty<InventoryResourceItemData>(), SubComponents = Array.Empty<InventorySubComponentData>() };
-        }
-        
-        try
-        {
-            // Load all character inventory data
-            List<Dictionary<string, object>> itemDictionaries = await InventoryManager.Instance.GetCharacterInventoryItemsAsync(characterID);
-            List<Dictionary<string, object>> resourceItemDictionaries = await InventoryManager.Instance.GetCharacterInventoryResourceItemsAsync(characterID);
-            List<Dictionary<string, object>> subComponentDictionaries = await InventoryManager.Instance.GetCharacterInventorySubComponentsAsync(characterID);
-            
-            Debug.Log($"ServerManager: Retrieved {itemDictionaries.Count} items, {resourceItemDictionaries.Count} resource items, {subComponentDictionaries.Count} subcomponents for character {characterID}");
-            
-            // Convert to network structs
-            InventoryItemData[] items = ConvertToInventoryItemData(itemDictionaries);
-            InventoryResourceItemData[] resourceItems = ConvertToInventoryResourceItemData(resourceItemDictionaries);
-            InventorySubComponentData[] subComponents = ConvertToInventorySubComponentData(subComponentDictionaries);
-            
-            Debug.Log($"ServerManager: Successfully processed character inventory. Returning {items.Length} items, {resourceItems.Length} resource items, {subComponents.Length} subcomponents.");
-            return new CharacterInventoryResult 
-            { 
-                Success = true, 
-                ErrorMessage = "", 
-                Items = items,
-                ResourceItems = resourceItems,
-                SubComponents = subComponents
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ProcessCharacterInventory: {ex.Message}\n{ex.StackTrace}");
-            return new CharacterInventoryResult 
-            { 
-                Success = false, 
-                ErrorMessage = $"Server error loading character inventory: {ex.Message}", 
-                Items = Array.Empty<InventoryItemData>(),
-                ResourceItems = Array.Empty<InventoryResourceItemData>(),
-                SubComponents = Array.Empty<InventorySubComponentData>()
-            };
-        }
-    }
-    private async Task<WorkbenchListResult> ProcessWorkbenchList(int accountID)
-    {
-        Debug.Log($"ServerManager: ProcessWorkbenchList ENTRY - accountID={accountID}");
-
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessWorkbenchList called on client! This should only run on server.");
-            return new WorkbenchListResult { Success = false, ErrorMessage = "Server-side method called on client", Workbenches = Array.Empty<WorkbenchData>() };
-        }
-
-        Debug.Log($"ServerManager: Calling InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync...");
-        if (InventoryManager.Instance == null)
-        {
-            Debug.LogError("ServerManager: InventoryManager.Instance is null!");
-            return new WorkbenchListResult { Success = false, ErrorMessage = "InventoryManager not available", Workbenches = Array.Empty<WorkbenchData>() };
-        }
-
-        try
-        {
-            // Load workbench data
-            List<Dictionary<string, object>> workbenchDictionaries = await InventoryManager.Instance.GetAccountOwnedWorkbenchesAsync(accountID);
-
-            Debug.Log($"ServerManager: Retrieved {workbenchDictionaries.Count} workbench records from database");
-
-            // Convert to network structs
-            WorkbenchData[] workbenches = ConvertToWorkbenchData(workbenchDictionaries);
-
-            Debug.Log($"ServerManager: Successfully processed workbench list. Returning {workbenches.Length} workbenches.");
-            return new WorkbenchListResult
-            {
-                Success = true,
-                ErrorMessage = "",
-                Workbenches = workbenches
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ProcessWorkbenchList: {ex.Message}\n{ex.StackTrace}");
-            return new WorkbenchListResult
-            {
-                Success = false,
-                ErrorMessage = $"Server error loading workbenches: {ex.Message}",
+                Items = Array.Empty<ItemData>(),
+                ResourceItems = Array.Empty<ResourceItemData>(),
+                SubComponents = Array.Empty<SubComponentData>(),
                 Workbenches = Array.Empty<WorkbenchData>()
             };
         }
@@ -1086,6 +1046,20 @@ public class ServerManager : NetworkBehaviour
         Debug.LogError($"ServerManager: GetWaypointByZoneID: No waypoint found for zoneID={zoneID}");
         return Vector3.zero;
     }
+    public Vector3 GetSpawnPositionForCharacter(int characterID)
+    {
+        // In a full implementation, you would look up the character's zone
+        // and find the appropriate ZoneManager.
+        // For now, we'll assume there is one active ZoneManager.
+        ZoneManager zoneManager = FindObjectOfType<ZoneManager>();
+        if (zoneManager != null && zoneManager.HasMarketWaypoint())
+        {
+            return zoneManager.GetMarketWaypoint().position;
+        }
+
+        Debug.LogWarning($"ServerManager: Could not find a ZoneManager with a MarketWaypoint. Defaulting to spawn position (0, 10, 0).");
+        return new Vector3(0, 10, 0); // Return a default spawn point if no waypoint is found
+    }
     #endregion
 
     #region Helper Methods
@@ -1105,73 +1079,133 @@ public class ServerManager : NetworkBehaviour
         }
         return defaultValue;
     }
-    private InventoryItemData[] ConvertToInventoryItemData(List<Dictionary<string, object>> dictionaries)
+    private float GetFloatValue(Dictionary<string, object> dict, string key, float defaultValue)
     {
-        InventoryItemData[] items = new InventoryItemData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
+        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
         {
-            var dict = dictionaries[i];
-            items[i] = new InventoryItemData
-            {
-                ItemID = GetIntValue(dict, "ItemID", 0),
-                SlotID = GetIntValue(dict, "SlotID", 0)
-            };
+            return Convert.ToSingle(value);
         }
-        return items;
+        return defaultValue;
     }
-    private InventoryResourceItemData[] ConvertToInventoryResourceItemData(List<Dictionary<string, object>> dictionaries)
+    private bool GetBoolValue(Dictionary<string, object> dict, string key, bool defaultValue)
     {
-        InventoryResourceItemData[] items = new InventoryResourceItemData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
+        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
         {
-            var dict = dictionaries[i];
-            items[i] = new InventoryResourceItemData
-            {
-                ResourceItemID = GetIntValue(dict, "ResourceItemID", 0),
-                Quantity = GetIntValue(dict, "Quantity", 1)
-            };
+            return Convert.ToBoolean(value);
         }
-        return items;
+        return defaultValue;
     }
-    private InventorySubComponentData[] ConvertToInventorySubComponentData(List<Dictionary<string, object>> dictionaries)
+    private DateTime GetDateTimeValue(Dictionary<string, object> dict, string key, DateTime defaultValue)
     {
-        InventorySubComponentData[] items = new InventorySubComponentData[dictionaries.Count];
-        for (int i = 0; i < dictionaries.Count; i++)
+        if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
         {
-            var dict = dictionaries[i];
-            items[i] = new InventorySubComponentData
-            {
-                SubComponentID = GetIntValue(dict, "SubComponentID", 0)
-            };
+            return Convert.ToDateTime(value);
         }
-        return items;
+        return defaultValue;
+    }
+
+    private static ItemData ConvertToItemData(Item item, int slotID)
+    {
+        ItemData itemData = new ItemData
+        {
+            ItemID = item.ItemID,
+            ItemTemplateID = item.ItemTemplateID,
+            ItemName = item.ItemName,
+            ItemType = (int)item.Type,
+            Durability = item.Durability,
+            MaxDurability = item.MaxDurability,
+            Damage = item.Damage,
+            Speed = item.Speed,
+            DamageType = (int)item.WeaponType,
+            SlotType = (int)item.Slot,
+            SlashResist = item.SlashResist,
+            ThrustResist = item.ThrustResist,
+            CrushResist = item.CrushResist,
+            HeatResist = item.HeatResist,
+            ShockResist = item.ShockResist,
+            ColdResist = item.ColdResist,
+            MindResist = item.MindResist,
+            CorruptResist = item.CorruptResist,
+            Icon = item.Icon,
+            Colour = item.ColourHex,
+            Weight = item.Weight,
+            Model = item.Model,
+            Stackable = item.IsStackable,
+            StackSizeMax = item.StackSizeMax,
+            Price = item.Price,
+            SlotID = slotID
+        };
+        
+        return itemData;
+    }
+    private static ResourceItemData ConvertToResourceData(Resource resource, int resourceID, int quantity)
+    {
+        ResourceData resourceData = new ResourceData
+        {
+            ResourceSpawnID = resourceID,
+            ResourceName = resource.ResourceName,
+            ResourceTemplateID = resource.ResourceTemplateID,
+            Type = (int)resource.Type,
+            SubType = (int)resource.SubType,
+            Order = (int)resource.Order,
+            Family = (int)resource.Family,
+            Quality = resource.Quality,
+            Toughness = resource.Toughness,
+            Strength = resource.Strength,
+            Density = resource.Density,
+            Aura = resource.Aura,
+            Energy = resource.Energy,
+            Protein = resource.Protein,
+            Carbohydrate = resource.Carbohydrate,
+            Flavour = resource.Flavour,
+            Weight = resource.Weight,
+            Value = resource.Value,
+            StartDate = resource.StartDate,
+            EndDate = resource.EndDate
+        };
+
+        ResourceItemData resourceItemData = new ResourceItemData
+        {
+            ResourceSpawnID = resourceID,
+            CurrentStackSize = quantity,
+            StackSizeMax = 1000, // Default or get from template
+            Weight = (float)(quantity * resource.Weight) / 100,
+            ResourceData = resourceData
+        };
+        return resourceItemData;
+    }
+    private static SubComponentData ConvertToSubComponentData(SubComponent subComponent)
+    {
+        SubComponentData subComponentData = new SubComponentData
+        {
+            SubComponentID = subComponent.SubComponentID,
+            Name = subComponent.Name,
+            SubComponentTemplateID = subComponent.SubComponentTemplateID,
+            ComponentType = subComponent.ComponentType,
+            Quality = subComponent.Quality,
+            Toughness = subComponent.Toughness,
+            Strength = subComponent.Strength,
+            Density = subComponent.Density,
+            Aura = subComponent.Aura,
+            Energy = subComponent.Energy,
+            Protein = subComponent.Protein,
+            Carbohydrate = subComponent.Carbohydrate,
+            Flavour = subComponent.Flavour
+        };
+        return subComponentData;
     }
     private WorkbenchData[] ConvertToWorkbenchData(List<Dictionary<string, object>> dictionaries)
     {
         WorkbenchData[] items = new WorkbenchData[dictionaries.Count];
         for (int i = 0; i < dictionaries.Count; i++)
         {
-            var dict = dictionaries[i];
+            Dictionary<string, object> dict = dictionaries[i];
             items[i] = new WorkbenchData
             {
                 WorkBenchType = GetIntValue(dict, "WorkBenchType", 1)
             };
         }
         return items;
-    }
-    public Vector3 GetSpawnPositionForCharacter(int characterID)
-    {
-        // In a full implementation, you would look up the character's zone
-        // and find the appropriate ZoneManager.
-        // For now, we'll assume there is one active ZoneManager.
-        ZoneManager zoneManager = FindObjectOfType<ZoneManager>();
-        if (zoneManager != null && zoneManager.HasMarketWaypoint())
-        {
-            return zoneManager.GetMarketWaypoint().position;
-        }
-
-        Debug.LogWarning($"ServerManager: Could not find a ZoneManager with a MarketWaypoint. Defaulting to spawn position (0, 10, 0).");
-        return new Vector3(0, 10, 0); // Return a default spawn point if no waypoint is found
     }
     #endregion
 

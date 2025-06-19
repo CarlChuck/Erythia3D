@@ -81,7 +81,6 @@ public class ItemManager : BaseManager
             }
             items = itemInstances;
             itemsById = itemInstances.ToDictionary(i => i.ItemID, i => i);
-            LinkItemsToTemplates();
 
             List<SubComponentTemplate> newSubCompTemplates = await LoadSubComponentTemplatesAsync(); // Get list
             if (newSubCompTemplates == null) 
@@ -389,9 +388,9 @@ public class ItemManager : BaseManager
     #region Item
     public async Task<long> SaveNewItemAsync(Item itemInstance)
     {
-        if (itemInstance == null || itemInstance.Template == null)
+        if (itemInstance == null)
         {
-            LogError("Cannot save null item instance or item without a template.");
+            LogError("Cannot save null item instance");
             return -1;
         }
 
@@ -796,20 +795,6 @@ public class ItemManager : BaseManager
         catch (Exception ex)
         {
             LogError($"Error mapping dictionary to SubComponent Instance (ID: {data.GetValueOrDefault("SubComponentID", "N/A")}): {ex.Message} - Data: {DictToString(data)}");
-        }
-    }
-    private void LinkItemsToTemplates()
-    {
-        foreach (var itemInstance in items)
-        {
-            if (templatesById.TryGetValue(itemInstance.ItemTemplateID, out ItemTemplate template))
-            {
-                itemInstance.Template = template;
-            }
-            else
-            {
-                LogWarning($"Item instance ID {itemInstance.ItemID} has missing template reference (TemplateID: {itemInstance.ItemTemplateID}).");
-            }
         }
     }
     private void LinkSubComponentsToTemplates()

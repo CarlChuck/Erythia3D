@@ -163,7 +163,7 @@ public abstract class ResourceNode : Interactable
         ResourceItem resourceItem = Instantiate(resourceItemPrefab, transform.position, Quaternion.identity);
         // Ensure at least 1 resource is generated, even with 0 damage
         int quantity = Mathf.Max(1, amount);
-        resourceItem.SetResourceItem(resource, quantity);
+        //resourceItem.SetResourceItem(resource, quantity);
         return resourceItem;
     }
 

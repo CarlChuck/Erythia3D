@@ -99,11 +99,11 @@ public class UITooltipManager : MonoBehaviour
                 yield break; 
             }
 
-            header = resourceItem.Resource.GetResourceType().ToString() ?? "Resource";
+            header = resourceItem.Resource.Type.ToString() ?? "Resource";
             StringBuilder sb = new StringBuilder();
             sb.AppendLine($"Resource: {resourceItem.Resource.ResourceName}");
             sb.AppendLine($"{resourceItem.Resource.SubType}" + $" {resourceItem.Resource.Type}");
-            sb.AppendLine($"{resourceItem.Resource.resourceTemplate.Family}");
+            sb.AppendLine($"{resourceItem.Resource.Family}");
             sb.AppendLine("");
             sb.AppendLine($"Quality: {resourceItem.Resource.Quality}");
             if (CheckIfResourceIsMineral(resourceItem))
@@ -121,7 +121,7 @@ public class UITooltipManager : MonoBehaviour
                 sb.AppendLine($"Carbohydrate: {resourceItem.Resource.Carbohydrate}");
                 sb.AppendLine($"Flavour: {resourceItem.Resource.Flavour}");
             }
-            if (resourceItem.Resource.Type == ResourceType.Coal || resourceItem.Resource.resourceTemplate.Family == ResourceFamily.Wood)
+            if (resourceItem.Resource.Type == ResourceType.Coal || resourceItem.Resource.Family == ResourceFamily.Wood)
             {
                 sb.AppendLine($"Energy: {resourceItem.Resource.Energy}");
             }
@@ -222,14 +222,13 @@ public class UITooltipManager : MonoBehaviour
 
     private bool CheckIfResourceIsMineral(ResourceItem resourceItem)
     {
-        if (resourceItem.Resource.resourceTemplate.Family == ResourceFamily.Meat)
+        if (resourceItem.Resource.Family == ResourceFamily.Meat)
         {
             return false;
         }
         else
         {
             return true;
-        }
-
+        }        
     }
 }

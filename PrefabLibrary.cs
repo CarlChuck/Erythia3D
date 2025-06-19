@@ -4,6 +4,9 @@ public class PrefabLibrary : MonoBehaviour
 {
     [Header("Prefabs")]
     [SerializeField] private Item itemPrefab;
+    [SerializeField] private ItemTemplate itemTemplatePrefab;
+    [SerializeField] private SubComponentTemplate subComponentTemplatePrefab;
+    [SerializeField] private Resource resourcePrefab;
     [SerializeField] private ResourceItem resourceItemPrefab;
     [SerializeField] private SubComponent subComponentPrefab;
 
@@ -33,5 +36,17 @@ public class PrefabLibrary : MonoBehaviour
     public SubComponent GetSubComponentPrefab()
     {
         return subComponentPrefab;
+    }
+    public ItemTemplate GetItemTemplatePrefab()
+    {
+        return itemTemplatePrefab;
+    }
+    public SubComponentTemplate GetSubComponentTemplatePrefab()
+    {
+        return subComponentTemplatePrefab;
+    }
+    public Resource GetResourcePrefab()
+    {
+        return resourcePrefab;   
     }
 }

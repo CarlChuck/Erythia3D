@@ -9,19 +9,23 @@ public class ResourceItem : MonoBehaviour
     public float Weight { get; private set; } = 1.0f;
     public int StackSizeMax { get; private set; } = 1;
     public int Price { get; private set; } = 0;
-
     public Sprite IconSprite { get; private set; }
 
-    private int resourceItemID = 0; // Stores the ResourceItemID from the database
+    public Resource Resource
+    {
+        get { return resource; }
+    }
 
-    public Resource Resource => resource;
-    public int CurrentStackSize => currentStackSize;
+    public int CurrentStackSize
+    {
+        get { return currentStackSize; }
+    }
 
-    public void SetResourceItem(Resource resource, int quantity = 1)
+    public void SetResourceItem(Resource resource, int stackSize, int quantity = 1)
     {
         this.resource = resource;
         currentStackSize = quantity;
-        StackSizeMax = resource.GetResourceTemplate()?.StackSizeMax ?? 100000;
+        StackSizeMax = stackSize;
         Weight = (float)(currentStackSize * resource.Weight) / 100;
         Price = resource.Value * CurrentStackSize;
         IconSprite = IconLibrary.Instance.GetIconByResourceType(resource.Type);
@@ -55,27 +59,6 @@ public class ResourceItem : MonoBehaviour
         currentStackSize = stackSize;
         Weight = (float)(currentStackSize * resource.Weight) / 100;
         Price = resource.Value * CurrentStackSize;
-    }
-
-    public void SetDatabaseID(int id)
-    {
-        if (resourceItemID == 0 && id > 0)
-        {
-            resourceItemID = id;
-        }
-        else if (id <= 0)
-        {
-             Debug.LogWarning($"Attempted to set invalid Database ID ({id}) for ResourceItem '{resource?.ResourceName ?? "Unknown"}'.", this);
-        }
-        else
-        {
-            Debug.LogWarning($"Attempted to change Database ID for ResourceItem '{resource?.ResourceName ?? "Unknown"}' from {resourceItemID} to {id}. This is usually not allowed.", this);
-        }
-    }
-
-    public int GetDatabaseID()
-    {
-        return resourceItemID;
     }
     public string GetDescription()
     {

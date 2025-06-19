@@ -12,7 +12,7 @@ public class Crafter : MonoBehaviour
         itemManager = ItemManager.Instance;
         inventoryManager = InventoryManager.Instance;
     }
-    
+    /*
     public object CraftRecipe(PlayerStatBlock character, Recipe recipe, Resource res1, Resource res2, Resource res3, Resource res4, SubComponent component1, SubComponent component2, SubComponent component3, SubComponent component4, SubComponent component5, SubComponent component6, SubComponent component7, SubComponent component8)
     {
         if (recipe != null)
@@ -105,6 +105,7 @@ public class Crafter : MonoBehaviour
         }
 
     }
+    */
     public async Task<Item> CraftItem(PlayerStatBlock character, Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         ItemTemplate itemTemplate = recipe.OutputItem;
@@ -436,6 +437,7 @@ public class Crafter : MonoBehaviour
             return statValueToReturn;
         }
     }
+    /*
     public bool IsResourcesAndSubComponentsMatching(Recipe recipe, Resource[] resources, SubComponent[] components)
     {
         for (int i = 0; i < resources.Length; i++)
@@ -475,6 +477,7 @@ public class Crafter : MonoBehaviour
         }
         return true;
     }
+    */
     public Item MapTemplateToItem(ItemTemplate itemTemplate)
     {
         Item item = Instantiate(PrefabLibrary.Instance.GetItemPrefab());

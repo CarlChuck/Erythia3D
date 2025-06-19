@@ -73,10 +73,7 @@ public class ResourceManager : BaseManager
             loadedResourceInstances = instances;
             resourcesById = loadedResourceInstances.ToDictionary(i => i.ResourceSpawnID, i => i);
 
-            // 4. Link Instances to Templates
-            LinkInstancesToTemplates();
-
-            // 5. Mark as Initialized and Notify
+            // 4. Mark as Initialized and Notify
             await Task.Factory.StartNew(() => {
                 isInitialized = true;
                 NotifyDataLoaded();
@@ -246,10 +243,10 @@ public class ResourceManager : BaseManager
         // 7. Save to Database using a transaction
         try
         {
-            using (var connection = new MySqlConnection(DatabaseManager.Instance.GetConnectionString()))
+            await using (MySqlConnection connection = new MySqlConnection(DatabaseManager.Instance.GetConnectionString()))
             {
                 await connection.OpenAsync();
-                using (var transaction = await connection.BeginTransactionAsync())
+                await using (MySqlTransaction transaction = await connection.BeginTransactionAsync())
                 {
                     try
                     {
@@ -260,6 +257,8 @@ public class ResourceManager : BaseManager
                             { "ResourceTemplateID", template.ResourceTemplateID },
                             { "Type", (int)template.Type },
                             { "SubType", (int)regionType },
+                            { "Order", (int)template.Order },
+                            {"Family", (int)template.Family},
                             { "Quality", quality },
                             { "Toughness", toughness },
                             { "Strength", strength },
@@ -279,50 +278,49 @@ public class ResourceManager : BaseManager
                         string parameters = string.Join(", ", valuesToSave.Keys.Select(k => $"@{k}"));
                         string query = $"INSERT INTO `{ResourceInstancesTableName}` ({columns}) VALUES ({parameters}); SELECT LAST_INSERT_ID();";
 
-                        using (var cmd = new MySqlCommand(query, connection, transaction))
+                        await using MySqlCommand cmd = new MySqlCommand(query, connection, transaction);
+                        foreach (var kvp in valuesToSave)
                         {
-                            foreach (var kvp in valuesToSave)
-                            {
-                                cmd.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? DBNull.Value);
-                            }
+                            cmd.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? DBNull.Value);
+                        }
 
-                            // Execute the command and get the ID
-                            object result = await cmd.ExecuteScalarAsync();
-                            if (result != null && result != DBNull.Value)
+                        // Execute the command and get the ID
+                        object result = await cmd.ExecuteScalarAsync();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            long newId = Convert.ToInt64(result);
+                            if (newId > 0)
                             {
-                                long newId = Convert.ToInt64(result);
-                                if (newId > 0)
-                                {
-                                    // Commit the transaction
-                                    await transaction.CommitAsync();
+                                // Commit the transaction
+                                await transaction.CommitAsync();
 
-                                    // Set the resource data
-                                    newResource.SetResource(
-                                        (int)newId,
-                                        randomName,
-                                        template.ResourceTemplateID,
-                                        (int)template.Type,
-                                        (int)regionType,
-                                        quality,
-                                        toughness,
-                                        strength,
-                                        density,
-                                        aura,
-                                        energy,
-                                        protein,
-                                        carbohydrate,
-                                        flavour,
-                                        weight,
-                                        value,
-                                        startDate,
-                                        endDate
-                                    );
-                                    newResource.SetResourceTemplate(template);
-                                    loadedResourceInstances.Add(newResource);
-                                    resourcesById[newResource.ResourceSpawnID] = newResource;
-                                    //LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
-                                    return newResource;
-                                }
+                                // Set the resource data
+                                newResource.SetResource(
+                                    (int)newId,
+                                    randomName,
+                                    template.ResourceTemplateID,
+                                    (int)template.Type,
+                                    (int)regionType,
+                                    (int)template.Order,
+                                    (int)template.Family,
+                                    quality,
+                                    toughness,
+                                    strength,
+                                    density,
+                                    aura,
+                                    energy,
+                                    protein,
+                                    carbohydrate,
+                                    flavour,
+                                    weight,
+                                    value,
+                                    startDate,
+                                    endDate
+                                );
+                                loadedResourceInstances.Add(newResource);
+                                resourcesById[newResource.ResourceSpawnID] = newResource;
+                                //LogInfo($"Spawned and saved new Resource '{randomName}' with ID: {newId} from template ID: {template.ResourceTemplateID}");
+                                return newResource;
                             }
                         }
                     }
@@ -361,6 +359,8 @@ public class ResourceManager : BaseManager
             {"ResourceTemplateID", "INT"},
             {"Type", "INT"},
             {"SubType", "INT"},
+            {"Order", "INT"},
+            {"Family","INT"},
             {"Quality", "INT"},
             {"Toughness", "INT"},
             {"Strength", "INT"},
@@ -482,6 +482,8 @@ public class ResourceManager : BaseManager
                 data["ResourceTemplateID"] != DBNull.Value ? Convert.ToInt32(data["ResourceTemplateID"]) : -1,
                 data["Type"] != DBNull.Value ? Convert.ToInt32(data["Type"]) : 0,
                 data["SubType"] != DBNull.Value ? Convert.ToInt32(data["SubType"]) : 0,
+                data["Order"] != DBNull.Value ? Convert.ToInt32(data["Order"]) : 0,
+                data["Family"] != DBNull.Value ? Convert.ToInt32(data["Family"]) : 0,
                 data["Quality"] != DBNull.Value ? Convert.ToInt32(data["Quality"]) : 0,
                 data["Toughness"] != DBNull.Value ? Convert.ToInt32(data["Toughness"]) : 0,
                 data["Strength"] != DBNull.Value ? Convert.ToInt32(data["Strength"]) : 0,
@@ -545,20 +547,6 @@ public class ResourceManager : BaseManager
     private int ClampNumber(int value, int min = 1, int max = 1000)
     {
         return Math.Max(min, Math.Min(max, value));
-    }
-    private void LinkInstancesToTemplates()
-    {
-        foreach (var resource in loadedResourceInstances)
-        {
-            if (templatesById.TryGetValue(resource.GetResourceTemplateID(), out ResourceTemplate template))
-            {
-                resource.SetResourceTemplate(template);
-            }
-            else
-            {
-                LogWarning($"Resource instance '{resource.ResourceName}' (ID: {resource.ResourceSpawnID}) has missing template reference (TemplateID: {resource.GetResourceTemplateID()}).");
-            }
-        }
     }
     #endregion
 }

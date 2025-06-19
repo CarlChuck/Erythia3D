@@ -87,24 +87,9 @@ public class PlayerManager : NetworkBehaviour
     private TaskCompletionSource<bool> loginCompletionSource;
     private TaskCompletionSource<bool> charCreateCompletionSource;
     private TaskCompletionSource<bool> charListCompletionSource;
-
-    internal bool accountInventoryReceived;
-    internal AccountInventoryResult currentAccountInventoryResult;
-
-    internal bool characterInventoryReceived;
-    internal CharacterInventoryResult currentCharacterInventoryResult;
-
-    internal bool workbenchListReceived;
-    internal WorkbenchListResult currentWorkbenchListResult;
-
-    internal bool waypointResultReceived;
-    internal WaypointResult currentWaypointResult;
-
-    internal bool playerZoneInfoResultReceived;
-    internal PlayerZoneInfoResult currentPlayerZoneInfoResult;
-
-    internal bool serverZoneLoadResultReceived;
-    internal ServerZoneLoadResult currentServerZoneLoadResult;
+    private TaskCompletionSource<bool> charInventoryCompletionSource;
+    private TaskCompletionSource<bool> accountInventoryCompletionSource;
+    private TaskCompletionSource<bool> workbenchesCompletionSource;
     #endregion
 
     #region Helper Access Properties
@@ -263,15 +248,11 @@ public class PlayerManager : NetworkBehaviour
             Debug.Log("PlayerManager: Login completed successfully");
         }
     }
-    
-    [Rpc(SendTo.Server)]
-    private void LoginRpc()
+    [Rpc(SendTo.Server)] private void LoginRpc()
     {
         ServerManager.HandleLogin(this, SteamID, AccountID);
     }
-
-    [Rpc(SendTo.Owner)]
-    public void ReceiveLoginRpc(LoginResult result)
+    [Rpc(SendTo.Owner)] public void ReceiveLoginRpc(LoginResult result)
     {
         AccountID = result.AccountID;
         AccountName = result.AccountName;
@@ -322,15 +303,11 @@ public class PlayerManager : NetworkBehaviour
             }
         }
     }
-
-    [Rpc(SendTo.Server)]
-    private void CreateCharacterRpc(string characterName, int charRace, int charGender, int charFace)
+    [Rpc(SendTo.Server)] private void CreateCharacterRpc(string characterName, int charRace, int charGender, int charFace)
     {
         ServerManager.Instance.HandleCharacterCreation(this, FamilyName ,characterName, charRace, charGender, charFace);
     }
-
-    [Rpc(SendTo.Owner)]
-    public void ReceiveCharacterCreationResult(bool success, string errorMessage)
+    [Rpc(SendTo.Owner)] public void ReceiveCharacterCreationResultRpc(bool success, string errorMessage)
     {
         Debug.Log($"PlayerManager: Character creation result - Success: {success}");
         if (!success)
@@ -376,15 +353,11 @@ public class PlayerManager : NetworkBehaviour
             }
         }
     }
-    
-    [Rpc(SendTo.Server)]
-    private void RequestCharacterListRpc(int accountID)
+    [Rpc(SendTo.Server)] private void RequestCharacterListRpc(int accountID)
     {
         ServerManager.Instance.ProcessCharacterListRequest(this, accountID);
     }
-
-    [Rpc(SendTo.Owner)]
-    public void ReceiveCharacterListRpc(CharacterListResult result)
+    [Rpc(SendTo.Owner)] public void ReceiveCharacterListRpc(CharacterListResult result)
     {
         if (!result.Success)
         {
@@ -440,9 +413,7 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Character Data
-
-    [Rpc(SendTo.Server)]
-    private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData)
+    [Rpc(SendTo.Server)] private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData)
     {
         if (!IsServer)
         {
@@ -542,9 +513,7 @@ public class PlayerManager : NetworkBehaviour
     #endregion
     
     #region Character Spawning
-
-    [Rpc(SendTo.Server)]
-    private void SpawnNetworkedPlayerRpc(int characterID, int characterRace, int characterGender)
+    [Rpc(SendTo.Server)] private void SpawnNetworkedPlayerRpc(int characterID, int characterRace, int characterGender)
     {
         //TODO
         ulong clientId = 0;
@@ -610,9 +579,7 @@ public class PlayerManager : NetworkBehaviour
         NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, spawnPosition);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
-
-    [Rpc(SendTo.Owner)]
-    private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
+    [Rpc(SendTo.Owner)] private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
     {
         Debug.Log(
             $"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
@@ -720,235 +687,166 @@ public class PlayerManager : NetworkBehaviour
     #endregion
     
     #region Inventory
-    public async Task LoadAllInventoriesAsync()
+    private async Task LoadAllInventoriesAsync()
     {
         await LoadAllCharactersInventoryAsync();
         await LoadAccountInventoryAsync();
-        await LoadOwnedWorkbenchesAsync();
     }
-    #region Character Inventory
     
-    [Rpc(SendTo.Server)]
-    internal void RequestCharacterInventoryRpc(int characterID)
-    {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log(
-                $"PlayerManager (Server): Received character inventory request, calling ServerManager for characterID={characterID}");
-
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessCharacterInventoryRequest...");
-                //TODO fix this
-                //ServerManager.Instance.ProcessCharacterInventoryRequest(characterID, serverRpcParams.Receive.SenderClientId);
-                Debug.Log(
-                    $"PlayerManager (Server): ServerManager.ProcessCharacterInventoryRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError(
-                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process character inventory request.");
-
-                // Send error response back to client
-                CharacterInventoryResult errorResult = new CharacterInventoryResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    Items = new InventoryItemData[0],
-                    ResourceItems = new InventoryResourceItemData[0],
-                    SubComponents = new InventorySubComponentData[0]
-                };
-
-                ReceiveCharacterInventoryRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestCharacterInventoryServerRpc called on client! This should only run on server.");
-        }
-    }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceiveCharacterInventoryRpc(CharacterInventoryResult result)
-    {
-        // This runs on the client - handle the character inventory result
-        Debug.Log(
-            $"PlayerManager (Client): Received character inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
-        HandleCharacterInventoryResult(result);
-    }
-    private void HandleCharacterInventoryResult(CharacterInventoryResult result)
-    {
-        currentCharacterInventoryResult = result;
-        characterInventoryReceived = true;
-        Debug.Log($"Client: Received character inventory result. Success: {result.Success}");
-    }
+    //Character Inventories
     private async Task LoadAllCharactersInventoryAsync()
-    {
+    {        
+        if (!IsServer)
+        { 
+            charInventoryCompletionSource = new();
+            foreach (PlayerStatBlock character in PlayerCharacters)
+            {
+                RequestCharacterInventoryRpc(character.GetCharacterID());
+            }
+
+            // Wait for login response with timeout (10 seconds)
+            Task delayTask = Task.Delay(10000);
+            Task completedTask = await Task.WhenAny(charInventoryCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
+            {
+                Debug.LogError("PlayerManager: Character Inventory Load timeout after 10 seconds");
+                throw new TimeoutException("Character Inventory Load request timed out");
+            }
+            
+            // Check if creation was successful
+            bool creationSuccess = await charInventoryCompletionSource.Task;
+            
+            if (!creationSuccess)
+            {
+                Debug.LogError($"PlayerManager: Failed to load characterInventory");
+            }
+        }
         if (PlayerCharacters == null || PlayerCharacters.Count == 0)
         {
             Debug.LogWarning("InventoryDataHandler: No characters to load inventory for.");
             return;
         }
-
-        foreach (var character in PlayerCharacters)
+    }
+    [Rpc(SendTo.Server)] private void RequestCharacterInventoryRpc(int characterID)
+    {
+        ServerManager.Instance.ProcessCharacterInventoryRequest(this, characterID);
+    }
+    [Rpc(SendTo.Owner)] public void ReceiveCharacterInventoryRpc(CharacterInventoryResult result, int characterId)
+    {        
+        if (!result.Success)
         {
-            await LoadCharacterInventoryAsync(character);
+            Debug.LogError($"PlayerManager: CharacterInventory request failed: {result.ErrorMessage ?? "Unknown error"}");
+            charInventoryCompletionSource?.SetResult(false);
+            return;
         }
-    }
-    private async Task LoadCharacterInventoryAsync(PlayerStatBlock character)
-    {
-
-    }
-    private async Task ProcessCharacterInventoryResult(CharacterInventoryResult result, PlayerStatBlock character, Inventory inventory, EquipmentProfile equipment)
-    {
-        int charId = character.GetCharacterID();
+        PlayerStatBlock characterData = GetCharacterByID(characterId);
         
         try
         {            
-            inventory.ClearInventory();
-            equipment.ClearEquipmentProfile();
+            characterData.GetInventory().ClearInventory();
+            characterData.GetEquipmentProfile().ClearEquipmentProfile();
 
             // Load Inventory Items and Equip them if applicable
-            foreach (var itemData in result.Items)
+            foreach (ItemData itemData in result.Items)
             {
-                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemData.ItemID);
-                if (itemInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: Item with ID {itemData.ItemID} not found via ItemManager. Cannot load.");
-                    continue;
-                }
-
+                Item itemInstance = Instantiate(PrefabLibrary.Instance.GetItemPrefab(), characterData.GetInventory().transform);
+                MapItemDataToItem(itemData, itemInstance);
+                
                 if (itemData.SlotID > 0)
                 {
                     // Equip Item
-                    EquipItem(itemData, itemInstance, equipment, inventory);
+                    EquipItem(itemData, itemInstance, characterData.GetEquipmentProfile(),characterData.GetInventory());
                 }
                 else
                 {
                     // Add to Inventory Bag
-                    if (!inventory.AddItem(itemInstance))
+                    if (!characterData.GetInventory().AddItem(itemInstance))
                     {
-                        Debug.LogWarning($"InventoryDataHandler: Failed to add item {itemInstance.ItemName} (ID: {itemData.ItemID}) to inventory bag for character {charId}.");
+                        Debug.LogWarning($"InventoryDataHandler: Failed to add item {itemInstance.ItemName} (ID: {itemData.ItemID}) to inventory bag for character {characterId}.");
                     }
                 }
             }
 
             // Load Inventory Resource Items
-            foreach (var resourceItemData in result.ResourceItems)
+            foreach (ResourceItemData resourceItemData in result.ResourceItems)
             {
-                ResourceItem resourceItemInstance = GetResourceItemById(resourceItemData.ResourceItemID);
-                if (resourceItemInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: ResourceItem instance with ID {resourceItemData.ResourceItemID} not found. Cannot load.");
-                    continue;
-                }
+                ResourceItem resourceItemInstance = Instantiate(PrefabLibrary.Instance.GetResourceItemPrefab(), characterData.GetInventory().transform);
+                Resource resourceInstance = Instantiate(PrefabLibrary.Instance.GetResourcePrefab(), resourceItemInstance.transform);
+                MapResourceItemDataToResourceItem(resourceItemData, resourceInstance, resourceItemInstance);
 
-                if (!inventory.AddResourceItem(resourceItemInstance))
+                if (!characterData.GetInventory().AddResourceItem(resourceItemInstance))
                 {
-                    Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceItemID}) to inventory bag for character {charId}.");
+                    Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceSpawnID}) to inventory bag for character {characterId}.");
                 }
             }
 
             // Load Inventory SubComponents
-            foreach (var subCompData in result.SubComponents)
+            foreach (SubComponentData subCompData in result.SubComponents)
             {
-                SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subCompData.SubComponentID);
-                if (subComponentInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: SubComponent instance with ID {subCompData.SubComponentID} not found via ItemManager. Cannot load.");
-                    continue;
-                }
+                SubComponent subComponentInstance = Instantiate(PrefabLibrary.Instance.GetSubComponentPrefab(), characterData.GetInventory().transform);
+                MapSubComponentDataToSubComponent(subCompData,subComponentInstance);
 
-                if (!inventory.AddSubComponent(subComponentInstance))
+                if (!characterData.GetInventory().AddSubComponent(subComponentInstance))
                 {
-                    Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to inventory bag for character {charId}.");
+                    Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to inventory bag for character {characterId}.");
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"InventoryDataHandler: Error processing character inventory result for character {charId}: {ex.Message}\n{ex.StackTrace}");
+            Debug.LogError($"InventoryDataHandler: Error processing character inventory result for character {characterId}: {ex.Message}\n{ex.StackTrace}");
         }
     }
-    #endregion
     
-    #region Account Inventory
-    [Rpc(SendTo.Server)]
-    internal void RequestAccountInventoryRpc(int accountID)
-    {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received account inventory request, calling ServerManager for accountID={accountID}");
-
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessAccountInventoryRequest...");
-                //TODO fix this bs
-                //ServerManager.Instance.ProcessAccountInventoryRequest(accountID, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessAccountInventoryRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process account inventory request.");
-
-                // Send error response back to client
-                AccountInventoryResult errorResult = new AccountInventoryResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    Items = Array.Empty<InventoryItemData>(),
-                    ResourceItems = Array.Empty<InventoryResourceItemData>(),
-                    SubComponents = Array.Empty<InventorySubComponentData>(),
-                    Workbenches = Array.Empty<WorkbenchData>()
-                };
-                ReceiveAccountInventoryRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestAccountInventoryServerRpc called on client! This should only run on server.");
-        }
-    }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceiveAccountInventoryRpc(AccountInventoryResult result)
-    {
-        // This runs on the client - handle the account inventory result
-        Debug.Log(
-            $"PlayerManager (Client): Received account inventory result from server. Success: {result.Success}, ItemCount: {result.Items?.Length ?? 0}");
-        HandleAccountInventoryResult(result);
-    }
-    private void HandleAccountInventoryResult(AccountInventoryResult result)
-    {
-        currentAccountInventoryResult = result;
-        accountInventoryReceived = true;
-        Debug.Log($"Client: Received account inventory result. Success: {result.Success}");
-    }
+    //Account Inventory and Workbenches
     private async Task LoadAccountInventoryAsync()
     {
-
+        if (!IsServer)
+        { 
+            accountInventoryCompletionSource = new();
+            RequestAccountInventoryRpc(AccountID);
+            
+            // Wait for login response with timeout (10 seconds)
+            Task delayTask = Task.Delay(10000);
+            Task completedTask = await Task.WhenAny(accountInventoryCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
+            {
+                Debug.LogError("PlayerManager: AccountInventory Load timeout after 10 seconds");
+                throw new TimeoutException("AccountInventory Load request timed out");
+            }
+            
+            // Check if creation was successful
+            bool creationSuccess = await accountInventoryCompletionSource.Task;
+            
+            if (!creationSuccess)
+            {
+                Debug.LogError($"PlayerManager: Failed to load AccountInventory");
+            }
+        }
     }
-    private async Task ProcessAccountInventoryResult(AccountInventoryResult result)
+    [Rpc(SendTo.Server)] private void RequestAccountInventoryRpc(int accountID)
     {
+        ServerManager.Instance.ProcessAccountInventoryRequest(this, accountID);
+    }
+    [Rpc(SendTo.Owner)] public void ReceiveAccountInventoryRpc(AccountInventoryResult result)
+    {        
+        if (!result.Success)
+        {
+            Debug.LogError($"PlayerManager: AccountInventory request failed: {result.ErrorMessage ?? "Unknown error"}");
+            accountInventoryCompletionSource?.SetResult(false);
+            return;
+        }
         try
         {
             HomeInventory.ClearInventory();
 
             // Load Inventory Items
-            foreach (var itemData in result.Items)
+            foreach (ItemData itemData in result.Items)
             {
-                Item itemInstance = ItemManager.Instance.GetItemInstanceByID(itemData.ItemID);
-                if (itemInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: Item with ID {itemData.ItemID} not found via ItemManager for account inventory. Cannot load.");
-                    continue;
-                }
+                Item itemInstance = Instantiate(PrefabLibrary.Instance.GetItemPrefab(), HomeInventory.transform);
+                MapItemDataToItem(itemData, itemInstance);
 
                 if (!HomeInventory.AddItem(itemInstance))
                 {
@@ -957,39 +855,56 @@ public class PlayerManager : NetworkBehaviour
             }
 
             // Load Account Inventory Resource Items
-            foreach (var resourceItemData in result.ResourceItems)
+            foreach (ResourceItemData resourceItemData in result.ResourceItems)
             {
-                ResourceItem resourceItemInstance = GetResourceItemById(resourceItemData.ResourceItemID);
-                if (resourceItemInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: ResourceItem instance with ID {resourceItemData.ResourceItemID} not found. Cannot load.");
-                    continue;
-                }
+                ResourceItem resourceItemInstance = Instantiate(PrefabLibrary.Instance.GetResourceItemPrefab(), HomeInventory.transform);
+                Resource resourceInstance = Instantiate(PrefabLibrary.Instance.GetResourcePrefab(), resourceItemInstance.transform);
+                MapResourceItemDataToResourceItem(resourceItemData, resourceInstance, resourceItemInstance);
 
                 if (!HomeInventory.AddResourceItem(resourceItemInstance))
                 {
-                    Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceItemID}) to home inventory for account {AccountID}.");
+                    Debug.LogWarning($"InventoryDataHandler: Failed to add ResourceItem instance (ID: {resourceItemData.ResourceSpawnID}) to home inventory for account {AccountID}.");
                 }
             }
 
             // Load Account Inventory SubComponents
-            foreach (var subCompData in result.SubComponents)
+            foreach (SubComponentData subCompData in result.SubComponents)
             {
-                SubComponent subComponentInstance = ItemManager.Instance.GetSubComponentInstanceByID(subCompData.SubComponentID);
-                if (subComponentInstance == null)
-                {
-                    Debug.LogWarning($"InventoryDataHandler: SubComponent instance with ID {subCompData.SubComponentID} not found via ItemManager. Cannot load.");
-                    continue;
-                }
+                SubComponent subComponentInstance = Instantiate(PrefabLibrary.Instance.GetSubComponentPrefab(), HomeInventory.transform);
+                MapSubComponentDataToSubComponent(subCompData,subComponentInstance);
 
                 if (!HomeInventory.AddSubComponent(subComponentInstance))
                 {
                     Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to home inventory for account {AccountID}.");
                 }
             }
+            foreach (WorkbenchData workbenchData in result.Workbenches)
+            {
+                int workbenchType = workbenchData.WorkBenchType;
 
-            // Load Owned Workbenches from account inventory
-            await ProcessOwnedWorkbenches(result.Workbenches);
+                WorkBench newWorkBenchInstance = Instantiate(WorkBenchPrefab, WorkbenchParent);
+                newWorkBenchInstance.SetWorkbenchType(workbenchType);
+
+                if (WorkBenchManager.Instance != null)
+                {
+                    WorkBench templateWorkBench = WorkBenchManager.Instance.GetWorkbenchByType(workbenchType);
+                    if (templateWorkBench != null)
+                    {
+                        newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"PlayerManager: No template workbench found in WorkBenchManager for type {workbenchType}. Initializing with empty recipes.");
+                        newWorkBenchInstance.InitializeRecipes(new List<Recipe>());
+                    }
+                }
+                else
+                {
+                    newWorkBenchInstance.InitializeRecipes(new List<Recipe>());
+                    Debug.LogError("PlayerManager: WorkBenchManager is null. Cannot initialize workbench.");
+                }
+                OwnedWorkbenches.Add(newWorkBenchInstance);
+            }
         }
         catch (Exception ex)
         {
@@ -998,185 +913,12 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Workbench Management
-    [Rpc(SendTo.Server)]
-    internal void RequestWorkbenchListRpc(int accountID)
-    {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received workbench list request, calling ServerManager for accountID={accountID}");
-
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWorkbenchListRequest...");
-                //TODO do this right
-                //ServerManager.Instance.ProcessWorkbenchListRequest(accountID, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessWorkbenchListRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError("PlayerManager (Server): ServerManager.Instance is null! Cannot process workbench list request.");
-
-                // Send error response back to client
-                WorkbenchListResult errorResult = new WorkbenchListResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    Workbenches = Array.Empty<WorkbenchData>()
-                };
-
-                ReceiveWorkbenchListRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestWorkbenchListServerRpc called on client! This should only run on server.");
-        }
-    }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceiveWorkbenchListRpc(WorkbenchListResult result)
-    {
-        // This runs on the client - handle the workbench list result
-        Debug.Log(
-            $"PlayerManager (Client): Received workbench list result from server. Success: {result.Success}, WorkbenchCount: {result.Workbenches?.Length ?? 0}");
-        HandleWorkbenchListResult(result);
-    }
-    private void HandleWorkbenchListResult(WorkbenchListResult result)
-    {
-        currentWorkbenchListResult = result;
-        workbenchListReceived = true;
-        Debug.Log($"Client: Received workbench list result. Success: {result.Success}");
-    }
-    private async Task LoadOwnedWorkbenchesAsync()
-    {
-
-    }
-    private async Task ProcessOwnedWorkbenches(WorkbenchData[] workbenches)
-    {
-        OwnedWorkbenches.Clear();
-
-        foreach (WorkbenchData workbenchData in workbenches)
-        {
-            int workbenchType = workbenchData.WorkBenchType;
-
-            WorkBench newWorkBenchInstance = Object.Instantiate(WorkBenchPrefab, WorkbenchParent);
-            newWorkBenchInstance.SetWorkbenchType(workbenchType);
-
-            if (WorkBenchManager.Instance != null)
-            {
-                WorkBench templateWorkBench = WorkBenchManager.Instance.GetWorkbenchByType(workbenchType);
-                if (templateWorkBench != null)
-                {
-                    newWorkBenchInstance.InitializeRecipes(templateWorkBench.Recipes);
-                }
-                else
-                {
-                    Debug.LogWarning($"InventoryDataHandler: No template workbench found in WorkBenchManager for type {workbenchType}. Initializing with empty recipes.");
-                    newWorkBenchInstance.InitializeRecipes(new List<Recipe>());
-                }
-            }
-            else
-            {
-                newWorkBenchInstance.InitializeRecipes(new List<Recipe>());
-            }
-
-            OwnedWorkbenches.Add(newWorkBenchInstance);
-        }
-    }
-
-    #endregion
-    private void EquipItem(InventoryItemData itemData, Item itemInstance, EquipmentProfile equipment, Inventory inventory)
-    {
-        ItemType slotType = MapSlotIdToItemType(itemData.SlotID);
-        if (slotType != ItemType.Other)
-        {
-            int slotIndex = GetSlotIndexForType(itemData.SlotID);
-            EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
-            if (targetSlot != null)
-            {
-                equipment.EquipItemToSlot(itemInstance, targetSlot);
-            }
-            else
-            {
-                Debug.LogWarning($"InventoryDataHandler: Could not find EquipmentSlot for SlotID: {itemData.SlotID} (Type: {slotType}, Index: {slotIndex}). Cannot equip {itemInstance.ItemName}.");
-                inventory.AddItem(itemInstance); // Put in bag as fallback
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"InventoryDataHandler: Invalid SlotID {itemData.SlotID} found for ItemID {itemData.ItemID}. Cannot equip.");
-            inventory.AddItem(itemInstance); // Put in bag as fallback
-        }
-    }
-    private ItemType MapSlotIdToItemType(int slotId)
-    {
-        switch (slotId)
-        {
-            case 1: return ItemType.Helm;
-            case 2: return ItemType.Cuirass;
-            case 3: return ItemType.Greaves;
-            case 4: return ItemType.Vambraces;
-            case 5: return ItemType.Finger; // First finger slot
-            case 6: return ItemType.Finger; // Second finger slot
-            case 7: return ItemType.PrimaryHand;
-            case 8: return ItemType.SecondaryHand;
-            case 9: return ItemType.MiningTool;
-            case 10: return ItemType.WoodTool;
-            case 11: return ItemType.HarvestingTool;
-            case 12: return ItemType.Hauberk;
-            case 13: return ItemType.Trousers;
-            case 14: return ItemType.Sleeves;
-            case 15: return ItemType.Coif;
-            case 16: return ItemType.Neck;
-            case 17: return ItemType.Waist;
-            case 18: return ItemType.Back;
-            case 19: return ItemType.Boots;
-            case 20: return ItemType.Ear; // First ear slot
-            case 21: return ItemType.Ear; // Second ear slot
-            default: return ItemType.Other;
-        }
-    }
-    private int GetSlotIndexForType(int slotId)
-    {
-        switch (slotId)
-        {
-            case 5: return 0; // First finger slot
-            case 6: return 1; // Second finger slot
-            case 20: return 0; // First ear slot
-            case 21: return 1; // Second ear slot
-            default: return 0; // All other slots use index 0
-        }
-    }
-    private ResourceItem GetResourceItemById(int resourceItemId)
-    {
-        // TODO: Implement proper ResourceItem lookup
-        ResourceItem resourceItem = null;
-        return resourceItem;
-    }
-    #endregion
-
     #region Player Zone Management
-
-    [Rpc(SendTo.Server)]
-    private void RequestZoneTransitionRpc(int characterId, int species, int gender)
+    [Rpc(SendTo.Server)] private void RequestZoneTransitionRpc(int characterId, int species, int gender)
     {
-        /*
-        if (ServerManager.Instance != null)
-        {
-            ServerManager.Instance.HandleClientZoneTransitionRequest(serverRpcParams.Receive.SenderClientId, characterId, race, gender);
-        }
-        else
-        {
-            Debug.LogError("ServerManager not found! Cannot handle zone transition request.");
-        }*/
+
     }
-    
-    [Rpc(SendTo.Server)]
-    internal void RequestWaypointRpc(WaypointRequest request)
+    [Rpc(SendTo.Server)] private void RequestWaypointRpc(WaypointRequest request)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1212,21 +954,11 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: RequestWaypointServerRpc called on client! This should only run on server.");
         }
     }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceiveWaypointResultRpc(WaypointResult result)
+    [Rpc(SendTo.Owner)] public void ReceiveWaypointResultRpc(WaypointResult result)
     {
-        // This runs on the client - handle the waypoint result
-        HandleWaypointResult(result);
-    }
-    private void HandleWaypointResult(WaypointResult result)
-    {
-        currentWaypointResult = result;
-        waypointResultReceived = true;
-    }
 
-    [Rpc(SendTo.Server)]
-    internal void RequestPlayerZoneInfoRpc(int characterID)
+    }
+    [Rpc(SendTo.Server)] private void RequestPlayerZoneInfoRpc(int characterID)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1271,22 +1003,11 @@ public class PlayerManager : NetworkBehaviour
                 "PlayerManager: RequestPlayerZoneInfoServerRpc called on client! This should only run on server.");
         }
     }
-
-    [Rpc(SendTo.Owner)]
-    private void ReceivePlayerZoneInfoRpc(PlayerZoneInfoResult result)
+    [Rpc(SendTo.Owner)] public void ReceivePlayerZoneInfoRpc(PlayerZoneInfoResult result)
     {
-        // This runs on the client - handle the player zone info result
-        Debug.Log($"PlayerManager (Client): Received player zone info result from server. Success: {result.Success}");
-        HandlePlayerZoneInfoResult(result);
-    }
-    private void HandlePlayerZoneInfoResult(PlayerZoneInfoResult result)
-    {
-        currentPlayerZoneInfoResult = result;
-        playerZoneInfoResultReceived = true;
-    }
 
-    [Rpc(SendTo.Server)]
-    internal void RequestServerLoadZoneRpc(string zoneName)
+    }
+    [Rpc(SendTo.Server)] internal void RequestServerLoadZoneRpc(string zoneName)
     {
         // This runs on the server - act as a bridge to ServerManager
         if (IsServer)
@@ -1308,18 +1029,9 @@ public class PlayerManager : NetworkBehaviour
                 "PlayerManager: RequestServerLoadZoneServerRpc called on client! This should only run on server.");
         }
     }
+    [Rpc(SendTo.Owner)] private void ReceiveServerLoadZoneResultRpc(ServerZoneLoadResult result)
+    {
 
-    [Rpc(SendTo.Owner)]
-    private void ReceiveServerLoadZoneResultRpc(ServerZoneLoadResult result)
-    {
-        // This runs on the client - handle the server zone load result
-        Debug.Log($"PlayerManager (Client): Received server zone load result from server. Success: {result.Success}");
-        HandleServerLoadZoneResult(result);
-    }
-    private void HandleServerLoadZoneResult(ServerZoneLoadResult result)
-    {
-        currentServerZoneLoadResult = result;
-        serverZoneLoadResultReceived = true;
     }
     public async Task SetupSelectedCharacterAsync(PlayerStatBlock selectedCharacter)
     {
@@ -1382,10 +1094,10 @@ public class PlayerManager : NetworkBehaviour
             await RequestServerLoadZoneAsync(zoneInfo.ZoneName);
 
             // Step 2: Unload MainMenu when transitioning to gameplay zones
-            await UnloadMainMenuIfNeeded(zoneInfo.ZoneName);
+            await UnloadSceneOnClient(zoneInfo.ZoneName);
 
             // Step 3: Load zone on client side
-            await LoadZoneOnClient(zoneInfo.ZoneName);
+            await LoadSceneOnClient(zoneInfo.ZoneName);
         }
         catch (Exception ex)
         {
@@ -1432,11 +1144,11 @@ public class PlayerManager : NetworkBehaviour
     {
         //TODO
     }
-    private async Task UnloadMainMenuIfNeeded(string zoneName)
+    private async Task UnloadSceneOnClient(string zoneName)
     {
 
     }
-    private async Task LoadZoneOnClient(string zoneName)
+    private async Task LoadSceneOnClient(string zoneName)
     {
        
     }
@@ -1546,13 +1258,19 @@ public class PlayerManager : NetworkBehaviour
     #region Getters
     public async Task<PlayerStatBlock> GetSelectedPlayerCharacterAsync()
     {
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
+        if (isInitialized || initializationTask == null || initializationTask.IsCompleted)
         {
-            Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
-            await initializationTask;
+            return selectedPlayerCharacter;
         }
 
+        Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
+        await initializationTask;
+
         return selectedPlayerCharacter;
+    }
+    private PlayerStatBlock GetCharacterByID(int charId)
+    {
+        return PlayerCharacters.FirstOrDefault(character => character.GetCharacterID() == charId);
     }
     public PlayerStatBlock GetSelectedPlayerCharacter()
     {
@@ -1716,11 +1434,12 @@ public class PlayerManager : NetworkBehaviour
     }
     public void RegisterNetworkedPlayer(NetworkedPlayer networkedPlayer)
     {
-        if (!allNetworkedPlayers.Contains(networkedPlayer))
+        if (allNetworkedPlayers.Contains(networkedPlayer))
         {
-            allNetworkedPlayers.Add(networkedPlayer);
-            Debug.Log($"PlayerManager: Registered networked player {networkedPlayer.name}");
+            return;
         }
+
+        allNetworkedPlayers.Add(networkedPlayer);
     }
     public void UnregisterNetworkedPlayer(NetworkedPlayer networkedPlayer)
     {
@@ -1741,7 +1460,23 @@ public class PlayerManager : NetworkBehaviour
     {
         return characterModelManager;
     }
-    
+    private int GetSlotIndexForType(int slotId)
+    {
+        switch (slotId)
+        {
+            case 5: return 0; // First finger slot
+            case 6: return 1; // Second finger slot
+            case 20: return 0; // First ear slot
+            case 21: return 1; // Second ear slot
+            default: return 0; // All other slots use index 0
+        }
+    }
+    private ResourceItem GetResourceItemById(int resourceItemId)
+    {
+        // TODO: Implement proper ResourceItem lookup
+        ResourceItem resourceItem = null;
+        return resourceItem;
+    }
     #endregion
     
     #region Helpers
@@ -1914,6 +1649,133 @@ public class PlayerManager : NetworkBehaviour
         );
 
         return newCharacter;
+    }
+    private static void MapItemDataToItem(ItemData itemData, Item item)
+    {
+        item.SetItem(
+            itemData.ItemID,
+            itemData.ItemTemplateID,
+            itemData.ItemName,
+            itemData.ItemType,
+            itemData.Durability,
+            itemData.MaxDurability,
+            itemData.Damage,
+            itemData.Speed,
+            itemData.DamageType,
+            itemData.SlotType,
+            itemData.SlashResist,
+            itemData.ThrustResist,
+            itemData.CrushResist,
+            itemData.HeatResist,
+            itemData.ShockResist,
+            itemData.ColdResist,
+            itemData.MindResist,
+            itemData.CorruptResist,
+            itemData.Icon,
+            itemData.Colour,
+            itemData.Weight,
+            itemData.Model,
+            itemData.Stackable,
+            itemData.StackSizeMax,
+            itemData.Price
+        );
+    }
+    private static void MapResourceItemDataToResourceItem(ResourceItemData resourceItemData, Resource resource, ResourceItem resourceItem)
+    {
+        resource.SetResource(
+            resourceItemData.ResourceData.ResourceSpawnID,
+            resourceItemData.ResourceData.ResourceName,
+            resourceItemData.ResourceData.ResourceTemplateID,
+            resourceItemData.ResourceData.Type,
+            resourceItemData.ResourceData.SubType,
+            resourceItemData.ResourceData.Order,
+            resourceItemData.ResourceData.Family,
+            resourceItemData.ResourceData.Quality,
+            resourceItemData.ResourceData.Toughness,
+            resourceItemData.ResourceData.Strength,
+            resourceItemData.ResourceData.Density,
+            resourceItemData.ResourceData.Aura,
+            resourceItemData.ResourceData.Energy,
+            resourceItemData.ResourceData.Protein,
+            resourceItemData.ResourceData.Carbohydrate,
+            resourceItemData.ResourceData.Flavour,
+            resourceItemData.ResourceData.Weight,
+            resourceItemData.ResourceData.Value,
+            resourceItemData.ResourceData.StartDate,
+            resourceItemData.ResourceData.EndDate
+            );
+        
+        resourceItem.SetResourceItem(resource, resourceItemData.StackSizeMax,resourceItemData.CurrentStackSize);
+    }
+    private static void MapSubComponentDataToSubComponent(SubComponentData subComponentData, SubComponent subComponent)
+    {
+        subComponent.SetSubComponent(
+            subComponentData.SubComponentID,
+            subComponentData.Name,
+            subComponentData.SubComponentTemplateID,
+            subComponentData.ComponentType,
+            subComponentData.Quality,
+            subComponentData.Toughness,
+            subComponentData.Strength,
+            subComponentData.Density,
+            subComponentData.Aura,
+            subComponentData.Energy,
+            subComponentData.Protein,
+            subComponentData.Carbohydrate,
+            subComponentData.Flavour
+        );
+    }
+    private void EquipItem(ItemData itemData, Item itemInstance, EquipmentProfile equipment, Inventory inventory)
+    {
+        ItemType slotType = MapSlotIdToItemType(itemData.SlotID);
+        if (slotType != ItemType.Other)
+        {
+            int slotIndex = GetSlotIndexForType(itemData.SlotID);
+            EquipmentSlot targetSlot = equipment.GetSlotForItemType(slotType, slotIndex);
+            if (targetSlot != null)
+            {
+                equipment.EquipItemToSlot(itemInstance, targetSlot);
+                itemInstance.transform.SetParent(targetSlot.transform);
+            }
+            else
+            {
+                Debug.LogWarning($"InventoryDataHandler: Could not find EquipmentSlot for SlotID: {itemData.SlotID} (Type: {slotType}, Index: {slotIndex}). Cannot equip {itemInstance.ItemName}.");
+                inventory.AddItem(itemInstance); // Put in bag as fallback
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"InventoryDataHandler: Invalid SlotID {itemData.SlotID} found for ItemID {itemData.ItemID}. Cannot equip.");
+            inventory.AddItem(itemInstance); // Put in bag as fallback
+        }
+    }
+    private static ItemType MapSlotIdToItemType(int slotId)
+    {
+        switch (slotId)
+        {
+            case 1: return ItemType.Helm;
+            case 2: return ItemType.Cuirass;
+            case 3: return ItemType.Greaves;
+            case 4: return ItemType.Vambraces;
+            case 5: return ItemType.Finger; // First finger slot
+            case 6: return ItemType.Finger; // Second finger slot
+            case 7: return ItemType.PrimaryHand;
+            case 8: return ItemType.SecondaryHand;
+            case 9: return ItemType.MiningTool;
+            case 10: return ItemType.WoodTool;
+            case 11: return ItemType.HarvestingTool;
+            case 12: return ItemType.Hauberk;
+            case 13: return ItemType.Trousers;
+            case 14: return ItemType.Sleeves;
+            case 15: return ItemType.Coif;
+            case 16: return ItemType.Neck;
+            case 17: return ItemType.Waist;
+            case 18: return ItemType.Back;
+            case 19: return ItemType.Boots;
+            case 20: return ItemType.Ear; // First ear slot
+            case 21: return ItemType.Ear; // Second ear slot
+            default: return ItemType.Other;
+        }
     }
     #endregion
 }
