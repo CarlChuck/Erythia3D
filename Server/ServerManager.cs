@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Debug = UnityEngine.Debug;
 
 public class ServerManager : NetworkBehaviour
 {
@@ -40,6 +43,11 @@ public class ServerManager : NetworkBehaviour
     private readonly Dictionary<ulong, int> playerToAreaMapping = new();
     private readonly Dictionary<int, Queue<PlayerTransferRequest>> pendingTransfers = new();
     private readonly Dictionary<int, System.Diagnostics.Process> externalServerProcesses = new();
+    
+    // Area connectivity data
+    private readonly Dictionary<int, AreaConnectivity> areaConnectivity = new();
+    private readonly Dictionary<string, Dictionary<string, AreaWaypoint>> globalWaypointMap = new();
+    private readonly ConcurrentDictionary<ulong, PlayerTransferData> activeTransfers = new();
 
     // Network components
     private NetworkManager masterNetworkManager;
@@ -78,6 +86,7 @@ public class ServerManager : NetworkBehaviour
             {
                 LogDebug($"Master server is running on port {masterNetworkManager.GetComponent<UnityTransport>().ConnectionData.Port}");
                 LogDebug($"ServerManager NetworkObject spawned - NetworkObjectId: {NetworkObjectId}, IsSpawned: {IsSpawned}");
+                InitializeAreaConnectivity();
                 LaunchAreaServers();
             }
             else
@@ -122,77 +131,34 @@ public class ServerManager : NetworkBehaviour
     #region Area Server Management
     private void LaunchAreaServers()
     {
-        LogDebug($"Attempting to launch {areaServerTemplates.Count} area servers...");
-        
         foreach (AreaServerTemplate template in areaServerTemplates)
         {
-            // Validate template configuration
-            if (template.areaId == 0)
-            {
-                LogError($"Area server template has empty areaId. Skipping.");
-                continue;
-            }
-            
-            if (string.IsNullOrEmpty(template.serverExecutablePath))
-            {
-                LogWarning($"Area server '{template.areaId}' has no serverExecutablePath configured. Skipping launch.");
-                LogWarning($"To enable area server '{template.areaId}', configure serverExecutablePath in the AreaServerTemplate.");
-                continue;
-            }
-            
-            if (template.autoStartOnLaunch)
+            if (template.autoStartOnLaunch && !string.IsNullOrEmpty(template.serverExecutablePath))
             {
                 LogDebug($"Auto-launching area server: {template.areaId}");
-                bool success = LaunchAreaServer(template);
-                if (success)
-                {
-                    LogDebug($"Successfully initiated launch of area server: {template.areaId}");
-                }
-                else
+                bool success = LaunchExternalAreaServer(template);
+                if (!success)
                 {
                     LogError($"Failed to launch area server: {template.areaId}");
                 }
             }
             else
             {
-                LogDebug($"Area server '{template.areaId}' has autoStartOnLaunch disabled. Skipping.");
+                LogError($"Area server '{template.areaId}' has autoStartOnLaunch disabled. Skipping.");
             }
         }
         
-        LogDebug("Area server launch process completed.");
-    }
-    private bool LaunchAreaServer(AreaServerTemplate template)
-    {
-        try
-        {
-            if (!string.IsNullOrEmpty(template.serverExecutablePath))
-            {
-                // Launch as separate process
-                return LaunchExternalAreaServer(template);
-            }
-            else
-            {
-                // IN-PROCESS LAUNCHING DISABLED: Prevents NetworkManager.Singleton conflicts
-                LogError($"Area server {template.areaId} has no serverExecutablePath configured. In-process launching is disabled to prevent NetworkManager conflicts.");
-                LogError($"Please configure serverExecutablePath for area server template: {template.areaId}");
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            LogError($"Failed to launch area server {template.areaId}: {ex.Message}");
-            return false;
-        }
+        LogError("Area server launch process completed.");
     }
     private bool LaunchExternalAreaServer(AreaServerTemplate template)
     {
-        var args = $"--area={template.areaId} --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
+        string args = $"--area={template.areaId} --scene=\"{template.sceneName}\" --port={template.startingPort} --master=\"127.0.0.1:{masterServerPort}\"";
         if (!string.IsNullOrEmpty(template.additionalArgs))
         {
             args += " " + template.additionalArgs;
         }
 
-        var startInfo = new System.Diagnostics.ProcessStartInfo
+        ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
         {
             FileName = template.serverExecutablePath,
             Arguments = args,
@@ -202,29 +168,34 @@ public class ServerManager : NetworkBehaviour
             RedirectStandardError = true
         };
 
-        var process = System.Diagnostics.Process.Start(startInfo);
-        if (process != null)
+        Process process = System.Diagnostics.Process.Start(startInfo);
+        if (process == null)
         {
-            externalServerProcesses[template.areaId] = process;
-
-            // Set up output monitoring
-            process.OutputDataReceived += (sender, e) => {
-                if (!string.IsNullOrEmpty(e.Data))
-                    LogDebug($"[Area{template.areaId}] {e.Data}");
-            };
-            process.ErrorDataReceived += (sender, e) => {
-                if (!string.IsNullOrEmpty(e.Data))
-                    LogError($"[Area{template.areaId}] {e.Data}");
-            };
-
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            LogDebug($"Launched external area server: {template.areaId} (PID: {process.Id})");
-            return true;
+            return false;
         }
 
-        return false;
+        externalServerProcesses[template.areaId] = process;
+
+        // Set up output monitoring
+        process.OutputDataReceived += (sender, e) => {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                LogDebug($"[Area{template.areaId}] {e.Data}");
+            }
+        };
+        process.ErrorDataReceived += (sender, e) => {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                LogError($"[Area{template.areaId}] {e.Data}");
+            }
+        };
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        LogDebug($"Launched external area server: {template.areaId} (PID: {process.Id})");
+        return true;
+
     }
     private bool RestartAreaServer(int areaId)
     {
@@ -251,7 +222,7 @@ public class ServerManager : NetworkBehaviour
 
         // Relaunch
         LogDebug($"Restarting area server: {areaId}");
-        return LaunchAreaServer(template);
+        return LaunchExternalAreaServer(template);
     }
     #endregion
 
@@ -269,6 +240,9 @@ public class ServerManager : NetworkBehaviour
             pendingTransfers[serverInfo.areaId] = new Queue<PlayerTransferRequest>();
         }
 
+        // Update connectivity when area comes online
+        UpdateAreaConnectivityStatus(serverInfo.areaId, true);
+        
         // Notify all connected clients about the new server
         BroadcastServerListUpdate();
     }
@@ -282,6 +256,9 @@ public class ServerManager : NetworkBehaviour
             // Handle players that were connected to this server
             HandleServerDisconnection(areaId);
         }
+
+        // Update connectivity when area goes offline
+        UpdateAreaConnectivityStatus(areaId, false);
 
         // Clean up pending transfers
         if (pendingTransfers.ContainsKey(areaId))
@@ -356,7 +333,7 @@ public class ServerManager : NetworkBehaviour
             playerToAreaMapping.Remove(clientId);
         }
     }
-
+    
     private void RequestJoinArea(int areaId)
     {
         //TODO
@@ -402,6 +379,193 @@ public class ServerManager : NetworkBehaviour
         NotifyAreaServerOfIncomingTransfer(transferRequest);
 
         LogDebug($"Transfer queued: Client {transferRequest.clientId} -> {transferRequest.toAreaId}");
+    }
+    public async Task<bool> InitiateWaypointTransfer(ulong clientId, int characterId, int sourceAreaId, string waypointName, Vector3 currentPosition)
+    {
+        // Validate waypoint access
+        var validation = ValidatePlayerWaypointAccess(characterId, sourceAreaId, waypointName);
+        if (!validation.isValid)
+        {
+            LogWarning($"Transfer denied for character {characterId}: {validation.errorMessage}");
+            return false;
+        }
+        
+        // Find the waypoint
+        var sourceTemplate = areaServerTemplates.FirstOrDefault(t => t.areaId == sourceAreaId);
+        var waypoint = sourceTemplate?.waypoints.FirstOrDefault(w => w.waypointName == waypointName);
+        
+        if (waypoint?.waypointName == null)
+        {
+            LogError($"Waypoint '{waypointName}' not found in area {sourceAreaId}");
+            return false;
+        }
+        
+        // Create transfer data
+        var transferData = new PlayerTransferData
+        {
+            clientId = clientId,
+            characterId = characterId,
+            currentPosition = currentPosition,
+            targetPosition = GetDestinationSpawnPosition(waypoint.Value),
+            sourceWaypointName = waypointName,
+            targetWaypointName = waypoint.Value.destinationWaypointName,
+            transferInitiated = DateTime.Now,
+            state = TransferState.Pending
+        };
+        
+        // Store active transfer
+        activeTransfers[clientId] = transferData;
+        
+        // Begin transfer process
+        return await ProcessPlayerTransfer(transferData);
+    }
+    private async Task<bool> ProcessPlayerTransfer(PlayerTransferData transferData)
+    {
+        try
+        {
+            // Update transfer state
+            transferData.state = TransferState.ValidatingRequirements;
+            activeTransfers[transferData.clientId] = transferData;
+            
+            // Save player state before transfer
+            transferData.state = TransferState.SavingPlayerState;
+            activeTransfers[transferData.clientId] = transferData;
+            
+            bool stateSaved = await SavePlayerStateForTransfer(transferData.characterId);
+            if (!stateSaved)
+            {
+                transferData.state = TransferState.TransferFailed;
+                activeTransfers[transferData.clientId] = transferData;
+                LogError($"Failed to save player state for character {transferData.characterId}");
+                return false;
+            }
+            
+            // Initiate the actual transfer
+            transferData.state = TransferState.InitiatingTransfer;
+            activeTransfers[transferData.clientId] = transferData;
+            
+            var waypoint = GetWaypointByName(transferData.sourceWaypointName);
+            if (waypoint == null)
+            {
+                transferData.state = TransferState.TransferFailed;
+                activeTransfers[transferData.clientId] = transferData;
+                return false;
+            }
+            
+            // Create traditional transfer request for the existing system
+            var transferRequest = new PlayerTransferRequest
+            {
+                clientId = transferData.clientId,
+                fromAreaId = playerToAreaMapping.ContainsKey(transferData.clientId) ? playerToAreaMapping[transferData.clientId] : 0,
+                toAreaId = waypoint.Value.destinationAreaId,
+                playerPosition = transferData.targetPosition
+            };
+            
+            transferData.state = TransferState.TransferInProgress;
+            activeTransfers[transferData.clientId] = transferData;
+            
+            RequestPlayerTransfer(transferRequest);
+            
+            // The transfer will be completed when the area server confirms the player has loaded
+            LogDebug($"Transfer initiated for character {transferData.characterId} via waypoint '{transferData.sourceWaypointName}'");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Transfer process failed for character {transferData.characterId}: {ex.Message}");
+            transferData.state = TransferState.TransferFailed;
+            activeTransfers[transferData.clientId] = transferData;
+            return false;
+        }
+    }
+    private async Task<bool> SavePlayerStateForTransfer(int characterId)
+    {
+        try
+        {
+            // TODO: Implement player state saving logic
+            // This would involve saving character position, inventory, status effects, etc.
+            // For now, return true as a placeholder
+            await Task.Delay(100); // Simulate database operation
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Failed to save player state: {ex.Message}");
+            return false;
+        }
+    }
+    private Vector3 GetDestinationSpawnPosition(AreaWaypoint waypoint)
+    {
+        if (waypoint.destinationAreaId == 0)
+        {
+            return waypoint.position;
+        }
+        
+        var targetTemplate = areaServerTemplates.FirstOrDefault(t => t.areaId == waypoint.destinationAreaId);
+        if (targetTemplate != null && !string.IsNullOrEmpty(waypoint.destinationWaypointName))
+        {
+            var targetWaypoint = targetTemplate.waypoints.FirstOrDefault(w => w.waypointName == waypoint.destinationWaypointName);
+            if (targetWaypoint.waypointName != null)
+            {
+                return targetWaypoint.position;
+            }
+        }
+        
+        // Default spawn position if no specific destination waypoint
+        return Vector3.zero;
+    }
+    private AreaWaypoint? GetWaypointByName(string waypointName)
+    {
+        foreach (var template in areaServerTemplates)
+        {
+            var waypoint = template.waypoints.FirstOrDefault(w => w.waypointName == waypointName);
+            if (waypoint.waypointName != null)
+            {
+                return waypoint;
+            }
+        }
+        return null;
+    }
+    public void CompletePlayerTransfer(ulong clientId, bool success)
+    {
+        if (activeTransfers.ContainsKey(clientId))
+        {
+            PlayerTransferData transferData = activeTransfers[clientId];
+            transferData.state = success ? TransferState.TransferComplete : TransferState.TransferFailed;
+            
+            if (success)
+            {
+                LogDebug($"Transfer completed successfully for character {transferData.characterId}");
+                // Clean up the transfer data after a delay
+                _ = CleanupTransferDataAsync(clientId);
+            }
+            else
+            {
+                LogError($"Transfer failed for character {transferData.characterId}");
+                activeTransfers[clientId] = transferData;
+            }
+        }
+    }
+    public PlayerTransferData? GetActiveTransfer(ulong clientId)
+    {
+        return activeTransfers.ContainsKey(clientId) ? activeTransfers[clientId] : null;
+    }
+    public Dictionary<ulong, PlayerTransferData> GetAllActiveTransfers()
+    {
+        return new Dictionary<ulong, PlayerTransferData>(activeTransfers);
+    }
+    private async Task CleanupTransferDataAsync(ulong clientId)
+    {
+        try
+        {
+            await Task.Delay(5000);
+            activeTransfers.TryRemove(clientId, out _);
+            LogDebug($"Cleaned up transfer data for client {clientId}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error cleaning up transfer data for client {clientId}: {ex.Message}");
+        }
     }
     private void NotifyAreaServerOfIncomingTransfer(PlayerTransferRequest request)
     {
@@ -935,22 +1099,538 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Waypoint and Zone Communication
-    public async Task ProcessWaypointRequest(int characterID, string zoneName, ulong senderClientId)
+    #region Waypoint Management and Validation
+    private void InitializeAreaConnectivity()
     {
-
+        foreach (var template in areaServerTemplates)
+        {
+            BuildAreaConnectivity(template);
+        }
+        ValidateGlobalWaypointNetwork();
     }
+    
+    private void BuildAreaConnectivity(AreaServerTemplate template)
+    {
+        var connectivity = new AreaConnectivity
+        {
+            areaId = template.areaId,
+            connectedAreaIds = new List<int>(),
+            outgoingWaypoints = new Dictionary<string, AreaWaypoint>(),
+            incomingSpawnPoints = new Dictionary<string, Vector3>(),
+            allowsDirectTransfers = true,
+            transferCooldownSeconds = 5.0f
+        };
+        
+        // Build outgoing waypoint map
+        foreach (var waypoint in template.waypoints)
+        {
+            connectivity.outgoingWaypoints[waypoint.waypointName] = waypoint;
+            
+            // Track connected areas
+            if (waypoint.destinationAreaId != 0 && !connectivity.connectedAreaIds.Contains(waypoint.destinationAreaId))
+            {
+                connectivity.connectedAreaIds.Add(waypoint.destinationAreaId);
+            }
+            
+            // Add to global waypoint map
+            string globalKey = $"{template.areaId}:{waypoint.waypointName}";
+            if (!globalWaypointMap.ContainsKey(globalKey))
+            {
+                globalWaypointMap[globalKey] = new Dictionary<string, AreaWaypoint>();
+            }
+            globalWaypointMap[globalKey][waypoint.waypointName] = waypoint;
+        }
+        
+        areaConnectivity[template.areaId] = connectivity;
+    }
+    
+    private void ValidateGlobalWaypointNetwork()
+    {
+        List<string> validationErrors = new List<string>();
+        
+        foreach (var template in areaServerTemplates)
+        {
+            foreach (var waypoint in template.waypoints)
+            {
+                var validation = ValidateWaypoint(template.areaId, waypoint);
+                if (!validation.isValid)
+                {
+                    validationErrors.Add($"Area {template.areaId} waypoint '{waypoint.waypointName}': {validation.errorMessage}");
+                }
+            }
+        }
+        
+        if (validationErrors.Count > 0)
+        {
+            LogWarning($"Waypoint validation found {validationErrors.Count} issues:");
+            foreach (var error in validationErrors)
+            {
+                LogWarning($"  - {error}");
+            }
+        }
+        else
+        {
+            LogDebug("All waypoints validated successfully");
+        }
+    }
+    
+    private WaypointValidationResult ValidateWaypoint(int sourceAreaId, AreaWaypoint waypoint)
+    {
+        var result = new WaypointValidationResult
+        {
+            isValid = true,
+            errorMessage = "",
+            requirementsMet = true,
+            missingRequirements = new List<string>(),
+            destinationAvailable = true,
+            estimatedTransferTime = 3
+        };
+        
+        // Validate destination exists
+        if (waypoint.destinationAreaId != 0)
+        {
+            var targetTemplate = areaServerTemplates.FirstOrDefault(t => t.areaId == waypoint.destinationAreaId);
+            if (targetTemplate == null)
+            {
+                result.isValid = false;
+                result.destinationAvailable = false;
+                result.errorMessage = $"Destination area {waypoint.destinationAreaId} not found";
+                return result;
+            }
+            
+            // Validate destination waypoint exists
+            if (!string.IsNullOrEmpty(waypoint.destinationWaypointName))
+            {
+                var targetWaypoint = targetTemplate.waypoints.FirstOrDefault(w => w.waypointName == waypoint.destinationWaypointName);
+                if (targetWaypoint.waypointName == null)
+                {
+                    result.isValid = false;
+                    result.destinationAvailable = false;
+                    result.errorMessage = $"Destination waypoint '{waypoint.destinationWaypointName}' not found in area {waypoint.destinationAreaId}";
+                    return result;
+                }
+            }
+        }
+        
+        // Validate waypoint requirements structure
+        if (waypoint.requirements.requiresFlag && waypoint.requirements.requiredFlagId <= 0)
+        {
+            result.isValid = false;
+            result.errorMessage = "Waypoint requires quest but no valid quest ID specified";
+        }
+        
+        return result;
+    }
+    
+    public WaypointValidationResult ValidatePlayerWaypointAccess(int characterId, int sourceAreaId, string waypointName)
+    {
+        var result = new WaypointValidationResult
+        {
+            isValid = false,
+            requirementsMet = false,
+            missingRequirements = new List<string>(),
+            destinationAvailable = false
+        };
+        
+        // Find the waypoint
+        var sourceTemplate = areaServerTemplates.FirstOrDefault(t => t.areaId == sourceAreaId);
+        if (sourceTemplate == null)
+        {
+            result.errorMessage = "Source area not found";
+            return result;
+        }
+        
+        var waypoint = sourceTemplate.waypoints.FirstOrDefault(w => w.waypointName == waypointName);
+        if (waypoint.waypointName == null)
+        {
+            result.errorMessage = "Waypoint not found";
+            return result;
+        }
+        
+        if (!waypoint.isActive)
+        {
+            result.errorMessage = "Waypoint is currently inactive";
+            return result;
+        }
+        
+        // Check if destination area server is online
+        if (waypoint.destinationAreaId != 0)
+        {
+            if (!registeredServers.ContainsKey(waypoint.destinationAreaId) || 
+                !registeredServers[waypoint.destinationAreaId].isOnline)
+            {
+                result.errorMessage = "Destination area is currently offline";
+                return result;
+            }
+            
+            // Check if destination has capacity
+            var destServer = registeredServers[waypoint.destinationAreaId];
+            if (destServer.currentPlayers >= destServer.maxPlayers)
+            {
+                result.errorMessage = "Destination area is full";
+                return result;
+            }
+            
+            result.destinationAvailable = true;
+        }
+        
+        // TODO: Validate player-specific requirements (quest completion, items, level, etc.)
+        // This would require character data lookup
+        result.requirementsMet = true; // Placeholder
+        
+        result.isValid = result.destinationAvailable && result.requirementsMet;
+        result.estimatedTransferTime = CalculateTransferTime(waypoint);
+        
+        return result;
+    }
+    
+    private int CalculateTransferTime(AreaWaypoint waypoint)
+    {
+        return waypoint.waypointType switch
+        {
+            WaypointType.Portal => 1,
+            WaypointType.Teleporter => 2,
+            WaypointType.ZoneBoundary => 3,
+            WaypointType.Transport => 5,
+            WaypointType.QuestGated => 3,
+            _ => 3
+        };
+    }
+    
+    public AreaWaypoint[] GetAvailableWaypoints(int areaId)
+    {
+        var template = areaServerTemplates.FirstOrDefault(t => t.areaId == areaId);
+        if (template == null) return Array.Empty<AreaWaypoint>();
+        
+        return template.waypoints.Where(w => w.isActive).ToArray();
+    }
+    
+    public AreaWaypoint[] GetWaypointsToArea(int sourceAreaId, int targetAreaId)
+    {
+        var template = areaServerTemplates.FirstOrDefault(t => t.areaId == sourceAreaId);
+        if (template == null) return Array.Empty<AreaWaypoint>();
+        
+        return template.waypoints
+            .Where(w => w.destinationAreaId == targetAreaId && w.isActive)
+            .ToArray();
+    }
+    
+    private void UpdateAreaConnectivityStatus(int areaId, bool isOnline)
+    {
+        // Update waypoint availability based on server status
+        foreach (var template in areaServerTemplates)
+        {
+            foreach (var waypoint in template.waypoints)
+            {
+                if (waypoint.destinationAreaId == areaId)
+                {
+                    // Find this waypoint in our connectivity map and update its availability
+                    if (areaConnectivity.ContainsKey(template.areaId))
+                    {
+                        var connectivity = areaConnectivity[template.areaId];
+                        if (connectivity.outgoingWaypoints.ContainsKey(waypoint.waypointName))
+                        {
+                            var updatedWaypoint = connectivity.outgoingWaypoints[waypoint.waypointName];
+                            updatedWaypoint.isActive = isOnline && waypoint.isActive;
+                            connectivity.outgoingWaypoints[waypoint.waypointName] = updatedWaypoint;
+                            
+                            LogDebug($"Updated waypoint '{waypoint.waypointName}' to area {areaId}: {(isOnline ? "Available" : "Unavailable")}");
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Refresh global waypoint map
+        RefreshGlobalWaypointAvailability();
+    }
+    
+    private void RefreshGlobalWaypointAvailability()
+    {
+        foreach (var template in areaServerTemplates)
+        {
+            foreach (var waypoint in template.waypoints)
+            {
+                bool isDestinationOnline = waypoint.destinationAreaId == 0 || 
+                    (registeredServers.ContainsKey(waypoint.destinationAreaId) && 
+                     registeredServers[waypoint.destinationAreaId].isOnline);
+                
+                string globalKey = $"{template.areaId}:{waypoint.waypointName}";
+                if (globalWaypointMap.ContainsKey(globalKey))
+                {
+                    var updatedWaypoint = waypoint;
+                    updatedWaypoint.isActive = waypoint.isActive && isDestinationOnline;
+                    globalWaypointMap[globalKey][waypoint.waypointName] = updatedWaypoint;
+                }
+            }
+        }
+    }
+    
+    public Dictionary<int, List<string>> GetAreaConnectivityMap()
+    {
+        var connectivityMap = new Dictionary<int, List<string>>();
+        
+        foreach (var kvp in areaConnectivity)
+        {
+            var areaId = kvp.Key;
+            var connectivity = kvp.Value;
+            
+            connectivityMap[areaId] = new List<string>();
+            
+            foreach (var waypoint in connectivity.outgoingWaypoints.Values)
+            {
+                if (waypoint.isActive && waypoint.destinationAreaId != 0)
+                {
+                    string connectionInfo = $"→ Area {waypoint.destinationAreaId} via '{waypoint.waypointName}'";
+                    if (!string.IsNullOrEmpty(waypoint.destinationWaypointName))
+                    {
+                        connectionInfo += $" to '{waypoint.destinationWaypointName}'";
+                    }
+                    connectivityMap[areaId].Add(connectionInfo);
+                }
+            }
+        }
+        
+        return connectivityMap;
+    }
+    #endregion
+
+    #region Waypoint and Zone Communication
+    public async Task ProcessWaypointRequest(int characterID, string waypointName, ulong senderClientId)
+    {
+        try
+        {
+            // Find the character's current area
+            int currentAreaId = playerToAreaMapping.ContainsKey(senderClientId) ? playerToAreaMapping[senderClientId] : 1;
+            
+            // Initiate waypoint transfer
+            bool success = await InitiateWaypointTransfer(senderClientId, characterID, currentAreaId, waypointName, Vector3.zero);
+            
+            if (success)
+            {
+                LogDebug($"Waypoint transfer initiated for character {characterID} via '{waypointName}'");
+            }
+            else
+            {
+                LogWarning($"Waypoint transfer failed for character {characterID} via '{waypointName}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error processing waypoint request: {ex.Message}");
+        }
+    }
+    
     public async Task ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
     {
-
+        try
+        {
+            int currentAreaId = playerToAreaMapping.ContainsKey(senderClientId) ? playerToAreaMapping[senderClientId] : 1;
+            
+            // Get available waypoints for the current area
+            var availableWaypoints = GetAvailableWaypoints(currentAreaId);
+            
+            // TODO: Send waypoint information to client via RPC
+            LogDebug($"Sending {availableWaypoints.Length} available waypoints to character {characterID}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error processing zone info request: {ex.Message}");
+        }
     }
+    
     public Vector3 GetWaypointByZoneID(int zoneID)
     {
+        var template = areaServerTemplates.FirstOrDefault(t => t.areaId == zoneID);
+        if (template?.waypoints != null && template.waypoints.Length > 0)
+        {
+            // Return the first active waypoint position as default spawn
+            var defaultWaypoint = template.waypoints.FirstOrDefault(w => w.isActive);
+            if (defaultWaypoint.waypointName != null)
+            {
+                return defaultWaypoint.position;
+            }
+        }
         return Vector3.zero;
     }
+    
     public Vector3 GetSpawnPositionForCharacter(int characterID)
     {
-        return Vector3.zero;
+        // TODO: Get character's last known position from database
+        // For now, return default spawn position
+        return GetWaypointByZoneID(1); // Default to area 1
+    }
+    
+    public async Task<WaypointInfo[]> GetWaypointInfoForArea(int areaId)
+    {
+        var waypoints = GetAvailableWaypoints(areaId);
+        var waypointInfos = new List<WaypointInfo>();
+        
+        foreach (var waypoint in waypoints)
+        {
+            var info = new WaypointInfo
+            {
+                name = waypoint.waypointName,
+                description = waypoint.description,
+                position = waypoint.position,
+                destinationAreaId = waypoint.destinationAreaId,
+                waypointType = waypoint.waypointType,
+                isActive = waypoint.isActive,
+                requirements = waypoint.requirements,
+                estimatedTransferTime = CalculateTransferTime(waypoint)
+            };
+            
+            waypointInfos.Add(info);
+        }
+        
+        return waypointInfos.ToArray();
+    }
+    #endregion
+
+    #region Area-to-Area Communication
+    public void HandleWaypointTransferRequest(PlayerManager playerManager, int characterId, string waypointName, Vector3 currentPosition)
+    {
+        ulong clientId = playerManager.OwnerClientId;
+        _ = ProcessWaypointTransferRequest(playerManager, characterId, waypointName, currentPosition, clientId);
+    }
+    
+    public void HandleZoneInfoRequest(PlayerManager playerManager, int characterId)
+    {
+        ulong clientId = playerManager.OwnerClientId;
+        _ = ProcessZoneInfoRequest(playerManager, characterId, clientId);
+    }
+    
+    public void HandleTransferConfirmation(PlayerManager playerManager, bool success, string message)
+    {
+        ulong clientId = playerManager.OwnerClientId;
+        CompletePlayerTransfer(clientId, success);
+        LogDebug($"Transfer confirmation for client {clientId}: {(success ? "Success" : "Failed")} - {message}");
+    }
+    
+    private async Task ProcessWaypointTransferRequest(PlayerManager playerManager, int characterId, string waypointName, Vector3 currentPosition, ulong clientId)
+    {
+        try
+        {
+            // Find the character's current area
+            int currentAreaId = playerToAreaMapping.ContainsKey(clientId) ? playerToAreaMapping[clientId] : 1;
+            
+            // Initiate waypoint transfer
+            bool success = await InitiateWaypointTransfer(clientId, characterId, currentAreaId, waypointName, currentPosition);
+            
+            if (success)
+            {
+                LogDebug($"Waypoint transfer initiated for character {characterId} via '{waypointName}'");
+                playerManager.ReceiveWaypointTransferResultRpc(true, $"Transfer to '{waypointName}' initiated successfully", "");
+            }
+            else
+            {
+                LogWarning($"Waypoint transfer failed for character {characterId} via '{waypointName}'");
+                playerManager.ReceiveWaypointTransferResultRpc(false, "Transfer failed", "Unable to initiate transfer");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error processing waypoint request: {ex.Message}");
+            playerManager.ReceiveWaypointTransferResultRpc(false, "Transfer failed", ex.Message);
+        }
+    }
+    
+    private async Task ProcessZoneInfoRequest(PlayerManager playerManager, int characterId, ulong clientId)
+    {
+        try
+        {
+            int currentAreaId = playerToAreaMapping.ContainsKey(clientId) ? playerToAreaMapping[clientId] : 1;
+            
+            // Get waypoint information for the current area
+            var waypointInfo = await GetWaypointInfoForArea(currentAreaId);
+            
+            // Send waypoint information to client
+            playerManager.ReceivePlayerAreaInfoRpc(waypointInfo, currentAreaId);
+            
+            LogDebug($"Sent {waypointInfo.Length} available waypoints to character {characterId}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error processing zone info request: {ex.Message}");
+            playerManager.ReceivePlayerAreaInfoRpc(Array.Empty<WaypointInfo>(), 0);
+        }
+    }
+    
+    public void NotifyAreaServerDirectly(int areaId, string messageType, object data)
+    {
+        // This would be used for direct area-to-area server communication
+        // In a production environment, this might use HTTP requests, TCP sockets, or message queues
+        LogDebug($"Direct notification to area {areaId}: {messageType}");
+        
+        // For now, we'll use the existing transfer queue system
+        // In a real implementation, you might use:
+        // - REST API calls between servers
+        // - Message queue systems (RabbitMQ, Redis)
+        // - Direct TCP/UDP communication
+        // - Shared database with polling
+    }
+    
+    public async Task<bool> ValidateInterAreaConnection(int fromAreaId, int toAreaId)
+    {
+        // Check if both areas are online
+        bool fromAreaOnline = registeredServers.ContainsKey(fromAreaId) && registeredServers[fromAreaId].isOnline;
+        bool toAreaOnline = registeredServers.ContainsKey(toAreaId) && registeredServers[toAreaId].isOnline;
+        
+        if (!fromAreaOnline || !toAreaOnline)
+        {
+            return false;
+        }
+        
+        // Check if there's a valid waypoint connection
+        var waypoints = GetWaypointsToArea(fromAreaId, toAreaId);
+        return waypoints.Length > 0;
+    }
+    
+    public async Task<Dictionary<string, object>> GetAreaServerStatistics()
+    {
+        var stats = GetServerStatistics();
+        
+        // Add connectivity information
+        stats["connectivityMap"] = GetAreaConnectivityMap();
+        stats["activeTransfers"] = activeTransfers.Count;
+        stats["waypointNetworkSize"] = globalWaypointMap.Count;
+        
+        // Add per-area waypoint counts
+        var waypointCounts = new Dictionary<int, int>();
+        foreach (var template in areaServerTemplates)
+        {
+            waypointCounts[template.areaId] = template.waypoints.Length;
+        }
+        stats["waypointCounts"] = waypointCounts;
+        
+        return stats;
+    }
+    
+    public void BroadcastAreaConnectivityUpdate()
+    {
+        var connectivityInfo = GetAreaConnectivityMap();
+        LogDebug($"Broadcasting connectivity update to all clients: {connectivityInfo.Count} areas");
+        
+        // TODO: Implement actual broadcast to clients
+        // This would send the connectivity map to all connected clients
+        // so they can update their UI with available travel options
+    }
+    
+    public async Task<bool> TestWaypointConnection(int sourceAreaId, string waypointName)
+    {
+        try
+        {
+            var validation = ValidateWaypoint(sourceAreaId, 
+                areaServerTemplates.FirstOrDefault(t => t.areaId == sourceAreaId)?
+                .waypoints.FirstOrDefault(w => w.waypointName == waypointName) ?? default);
+            
+            return validation.isValid && validation.destinationAvailable;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error testing waypoint connection: {ex.Message}");
+            return false;
+        }
     }
     #endregion
 
@@ -1127,6 +1807,43 @@ public struct AreaWaypoint
 {
     public string waypointName;
     public Vector3 position;
+    public int destinationAreaId;
+    public string destinationWaypointName;
+    public WaypointType waypointType;
+    public WaypointRequirements requirements;
+    public bool isActive;
+    
+    [Tooltip("Description shown to players")]
+    public string description;
+    
+    [Tooltip("Minimum player level required")]
+    public int minLevel;
+    
+    [Tooltip("Maximum simultaneous transfers allowed")]
+    public int maxConcurrentTransfers;
+}
+
+[System.Serializable]
+public enum WaypointType
+{
+    Portal,
+    Teleporter,
+    ZoneBoundary,
+    Transport,
+    QuestGated
+}
+
+[System.Serializable]
+public struct WaypointRequirements: INetworkSerializable
+{
+    public bool requiresFlag;
+    public int requiredFlagId;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref requiresFlag);
+        serializer.SerializeValue(ref requiredFlagId);
+    }
 }
 
 [System.Serializable]
@@ -1170,6 +1887,79 @@ public struct AreaInfo : INetworkSerializable
         serializer.SerializeValue(ref maxPlayers);
         serializer.SerializeValue(ref address);
         serializer.SerializeValue(ref port);
+    }
+}
+
+[System.Serializable]
+public struct PlayerTransferData
+{
+    public ulong clientId;
+    public int characterId;
+    public Vector3 currentPosition;
+    public Vector3 targetPosition;
+    public string sourceWaypointName;
+    public string targetWaypointName;
+    public DateTime transferInitiated;
+    public TransferState state;
+}
+
+[System.Serializable]
+public enum TransferState
+{
+    Pending,
+    ValidatingRequirements,
+    SavingPlayerState,
+    InitiatingTransfer,
+    TransferInProgress,
+    LoadingTargetArea,
+    TransferComplete,
+    TransferFailed
+}
+
+[System.Serializable]
+public struct AreaConnectivity
+{
+    public int areaId;
+    public List<int> connectedAreaIds;
+    public Dictionary<string, AreaWaypoint> outgoingWaypoints;
+    public Dictionary<string, Vector3> incomingSpawnPoints;
+    public bool allowsDirectTransfers;
+    public float transferCooldownSeconds;
+}
+
+[System.Serializable]
+public struct WaypointValidationResult
+{
+    public bool isValid;
+    public string errorMessage;
+    public bool requirementsMet;
+    public List<string> missingRequirements;
+    public bool destinationAvailable;
+    public int estimatedTransferTime;
+}
+
+[System.Serializable]
+public struct WaypointInfo : INetworkSerializable
+{
+    public string name;
+    public string description;
+    public Vector3 position;
+    public int destinationAreaId;
+    public WaypointType waypointType;
+    public bool isActive;
+    public WaypointRequirements requirements;
+    public int estimatedTransferTime;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref name);        
+        serializer.SerializeValue(ref description);       
+        serializer.SerializeValue(ref position);       
+        serializer.SerializeValue(ref destinationAreaId);       
+        serializer.SerializeValue(ref waypointType);       
+        serializer.SerializeValue(ref isActive);       
+        serializer.SerializeValue(ref requirements);       
+        serializer.SerializeValue(ref estimatedTransferTime);
     }
 }
 #endregion
