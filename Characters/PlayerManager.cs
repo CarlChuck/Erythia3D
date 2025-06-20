@@ -790,18 +790,74 @@ public class PlayerManager : NetworkBehaviour
 
     #region Player Area Management
    
-    // Waypoint Transfer Methods
+    // Area Transition Methods
+    public void RequestAreaTransition(string targetAreaId, Vector3 currentPosition)
+    {
+        if (!IsServer && selectedPlayerCharacter != null)
+        {
+            RequestAreaTransitionRpc(selectedPlayerCharacter.GetCharacterID(), targetAreaId, currentPosition);
+        }
+    }
+    
+    [Rpc(SendTo.Server)] private void RequestAreaTransitionRpc(int characterId, string targetAreaId, Vector3 currentPosition)
+    {
+        if (ServerManager.Instance != null)
+        {
+            var targetConfig = ServerManager.Instance.GetAreaConfiguration(targetAreaId);
+            if (targetConfig != null)
+            {
+                // Assign client to new area on server
+                ServerManager.Instance.AssignClientToArea(OwnerClientId, targetAreaId);
+                
+                // Load environment scene on client
+                LoadEnvironmentSceneRpc(targetConfig.environmentScene, targetConfig.defaultSpawnPosition);
+            }
+            else
+            {
+                ReceiveAreaTransitionResultRpc(false, $"Area '{targetAreaId}' not found", "");
+            }
+        }
+    }
+    
+    [Rpc(SendTo.Owner)] private void LoadEnvironmentSceneRpc(string environmentScene, Vector3 spawnPosition)
+    {
+        _ = LoadEnvironmentSceneOnClient(environmentScene, spawnPosition);
+    }
+    
+    [Rpc(SendTo.Owner)] public void ReceiveAreaTransitionResultRpc(bool success, string message, string errorMessage)
+    {
+        if (success)
+        {
+            Debug.Log($"Area transition: {message}");
+        }
+        else
+        {
+            Debug.LogWarning($"Area transition failed: {message} - {errorMessage}");
+        }
+    }
+    
+    // Legacy waypoint transfer methods - updated to use area transitions
     public void RequestWaypointTransfer(string waypointName, Vector3 currentPosition)
     {
-
+        // TODO: Implement waypoint-based area transitions
+        Debug.Log($"Waypoint transfer requested: {waypointName}");
     }
+    
     [Rpc(SendTo.Server)] private void RequestWaypointTransferRpc(int characterId, string waypointName, Vector3 currentPosition)
     {
-
+        // TODO: Implement waypoint lookup and area transition
     }
+    
     [Rpc(SendTo.Owner)] public void ReceiveWaypointTransferResultRpc(bool success, string message, string errorMessage)
     {
-
+        if (success)
+        {
+            Debug.Log($"Waypoint transfer: {message}");
+        }
+        else
+        {
+            Debug.LogWarning($"Waypoint transfer failed: {message} - {errorMessage}");
+        }
     }
     
     // Area Info Methods
@@ -828,13 +884,107 @@ public class PlayerManager : NetworkBehaviour
 
     }
     
+    private string currentEnvironmentScene = "";
+    
+    private async Task LoadEnvironmentSceneOnClient(string environmentScene, Vector3 spawnPosition)
+    {
+        try
+        {
+            Debug.Log($"Loading environment scene: {environmentScene}");
+            
+            // Unload current environment scene if exists
+            if (!string.IsNullOrEmpty(currentEnvironmentScene))
+            {
+                await UnloadEnvironmentSceneOnClient(currentEnvironmentScene);
+            }
+            
+            // Load new environment scene
+            var asyncOperation = SceneManager.LoadSceneAsync(environmentScene, LoadSceneMode.Additive);
+            
+            while (!asyncOperation.isDone)
+            {
+                await Task.Yield();
+            }
+            
+            if (asyncOperation.isDone)
+            {
+                currentEnvironmentScene = environmentScene;
+                
+                // Move player to spawn position
+                if (currentNetworkedPlayer != null)
+                {
+                    currentNetworkedPlayer.transform.position = spawnPosition;
+                }
+                
+                Debug.Log($"✅ Successfully loaded environment scene: {environmentScene}");
+                
+                // Notify server of successful transition
+                if (IsOwner)
+                {
+                    ConfirmAreaTransitionRpc(true, $"Successfully entered area");
+                }
+            }
+            else
+            {
+                Debug.LogError($"❌ Failed to load environment scene: {environmentScene}");
+                if (IsOwner)
+                {
+                    ConfirmAreaTransitionRpc(false, $"Failed to load environment scene");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ Exception loading environment scene {environmentScene}: {ex.Message}");
+            if (IsOwner)
+            {
+                ConfirmAreaTransitionRpc(false, $"Exception: {ex.Message}");
+            }
+        }
+    }
+    
+    private async Task UnloadEnvironmentSceneOnClient(string environmentScene)
+    {
+        try
+        {
+            Debug.Log($"Unloading environment scene: {environmentScene}");
+            
+            var asyncOperation = SceneManager.UnloadSceneAsync(environmentScene);
+            
+            while (!asyncOperation.isDone)
+            {
+                await Task.Yield();
+            }
+            
+            if (asyncOperation.isDone)
+            {
+                Debug.Log($"✅ Successfully unloaded environment scene: {environmentScene}");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠️ Failed to unload environment scene: {environmentScene}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ Exception unloading environment scene {environmentScene}: {ex.Message}");
+        }
+    }
+    
+    [Rpc(SendTo.Server)] private void ConfirmAreaTransitionRpc(bool success, string message)
+    {
+        Debug.Log($"Area transition confirmation from client {OwnerClientId}: {(success ? "Success" : "Failed")} - {message}");
+    }
+    
+    // Legacy scene loading methods
     private async Task LoadSceneOnClient(string zoneName)
     {
-
+        await LoadEnvironmentSceneOnClient(zoneName, Vector3.zero);
     }
+    
     private async Task UnloadSceneOnClient(string zoneName)
     {
-
+        await UnloadEnvironmentSceneOnClient(zoneName);
     }
     
     #endregion
