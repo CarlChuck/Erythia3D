@@ -793,137 +793,48 @@ public class PlayerManager : NetworkBehaviour
     // Waypoint Transfer Methods
     public void RequestWaypointTransfer(string waypointName, Vector3 currentPosition)
     {
-        if (!IsServer)
-        {
-            RequestWaypointTransferRpc(selectedPlayerCharacter.GetCharacterID(), waypointName, currentPosition);
-        }
+
     }
-    
     [Rpc(SendTo.Server)] private void RequestWaypointTransferRpc(int characterId, string waypointName, Vector3 currentPosition)
     {
-        if (ServerManager.Instance != null)
-        {
-            ServerManager.Instance.HandleWaypointTransferRequest(this, characterId, waypointName, currentPosition);
-        }
+
     }
-    
     [Rpc(SendTo.Owner)] public void ReceiveWaypointTransferResultRpc(bool success, string message, string errorMessage)
     {
-        if (success)
-        {
-            Debug.Log($"Waypoint transfer: {message}");
-            // TODO: Handle successful transfer (UI updates, etc.)
-        }
-        else
-        {
-            Debug.LogWarning($"Waypoint transfer failed: {message} - {errorMessage}");
-            // TODO: Handle failed transfer (show error to player, etc.)
-        }
+
     }
     
     // Area Info Methods
     public void RequestPlayerAreaInfo()
     {
-        if (!IsServer)
-        {
-            RequestPlayerAreaInfoRpc(selectedPlayerCharacter.GetCharacterID());
-        }
+
     }
-    
     [Rpc(SendTo.Server)] private void RequestPlayerAreaInfoRpc(int characterID)
     {
-        if (ServerManager.Instance != null)
-        {
-            ServerManager.Instance.HandleZoneInfoRequest(this, characterID);
-        }
+
     }
-    
     [Rpc(SendTo.Owner)] public void ReceivePlayerAreaInfoRpc(WaypointInfo[] waypoints, int areaId)
     {
-        Debug.Log($"Received area info for area {areaId}: {waypoints.Length} waypoints available");
-        
-        // TODO: Update UI with available waypoints
-        // This could update a travel UI, map markers, etc.
-        
-        foreach (var waypoint in waypoints)
-        {
-            Debug.Log($"Waypoint: {waypoint.name} - {waypoint.description} (Type: {waypoint.waypointType})");
-        }
+
     }
     
     // Transfer Confirmation Methods
     public void ConfirmTransfer(bool success, string message)
     {
-        if (!IsServer)
-        {
-            ConfirmTransferRpc(success, message);
-        }
+
     }
-    
     [Rpc(SendTo.Server)] private void ConfirmTransferRpc(bool success, string message)
     {
-        if (ServerManager.Instance != null)
-        {
-            ServerManager.Instance.HandleTransferConfirmation(this, success, message);
-        }
-    }
-    
-    // Scene Loading Methods
-    [Rpc(SendTo.Server)] internal void RequestServerLoadAreaRpc(string zoneName)
-    {
-        // TODO: Request server to load specific area/scene
-    }
-    
-    [Rpc(SendTo.Owner)] private void ReceiveServerLoadAreaResultRpc(bool success, string zoneName, string errorMessage)
-    {
-        if (success)
-        {
-            Debug.Log($"Area {zoneName} loaded successfully");
-            _ = LoadSceneOnClient(zoneName);
-        }
-        else
-        {
-            Debug.LogError($"Failed to load area {zoneName}: {errorMessage}");
-        }
+
     }
     
     private async Task LoadSceneOnClient(string zoneName)
     {
-        try
-        {
-            // TODO: Implement scene loading logic
-            Debug.Log($"Loading scene: {zoneName}");
-            
-            // Example implementation:
-            // var asyncOperation = SceneManager.LoadSceneAsync(zoneName, LoadSceneMode.Additive);
-            // while (!asyncOperation.isDone)
-            // {
-            //     await Task.Yield();
-            // }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error loading scene {zoneName}: {ex.Message}");
-        }
+
     }
     private async Task UnloadSceneOnClient(string zoneName)
     {
-        try
-        {
-            // TODO: Implement scene unloading logic
-            Debug.Log($"Unloading scene: {zoneName}");
-            
-            // Example implementation:
-            // var asyncOperation = SceneManager.UnloadSceneAsync(zoneName);
-            // while (!asyncOperation.isDone)
-            // {
-            //     await Task.Yield();
-            // }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Error unloading scene {zoneName}: {ex.Message}");
-        }
+
     }
     
     #endregion
