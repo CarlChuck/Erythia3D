@@ -944,119 +944,13 @@ public class ServerManager : NetworkBehaviour
     {
 
     }
-    private async Task<WaypointResult> ProcessWaypoint(int characterID, string zoneName)
-    {
-        Debug.Log($"ServerManager: ProcessWaypoint ENTRY - characterID={characterID}, zoneName={zoneName}");
-        
-        if (!IsServer)
-        {
-            Debug.LogError("ProcessWaypoint called on client! This should only run on server.");
-            return new WaypointResult 
-            { 
-                Success = false, 
-                ErrorMessage = "Server-side method called on client", 
-                WaypointPosition = Vector3.zero,
-                HasWaypoint = false,
-                ZoneName = zoneName
-            };
-        }
-
-        try
-        {
-            // Debug: Check if WorldManager is available
-            if (WorldManager.Instance == null)
-            {
-                Debug.LogError("ServerManager: WorldManager.Instance is null!");
-                return new WaypointResult 
-                { 
-                    Success = false, 
-                    ErrorMessage = "WorldManager not available", 
-                    WaypointPosition = Vector3.zero,
-                    HasWaypoint = false,
-                    ZoneName = zoneName
-                };
-            }
-
-            Debug.Log($"ServerManager: WorldManager found, requesting waypoint for zone '{zoneName}'...");
-
-            // Debug: Check active ZoneManagers
-            var activeZoneManagers = WorldManager.Instance.GetAllZoneManagers();
-            Debug.Log($"ServerManager: WorldManager reports {activeZoneManagers.Count} active ZoneManagers:");
-            foreach (var kvp in activeZoneManagers)
-            {
-                Debug.Log($"ServerManager: - Zone '{kvp.Key}': {(kvp.Value != null ? "Valid ZoneManager" : "NULL ZoneManager")}");
-                if (kvp.Value != null)
-                {
-                    Debug.Log($"ServerManager: - Zone '{kvp.Key}' has MarketWaypoint: {kvp.Value.HasMarketWaypoint()}");
-                }
-            }
-
-            // Get MarketWaypoint position from WorldManager
-            Vector3? waypointPosition = WorldManager.Instance.GetMarketWaypointPosition(zoneName);
-            
-            if (waypointPosition.HasValue)
-            {
-                Debug.Log($"ServerManager: Successfully retrieved waypoint position {waypointPosition.Value} for zone '{zoneName}'");
-                return new WaypointResult 
-                { 
-                    Success = true, 
-                    ErrorMessage = "", 
-                    WaypointPosition = waypointPosition.Value,
-                    HasWaypoint = true,
-                    ZoneName = zoneName
-                };
-            }
-            else
-            {
-                Debug.LogWarning($"ServerManager: No MarketWaypoint found for zone '{zoneName}'");
-                return new WaypointResult 
-                { 
-                    Success = true, 
-                    ErrorMessage = $"No MarketWaypoint found in zone '{zoneName}'", 
-                    WaypointPosition = Vector3.zero,
-                    HasWaypoint = false,
-                    ZoneName = zoneName
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ServerManager: Exception during ProcessWaypoint: {ex.Message}\n{ex.StackTrace}");
-            return new WaypointResult 
-            { 
-                Success = false, 
-                ErrorMessage = $"Server error processing waypoint: {ex.Message}", 
-                WaypointPosition = Vector3.zero,
-                HasWaypoint = false,
-                ZoneName = zoneName
-            };
-        }
-    }
     public Vector3 GetWaypointByZoneID(int zoneID)
     {
-        foreach (AreaServerTemplate template in areaServerTemplates)
-        {
-            if (zoneID == template.areaId)
-            {
-                return template.spawnPosition;
-            }
-        }
-        Debug.LogError($"ServerManager: GetWaypointByZoneID: No waypoint found for zoneID={zoneID}");
         return Vector3.zero;
     }
     public Vector3 GetSpawnPositionForCharacter(int characterID)
     {
-        // In a full implementation, you would look up the character's zone
-        // and find the appropriate ZoneManager.
-        // For now, we'll assume there is one active ZoneManager.
-        ZoneManager zoneManager = FindObjectOfType<ZoneManager>();
-        if (zoneManager != null && zoneManager.HasMarketWaypoint())
-        {
-            return zoneManager.GetMarketWaypoint().position;
-        }
-
-        Debug.LogWarning($"ServerManager: Could not find a ZoneManager with a MarketWaypoint. Defaulting to spawn position (0, 10, 0).");
-        return new Vector3(0, 10, 0); // Return a default spawn point if no waypoint is found
+        return Vector3.zero;
     }
     #endregion
 
@@ -1227,34 +1121,12 @@ public class ServerManager : NetworkBehaviour
 }
 
 #region Additional Data Structures
-/// Player zone information result struct for server-client communication
+
 [System.Serializable]
-public struct PlayerZoneInfoResult : INetworkSerializable
+public struct AreaWaypoint
 {
-    public bool Success;
-    public string ErrorMessage;
-    public PlayerZoneInfo ZoneInfo;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref Success);
-        serializer.SerializeValue(ref ErrorMessage);
-        serializer.SerializeValue(ref ZoneInfo);
-    }
-}
-
-/// Server zone loading result struct for server-client communication
-[System.Serializable]
-public struct ServerZoneLoadResult : INetworkSerializable
-{
-    public bool Success;
-    public string ErrorMessage;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref Success);
-        serializer.SerializeValue(ref ErrorMessage);
-    }
+    public string waypointName;
+    public Vector3 position;
 }
 
 [System.Serializable]
@@ -1264,7 +1136,7 @@ public class AreaServerTemplate
     public string sceneName;
     public ushort startingPort;
     public int maxPlayers = 50;
-    public Vector3 spawnPosition;
+    public AreaWaypoint[] waypoints;
     public bool autoStartOnLaunch = true;
     [Tooltip("Executable path for standalone server builds")]
     public string serverExecutablePath;
@@ -1281,7 +1153,14 @@ public struct AreaInfo : INetworkSerializable
     public int maxPlayers;
     public string address;
     public ushort port;
-    public float loadPercentage => maxPlayers > 0 ? (float)currentPlayers / maxPlayers : 0f;
+    public float loadPercentage
+    {
+        get
+        {
+            return maxPlayers > 0 ? (float)currentPlayers / maxPlayers : 0f; 
+            
+        }
+    }
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {

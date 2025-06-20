@@ -789,129 +789,41 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Player Zone Management
-    [Rpc(SendTo.Server)] private void RequestZoneTransitionRpc()
-    {
 
+    public void OnAreaTransition(int areaId, string intendedWaypoint)
+    {
+        RequestAreaTransitionRpc(areaId, intendedWaypoint);
     }
     
-    [Rpc(SendTo.Server)] private void RequestWaypointRpc(WaypointRequest request)
+    [Rpc(SendTo.Server)] private void RequestAreaTransitionRpc(int areaId, string intendedWaypoint)
     {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessWaypointRequest...");
-                //TODO do this right
-                //ServerManager.Instance.ProcessWaypointRequest(request.CharacterID, request.ZoneName, serverRpcParams.Receive.SenderClientId);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessWaypointRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError(
-                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process waypoint request.");
-
-                // Send error response back to client
-                WaypointResult errorResult = new WaypointResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    WaypointPosition = Vector3.zero,
-                    HasWaypoint = false,
-                    ZoneName = request.ZoneName
-                };
-
-                ReceiveWaypointResultRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError("PlayerManager: RequestWaypointServerRpc called on client! This should only run on server.");
-        }
-    }
-    [Rpc(SendTo.Owner)] public void ReceiveWaypointResultRpc(WaypointResult result)
-    {
-
+        //TODO: Request zone transition from ServerManager, ServerManager to send player to that zone
     }
     
-    [Rpc(SendTo.Server)] private void RequestPlayerZoneInfoRpc(int characterID)
+    [Rpc(SendTo.Server)] private void RequestWaypointRpc()
     {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received player zone info request for character {characterID}");
-
-            if (ServerManager.Instance != null)
-            {
-                // Call regular method on ServerManager (not RPC, since we're already on server)
-                Debug.Log($"PlayerManager (Server): Calling ServerManager.ProcessPlayerZoneInfoRequest...");
-
-                //TODO sort out how to handle this properly
-                //ServerManager.Instance.ProcessPlayerZoneInfoRequest(characterID);
-                Debug.Log($"PlayerManager (Server): ServerManager.ProcessPlayerZoneInfoRequest called successfully");
-            }
-            else
-            {
-                Debug.LogError(
-                    "PlayerManager (Server): ServerManager.Instance is null! Cannot process player zone info request.");
-
-                // Send error response back to client
-                PlayerZoneInfoResult errorResult = new PlayerZoneInfoResult
-                {
-                    Success = false,
-                    ErrorMessage = "Server error: ServerManager not available",
-                    ZoneInfo = new PlayerZoneInfo
-                    {
-                        CharacterID = characterID,
-                        ZoneID = 1,
-                        ZoneName = "IthoriaSouth",
-                        SpawnPosition = null,
-                        RequiresMarketWaypoint = true
-                    }
-                };
-
-                ReceivePlayerZoneInfoRpc(errorResult);
-            }
-        }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestPlayerZoneInfoServerRpc called on client! This should only run on server.");
-        }
+ 
     }
-    [Rpc(SendTo.Owner)] public void ReceivePlayerZoneInfoRpc(PlayerZoneInfoResult result)
+    [Rpc(SendTo.Owner)] public void ReceiveWaypointResultRpc()
     {
 
     }
-    
-    [Rpc(SendTo.Server)] internal void RequestServerLoadZoneRpc(string zoneName)
-    {
-        // This runs on the server - act as a bridge to ServerManager
-        if (IsServer)
-        {
-            Debug.Log($"PlayerManager (Server): Received server zone load request for zone: {zoneName}");
-
-            // For now, just send a success response as zone loading might be handled differently
-            ServerZoneLoadResult result = new ServerZoneLoadResult
-            {
-                Success = true,
-                ErrorMessage = ""
-            };
-
-            ReceiveServerLoadZoneResultRpc(result);
-        }
-        else
-        {
-            Debug.LogError(
-                "PlayerManager: RequestServerLoadZoneServerRpc called on client! This should only run on server.");
-        }
-    }
-    [Rpc(SendTo.Owner)] private void ReceiveServerLoadZoneResultRpc(ServerZoneLoadResult result)
+    [Rpc(SendTo.Server)] private void RequestPlayerAreaInfoRpc(int characterID)
     {
 
     }
-    
+    [Rpc(SendTo.Owner)] public void ReceivePlayerAreaInfoRpc()
+    {
+
+    }
+    [Rpc(SendTo.Server)] internal void RequestServerLoadAreaRpc(string zoneName)
+    {
+
+    }
+    [Rpc(SendTo.Owner)] private void ReceiveServerLoadAreaResultRpc()
+    {
+
+    }
     private async Task UnloadSceneOnClient(string zoneName)
     {
 
@@ -1432,34 +1344,3 @@ public struct PlayerCharacterData : INetworkSerializable
     }
 }
 
-[System.Serializable]
-public struct WaypointRequest : INetworkSerializable
-{
-    public int CharacterID;
-    public string ZoneName;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref CharacterID);
-        serializer.SerializeValue(ref ZoneName);
-    }
-}
-
-[System.Serializable]
-public struct WaypointResult : INetworkSerializable
-{
-    public bool Success;
-    public string ErrorMessage;
-    public Vector3 WaypointPosition;
-    public bool HasWaypoint;
-    public string ZoneName;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref Success);
-        serializer.SerializeValue(ref ErrorMessage);
-        serializer.SerializeValue(ref WaypointPosition);
-        serializer.SerializeValue(ref HasWaypoint);
-        serializer.SerializeValue(ref ZoneName);
-    }
-}
