@@ -635,7 +635,6 @@ public class ServerManager : NetworkBehaviour
                     AccountName = account["Username"].ToString(),
                     SteamID = account.TryGetValue("SteamID", out object steamObj) && steamObj != DBNull.Value ? Convert.ToUInt64(steamObj) : 0
                 };
-                Debug.Log($"ServerManager: Account found for AccountID {accountID}: {result.AccountName}");
             }
             else
             {
@@ -647,7 +646,6 @@ public class ServerManager : NetworkBehaviour
         {
             result = new LoginResult { Success = false, ErrorMessage = "No valid login method available. Both SteamID and AccountID are 0.", AccountName = "" };
         }
-        
         playerManager.ReceiveLoginRpc(result);
     }
     #endregion

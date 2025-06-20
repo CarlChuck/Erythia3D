@@ -7,6 +7,7 @@ public class CharacterCreator : MonoBehaviour
     private int selectedRace = 1;
     private int selectedFace = 1;
     private string newCharacterName = "";
+    private string newFamilyName = "";
 
     [SerializeField] private TMP_InputField nameInput;
     [SerializeField] private TMP_InputField familyNameInput;
@@ -76,7 +77,7 @@ public class CharacterCreator : MonoBehaviour
     }
     public void SetFamilyName()
     {
-        MenuManager.Instance.SetFamilyName(familyNameInput.text);
+        newFamilyName = familyNameInput.text;
     }
     #endregion
 
@@ -96,6 +97,11 @@ public class CharacterCreator : MonoBehaviour
     public string GetName()
     {
         return newCharacterName;
+    }
+
+    public string GetFamilyName()
+    {
+        return newFamilyName;
     }
     #endregion
 

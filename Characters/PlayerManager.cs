@@ -25,56 +25,36 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Helper Classes
-    internal NetworkRequestManager requestManager;
-    #endregion
-
     #region References
-
     [Header("Player Account Info")]
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
 
-    [Header("Character Management")] [SerializeField]
-    private CharacterModelManager characterModelManager; // Handles character models
+    [Header("Character Management")] 
+    [SerializeField] private CharacterModelManager characterModelManager; // Handles character models
 
     [SerializeField] private GameObject charListParent;
     [SerializeField] private List<PlayerStatBlock> playerCharacters;
     [SerializeField] private PlayerStatBlock selectedPlayerCharacter;
     [SerializeField] private GameObject characterPrefab;
 
-    [Header("Multiplayer Prefabs")] [SerializeField]
-    private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
-    public GameObject NetworkedPlayerPrefab
-    {
-        get
-        {
-            return networkedPlayerPrefab;
-            // Public accessor for ServerManager
-        }
-    }
+    [Header("Multiplayer Prefabs")] 
+    [SerializeField] private GameObject networkedPlayerPrefab; // Contains NetworkObject, NetworkedPlayer, controllers
 
-    [Header("Camera and UI (Persistent)")] [SerializeField]
-    private Camera mainCamera;
-
+    [Header("Camera and UI (Persistent)")] 
+    [SerializeField] private Camera mainCamera;
     [SerializeField] private GameObject playerFollowCam;
     [SerializeField] private UIManager uiManager;
 
-    [Header("Current References")] [SerializeField]
-    private NetworkedPlayer currentNetworkedPlayer; // Currently controlled networked player
+    [Header("Current References")] 
+    [SerializeField] private NetworkedPlayer currentNetworkedPlayer; 
+    [SerializeField] private List<NetworkedPlayer> allNetworkedPlayers = new(); 
+    [SerializeField] private PlayerController playerController; 
+    [SerializeField] private GameObject playerControllerPrefab; 
+    [SerializeField] private GameObject localPlayerControllerPrefab; 
 
-    [SerializeField]
-    private List<NetworkedPlayer> allNetworkedPlayers = new List<NetworkedPlayer>(); // All networked players
-
-    [Header("Legacy References")] [SerializeField]
-    private PlayerController playerController; // Legacy
-
-    [SerializeField] private GameObject playerControllerPrefab; // Legacy
-    [SerializeField] private GameObject localPlayerControllerPrefab; // Legacy
-
-    [Header("Inventory and Workbenches")] [SerializeField]
-    private Transform workbenchParent;
-
+    [Header("Inventory and Workbenches")] 
+    [SerializeField] private Transform workbenchParent;
     [SerializeField] private Inventory homeInventory;
     [SerializeField] private WorkBench workBenchPrefab;
     #endregion
@@ -83,7 +63,7 @@ public class PlayerManager : NetworkBehaviour
     private bool isInitialized;
     private Task initializationTask;
     
-    // Login completion tracking
+    // Initialisation completion tracking
     private TaskCompletionSource<bool> loginCompletionSource;
     private TaskCompletionSource<bool> charCreateCompletionSource;
     private TaskCompletionSource<bool> charListCompletionSource;
@@ -92,7 +72,7 @@ public class PlayerManager : NetworkBehaviour
     private TaskCompletionSource<bool> workbenchesCompletionSource;
     #endregion
 
-    #region Helper Access Properties
+    #region Access Properties
     private ulong SteamID { get; set; }
     public int AccountID { get; private set; }
     public string AccountName { get; private set; }
@@ -188,6 +168,7 @@ public class PlayerManager : NetworkBehaviour
     }
     public async Task OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
     {
+        Debug.Log($"PlayerManager.OnStartInitialization: AccountID={newAccountID}, SteamID={newSteamID}, AccountName='{newAccountName}'");
         AccountID = newAccountID;
         SteamID = newSteamID;
         AccountName = newAccountName;
@@ -199,12 +180,12 @@ public class PlayerManager : NetworkBehaviour
         isInitialized = false;
         await LoginAsync();
         await LoadCharactersAsync();
-        await SetupInitialCharacterUI();
         await LoadAllInventoriesAsync();
+        await SetupInitialCharacterUI();
         isInitialized = true;
         Debug.Log("PlayerManager Initialization Complete.");
     }
-    private async Task SetupInitialCharacterUI()
+    private Task SetupInitialCharacterUI()
     {
         if (selectedPlayerCharacter != null)
         {
@@ -216,6 +197,8 @@ public class PlayerManager : NetworkBehaviour
         {
             MenuManager.Instance.SetCharCreationButton(selectedPlayerCharacter == null);
         }
+
+        return Task.CompletedTask;
     }
     #endregion
 
@@ -225,7 +208,7 @@ public class PlayerManager : NetworkBehaviour
         if (!IsServer)
         {
             loginCompletionSource = new();
-            LoginRpc();
+            LoginRpc(SteamID, AccountID);
             
             // Wait for login response with timeout (10 seconds)
             Task delayTask = Task.Delay(10000);
@@ -244,16 +227,16 @@ public class PlayerManager : NetworkBehaviour
                 Debug.LogError("LoginAsync: Login failed");
                 throw new InvalidOperationException("Login failed");
             }
-            
-            Debug.Log("PlayerManager: Login completed successfully");
         }
     }
-    [Rpc(SendTo.Server)] private void LoginRpc()
+    [Rpc(SendTo.Server)] private void LoginRpc(ulong steamID, int accountID)
     {
-        ServerManager.HandleLogin(this, SteamID, AccountID);
+        Debug.Log($"PlayerManager.LoginRpc: Sending login RPC to server with SteamID={steamID}, AccountID={accountID}");
+        ServerManager.HandleLogin(this, steamID, accountID);
     }
     [Rpc(SendTo.Owner)] public void ReceiveLoginRpc(LoginResult result)
     {
+        Debug.Log($"PlayerManager.ReceiveLoginRpc: Received result - Success={result.Success}, AccountID={result.AccountID}, AccountName='{result.AccountName}', ErrorMessage='{result.ErrorMessage}'");
         AccountID = result.AccountID;
         AccountName = result.AccountName;
         SteamID = result.SteamID;
@@ -263,18 +246,18 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Character Creation
-    public async Task OnCreateCharacter(string characterName, int charRace, int charGender, int charFace)
+    public async Task OnCreateCharacter(string characterName, string familyName, int charRace, int charGender, int charFace)
     {
         if (!IsServer)
         {            
-            if (string.IsNullOrEmpty(FamilyName) || string.IsNullOrEmpty(characterName))
+            if (string.IsNullOrEmpty(familyName) || string.IsNullOrEmpty(characterName))
             {
                 Debug.LogError("CharacterDataHandler: Character or Family Name cannot be empty");
                 return;
             }
             
             charCreateCompletionSource = new();
-            CreateCharacterRpc(characterName, charRace, charGender, charFace);
+            CreateCharacterRpc(characterName, familyName, charRace, charGender, charFace);
 
             // Wait for login response with timeout (10 seconds)
             Task delayTask = Task.Delay(10000);
@@ -303,9 +286,9 @@ public class PlayerManager : NetworkBehaviour
             }
         }
     }
-    [Rpc(SendTo.Server)] private void CreateCharacterRpc(string characterName, int charRace, int charGender, int charFace)
+    [Rpc(SendTo.Server)] private void CreateCharacterRpc(string characterName, string familyName, int charRace, int charGender, int charFace)
     {
-        ServerManager.Instance.HandleCharacterCreation(this, FamilyName ,characterName, charRace, charGender, charFace);
+        ServerManager.Instance.HandleCharacterCreation(this, familyName ,characterName, charRace, charGender, charFace);
     }
     [Rpc(SendTo.Owner)] public void ReceiveCharacterCreationResultRpc(bool success, string errorMessage)
     {
@@ -323,7 +306,6 @@ public class PlayerManager : NetworkBehaviour
             FamilyName = newFamilyName;
         }
     }
-
     #endregion
 
     #region Character List
@@ -384,12 +366,8 @@ public class PlayerManager : NetworkBehaviour
                     FamilyName = characterData.FamilyName;
                 }
 
-                PlayerStatBlock newCharacter = InstantiateCharacter(characterData);
-                if (newCharacter == null)
-                {
-                    continue;
-                }
-
+                PlayerStatBlock newCharacter = Instantiate(CharacterPrefab, CharListParent.transform).GetComponent<PlayerStatBlock>();
+                MapCharacterDataToPlayerStatBlock(newCharacter, characterData);
                 PlayerCharacters.Add(newCharacter);
 
                 //Sets the first character loaded as the selected character if none is selected
@@ -408,106 +386,6 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError($"CharacterDataHandler: Exception during ProcessCharacterListResult: {ex.Message}\n{ex.StackTrace}");
             // Complete the task with failure on exception
             charListCompletionSource?.SetResult(false);
-        }
-    }
-    #endregion
-
-    #region Character Data
-    [Rpc(SendTo.Server)] private void SyncCharacterDataToServerRpc(PlayerCharacterData characterData)
-    {
-        if (!IsServer)
-        {
-            Debug.LogError("PlayerManager: SyncCharacterDataToServerRpc called on non-server!");
-            return;
-        }
-
-        try
-        {
-            Debug.Log(
-                $"PlayerManager (Server): Received character data sync for character ID: {characterData.CharacterID}");
-
-            // Create PlayerStatBlock on server with the received data
-            CreateServerPlayerStatBlock(characterData);
-
-            Debug.Log(
-                $"PlayerManager (Server): Successfully synced character data for character: {characterData.CharacterName}");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager (Server): Error syncing character data: {ex.Message}");
-        }
-    }
-    private void CreateServerPlayerStatBlock(PlayerCharacterData characterData)
-    {
-        if (!IsServer)
-        {
-            Debug.LogWarning("PlayerManager: CreateServerPlayerStatBlock called on client!");
-            return;
-        }
-
-        try
-        {
-            // Clear existing characters on server
-            if (playerCharacters == null)
-            {
-                playerCharacters = new List<PlayerStatBlock>();
-            }
-            else
-            {
-                // Clear existing character data but keep list
-                foreach (var existingChar in playerCharacters)
-                {
-                    if (existingChar != null)
-                    {
-                        Destroy(existingChar.gameObject);
-                    }
-                }
-
-                playerCharacters.Clear();
-            }
-
-            // Create new PlayerStatBlock from character data
-            GameObject newCharObj = Instantiate(characterPrefab, charListParent.transform);
-            PlayerStatBlock newPlayerChar = newCharObj.GetComponent<PlayerStatBlock>();
-
-            if (newPlayerChar == null)
-            {
-                Debug.LogError("PlayerManager (Server): Character prefab missing PlayerStatBlock component!");
-                Destroy(newCharObj);
-                return;
-            }
-
-            // Use the existing SetUpCharacter method which handles all initialization
-            newPlayerChar.SetUpCharacter(
-                characterData.CharacterName, // character name
-                characterData.CharacterID, // character ID
-                "", // title (empty for now)
-                1, // zone ID (default to 1)
-                characterData.Race, // race
-                characterData.Face, // face
-                characterData.Gender, // gender
-                characterData.CombatExp, // combat XP
-                characterData.CraftingExp, // crafting XP
-                characterData.ArcaneExp, // arcane XP
-                characterData.SpiritExp, // spirit XP
-                characterData.VeilExp, // veil XP
-                characterData.BaseStrength, // species strength
-                characterData.BaseDexterity, // species dexterity
-                characterData.BaseConstitution, // species constitution
-                characterData.BaseIntelligence, // species intelligence
-                characterData.BaseSpirit // species spirit
-            );
-
-            // Add to characters list and set as selected
-            playerCharacters.Add(newPlayerChar);
-            selectedPlayerCharacter = newPlayerChar;
-
-            Debug.Log(
-                $"PlayerManager (Server): Created PlayerStatBlock for character {characterData.CharacterName} (ID: {characterData.CharacterID})");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PlayerManager (Server): Error creating server PlayerStatBlock: {ex.Message}");
         }
     }
     #endregion
@@ -675,14 +553,7 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
             return;
         }
-
-        // The client no longer handles scene transitions.
-        // It simply tells the server it's ready and provides the necessary character data.
-        Debug.Log($"PlayerManager: Requesting server to transition to zone for character {selectedPlayerCharacter.GetCharacterID()}.");
-        RequestZoneTransitionRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
-
-        // The old flow of calling ZoneCoordinator and SpawnNetworkedPlayerAsync from the client is now obsolete.
-        // The server will handle all of it.
+        //RequestZoneTransitionRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
     }
     #endregion
     
@@ -792,6 +663,8 @@ public class PlayerManager : NetworkBehaviour
                     Debug.LogWarning($"InventoryDataHandler: Failed to add SubComponent instance (ID: {subCompData.SubComponentID}) to inventory bag for character {characterId}.");
                 }
             }
+            // Complete the task successfully
+            charInventoryCompletionSource?.SetResult(true);
         }
         catch (Exception ex)
         {
@@ -905,6 +778,8 @@ public class PlayerManager : NetworkBehaviour
                 }
                 OwnedWorkbenches.Add(newWorkBenchInstance);
             }
+            // Complete the task successfully
+            accountInventoryCompletionSource?.SetResult(true);
         }
         catch (Exception ex)
         {
@@ -914,10 +789,11 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region Player Zone Management
-    [Rpc(SendTo.Server)] private void RequestZoneTransitionRpc(int characterId, int species, int gender)
+    [Rpc(SendTo.Server)] private void RequestZoneTransitionRpc()
     {
 
     }
+    
     [Rpc(SendTo.Server)] private void RequestWaypointRpc(WaypointRequest request)
     {
         // This runs on the server - act as a bridge to ServerManager
@@ -958,6 +834,7 @@ public class PlayerManager : NetworkBehaviour
     {
 
     }
+    
     [Rpc(SendTo.Server)] private void RequestPlayerZoneInfoRpc(int characterID)
     {
         // This runs on the server - act as a bridge to ServerManager
@@ -1007,6 +884,7 @@ public class PlayerManager : NetworkBehaviour
     {
 
     }
+    
     [Rpc(SendTo.Server)] internal void RequestServerLoadZoneRpc(string zoneName)
     {
         // This runs on the server - act as a bridge to ServerManager
@@ -1033,117 +911,7 @@ public class PlayerManager : NetworkBehaviour
     {
 
     }
-    public async Task SetupSelectedCharacterAsync(PlayerStatBlock selectedCharacter)
-    {
-        try
-        {
-            int characterID = selectedCharacter.GetCharacterID();
-
-            // Step 1: Get player zone information
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
-            
-            if (string.IsNullOrEmpty(zoneInfo.ZoneName))
-            {
-                Debug.LogError($"ZoneCoordinator: Failed to determine zone for character {characterID}");
-                return;
-            }
-
-            // Step 2: Load the appropriate zone scene
-            await LoadCharacterZoneAsync(zoneInfo);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error in SetupSelectedCharacterAsync: {ex.Message}");
-        }
-    }
-    public async Task SetupSelectedCharacterLegacyAsync(PlayerStatBlock selectedCharacter)
-    {
-        try
-        {
-            int characterID = selectedCharacter.GetCharacterID();
-
-            // Step 1: Get player zone information
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
-            
-            if (string.IsNullOrEmpty(zoneInfo.ZoneName))
-            {
-                Debug.LogError($"ZoneCoordinator: Failed to determine zone for character {characterID}");
-                return;
-            }
-
-            // Step 2: Load the appropriate zone scene
-            await LoadCharacterZoneAsync(zoneInfo);
-
-            // Step 3: Create and position PlayerController (legacy)
-            await SetupPlayerControllerAsync(selectedCharacter, zoneInfo);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error in SetupSelectedCharacterLegacyAsync: {ex.Message}");
-        }
-    }
-    private async Task<PlayerZoneInfo> GetPlayerZoneInfoInternalAsync(int characterID)
-    {
-        return new PlayerZoneInfo();
-    }
-    private async Task LoadCharacterZoneAsync(PlayerZoneInfo zoneInfo)
-    {
-        try
-        {
-            // Step 1: Request server to load the zone first
-            await RequestServerLoadZoneAsync(zoneInfo.ZoneName);
-
-            // Step 2: Unload MainMenu when transitioning to gameplay zones
-            await UnloadSceneOnClient(zoneInfo.ZoneName);
-
-            // Step 3: Load zone on client side
-            await LoadSceneOnClient(zoneInfo.ZoneName);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error loading zone '{zoneInfo.ZoneName}': {ex.Message}");
-            throw;
-        }
-    }
-    private async Task SetupPlayerControllerAsync(PlayerStatBlock selectedCharacter, PlayerZoneInfo zoneInfo)
-    {
-        try
-        {
-            // Step 1: Determine spawn position
-            Vector3 spawnPosition = await DetermineSpawnPositionAsync(zoneInfo);
-
-            // Step 2: Instantiate PlayerController
-            if (PlayerControllerPrefab == null)
-            {
-                Debug.LogError("ZoneCoordinator: PlayerControllerPrefab is null! Cannot instantiate PlayerController.");
-                return;
-            }
-
-            GameObject controllerGO = GameObject.Instantiate(PlayerControllerPrefab);
-            PlayerController controller = controllerGO.GetComponent<PlayerController>();
-            
-            if (controller == null)
-            {
-                Debug.LogError("ZoneCoordinator: PlayerController component not found on instantiated prefab!");
-                GameObject.Destroy(controllerGO);
-                return;
-            }
-
-            // Step 3: Setup controller
-            controller.SetCharacterPosition(spawnPosition);
-
-            // TODO: Link controller to selected character
-            // controller.SetPlayerStatBlock(selectedCharacter);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error setting up PlayerController: {ex.Message}");
-        }
-    }
-    private async Task RequestServerLoadZoneAsync(string zoneName)
-    {
-        //TODO
-    }
+    
     private async Task UnloadSceneOnClient(string zoneName)
     {
 
@@ -1152,172 +920,25 @@ public class PlayerManager : NetworkBehaviour
     {
        
     }
-    public async Task<PlayerZoneInfo> GetPlayerZoneInfoAsync(int characterID)
-    {
-        return await GetPlayerZoneInfoInternalAsync(characterID);
-    }
-    public async Task<Vector3> GetSpawnPositionAsync(int characterID)
-    {
-        try
-        {
-            PlayerZoneInfo zoneInfo = await GetPlayerZoneInfoInternalAsync(characterID);
-            Vector3 spawnPosition = await DetermineSpawnPositionAsync(zoneInfo);
-            
-            return spawnPosition;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error getting spawn position for character {characterID}: {ex.Message}");
-            return Vector3.zero;
-        }
-    }
-    private async Task<Vector3> DetermineSpawnPositionAsync(PlayerZoneInfo zoneInfo)
-    {
-        try
-        {
-            Vector3 spawnPosition;
-
-            if (zoneInfo.SpawnPosition.HasValue && !zoneInfo.RequiresMarketWaypoint)
-            {
-                // Use stored database position
-                spawnPosition = zoneInfo.SpawnPosition.Value;
-            }
-            else
-            {
-
-                Vector3? waypointPosition = await GetMarketWaypointPositionWithRetryAsync(zoneInfo.ZoneName);
-                
-                if (waypointPosition.HasValue)
-                {
-                    spawnPosition = waypointPosition.Value;
-                }
-                else
-                {
-                    // Fallback to origin if no waypoint found
-                    spawnPosition = Vector3.zero;
-                    Debug.LogWarning($"ZoneCoordinator: No MarketWaypoint found for zone '{zoneInfo.ZoneName}', using origin (0,0,0)");
-                }
-            }
-
-            // Check for problematic origin position
-            if (spawnPosition == Vector3.zero)
-            {
-                Debug.LogWarning($"ZoneCoordinator: WARNING - Character positioned at origin (0,0,0). This might cause 'hanging in space' if there's no ground at origin!");
-            }
-
-            return spawnPosition;
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"ZoneCoordinator: Error determining spawn position: {ex.Message}");
-            return Vector3.zero; // Safe fallback
-        }
-    }
-    private async Task<Vector3?> GetMarketWaypointPositionWithRetryAsync(string zoneName)
-    {
-        int maxRetries = 3;
-        int retryDelay = 1000; // 1 second between retries
-        
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            
-            Vector3? waypointPosition = await GetMarketWaypointPositionAsync(zoneName);
-            
-            if (waypointPosition.HasValue)
-            {
-                return waypointPosition;
-            }
-            
-            // Wait before retrying (except on last attempt)
-            if (attempt < maxRetries)
-            {
-                await Task.Delay(retryDelay);
-            }
-        }
-        
-        Debug.LogWarning($"ZoneCoordinator: Failed to find MarketWaypoint for zone '{zoneName}' after {maxRetries} attempts");
-        return null;
-    }
-    private async Task<Vector3?> GetMarketWaypointPositionAsync(string zoneName)
-    {
-        return null;
-    }
-    private PlayerZoneInfo GetFallbackZoneInfo(int characterID)
-    {
-        return new PlayerZoneInfo
-        {
-            CharacterID = characterID,
-            ZoneID = 1,
-            ZoneName = "IthoriaSouth",
-            SpawnPosition = null,
-            RequiresMarketWaypoint = true
-        };
-    }
     #endregion
 
     #region Getters
-    public async Task<PlayerStatBlock> GetSelectedPlayerCharacterAsync()
-    {
-        if (isInitialized || initializationTask == null || initializationTask.IsCompleted)
-        {
-            return selectedPlayerCharacter;
-        }
-
-        Debug.LogWarning("GetSelectedPlayerCharacterAsync called before initialization complete. Waiting...");
-        await initializationTask;
-
-        return selectedPlayerCharacter;
-    }
     private PlayerStatBlock GetCharacterByID(int charId)
     {
         return PlayerCharacters.FirstOrDefault(character => character.GetCharacterID() == charId);
-    }
-    public PlayerStatBlock GetSelectedPlayerCharacter()
-    {
-        if (!isInitialized)
-        {
-            Debug.LogWarning(
-                "Synchronous GetSelectedPlayerCharacter called before PlayerManager is initialized! Returning potentially null character.");
-        }
-
-        return selectedPlayerCharacter;
     }
     public UIManager GetUIManager()
     {
         return uiManager;
     }
-    private async Task<List<PlayerStatBlock>> GetCharactersAsync()
-    {
-        // Ensure initialization is complete before returning list
-        if (!isInitialized && initializationTask != null && !initializationTask.IsCompleted)
-        {
-            Debug.LogWarning("GetCharactersAsync called before initialization complete. Waiting...");
-            await initializationTask;
-        }
-
-        // If list is still somehow null after init, re-initialize (shouldn't happen)
-        if (playerCharacters == null)
-        {
-            playerCharacters = new List<PlayerStatBlock>();
-            Debug.LogWarning("PlayerCharacters list was null after initialization check, re-initializing.");
-            // Re-running SetCharactersListAsync might be needed if initialization failed partially
-            // For now, just return the empty list. Consider more robust recovery if needed.
-            // await SetCharactersListAsync();
-        }
-
-        return playerCharacters;
-    }
     private List<PlayerStatBlock> GetCharacters()
     {
-        if (!isInitialized)
+        if (isInitialized)
         {
-            Debug.LogWarning(
-                "Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
-            // Cannot easily await here. Return current state.
-            return playerCharacters ?? new List<PlayerStatBlock>(); // Return empty list if null
+            return playerCharacters;
         }
-
-        return playerCharacters;
+        Debug.LogWarning("Synchronous GetCharacters called before PlayerManager is initialized! Returning potentially empty/incomplete list.");
+        return playerCharacters ?? new List<PlayerStatBlock>(); // Return empty list if null
     }
     public List<WorkBench> GetOwnedWorkbenches()
     {
@@ -1349,7 +970,7 @@ public class PlayerManager : NetworkBehaviour
             return;
         }
 
-        var cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
+        CinemachineCamera cinemachineCamera = playerFollowCam.GetComponent<CinemachineCamera>();
         if (cinemachineCamera != null)
         {
             // Set both Follow and LookAt to the target
@@ -1471,12 +1092,6 @@ public class PlayerManager : NetworkBehaviour
             default: return 0; // All other slots use index 0
         }
     }
-    private ResourceItem GetResourceItemById(int resourceItemId)
-    {
-        // TODO: Implement proper ResourceItem lookup
-        ResourceItem resourceItem = null;
-        return resourceItem;
-    }
     #endregion
     
     #region Helpers
@@ -1559,9 +1174,6 @@ public class PlayerManager : NetworkBehaviour
                 BaseIntelligence = playerStatBlock.species?.intelligence ?? 10,
                 BaseSpirit = playerStatBlock.species?.spirit ?? 10
             };
-
-            Debug.Log(
-                $"PlayerManager: Converted PlayerStatBlock '{playerStatBlock.GetCharacterName()}' to network data");
             return characterData;
         }
         catch (Exception ex)
@@ -1624,10 +1236,8 @@ public class PlayerManager : NetworkBehaviour
             }
         }
     }
-    private PlayerStatBlock InstantiateCharacter(CharacterData characterData)
+    private static void MapCharacterDataToPlayerStatBlock(PlayerStatBlock newCharacter, CharacterData characterData)
     {
-        PlayerStatBlock newCharacter = GameObject.Instantiate(CharacterPrefab, CharListParent.transform).GetComponent<PlayerStatBlock>();
-        
         newCharacter.SetUpCharacter(
             characterData.Name, 
             characterData.CharID, 
@@ -1647,8 +1257,6 @@ public class PlayerManager : NetworkBehaviour
             characterData.SpeciesIntelligence,
             characterData.SpeciesSpirit
         );
-
-        return newCharacter;
     }
     private static void MapItemDataToItem(ItemData itemData, Item item)
     {

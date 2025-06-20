@@ -232,20 +232,35 @@ public class AccountManager : BaseManager
     }
     public async Task<Dictionary<string, object>> GetAccountByAccountIDAsync(int accountId)
     {
+        Debug.Log($"AccountManager.GetAccountByAccountIDAsync: Starting lookup for AccountID={accountId}");
+        
         if (accountId <= 0)
         {
+            Debug.Log($"AccountManager.GetAccountByAccountIDAsync: Invalid AccountID ({accountId}) - returning null");
             return null;
         }
+        
+        // Check if AccountManager is initialized
+        if (!isInitialized)
+        {
+            Debug.LogError($"AccountManager.GetAccountByAccountIDAsync: AccountManager not initialized!");
+            return null;
+        }
+        
         string query = "SELECT * FROM Accounts WHERE AccountID = @AccountID";
         Dictionary<string, object> parameters = new Dictionary<string, object> { { "@AccountID", accountId } };
+        Debug.Log($"AccountManager.GetAccountByAccountIDAsync: Executing query '{query}' with AccountID={accountId}");
 
         try
         {
             List<Dictionary<string, object>> results = await QueryDataAsync(query, parameters);
+            Debug.Log($"AccountManager.GetAccountByAccountIDAsync: Query returned {results.Count} results");
 
             if (results.Count > 0)
             {
-                return results[0]; // Return the first match found
+                var account = results[0];
+                Debug.Log($"AccountManager.GetAccountByAccountIDAsync: Found account - Username='{account.GetValueOrDefault("Username", "null")}', AccountID={account.GetValueOrDefault("AccountID", "null")}");
+                return account; // Return the first match found
             }
             else
             {

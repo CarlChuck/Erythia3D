@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using Unity.Netcode;
-using Unity.VisualScripting;
 
 public class MenuManager : MonoBehaviour
 {
@@ -74,7 +71,6 @@ public class MenuManager : MonoBehaviour
         }
     }
 
-
     #region Panes
     public void OnAccountLoginPane()
     {
@@ -107,66 +103,47 @@ public class MenuManager : MonoBehaviour
     }
     #endregion
 
-    public async void OnLoginButton()
+    public void OnLoginButton()
     {
-        if (playerManager == null)
+        _ = OnLoginButtonAsync(); // Fire and forget with error handling
+    }
+    private async Task OnLoginButtonAsync()
+    {
+        try
         {
-            playerManager = PlayerManager.LocalInstance;
-        }
-        string accountNumberText = accountNumberField.text.Trim();
-        string accountNameText = accountNameField.text.Trim();
-        string accountPasswordText = accountPasswordField.text.Trim();
+            if (playerManager == null)
+            {
+                playerManager = PlayerManager.LocalInstance;
+            }
+            string accountNumberText = accountNumberField.text.Trim();
+            string accountNameText = accountNameField.text.Trim();
+            string accountPasswordText = accountPasswordField.text.Trim();
 
-        int accountNumber = 0;
-        bool hasValidAccountNumber = int.TryParse(accountNumberText, out accountNumber) && accountNumber > 0;
-        bool hasValidAccountCredentials = !string.IsNullOrEmpty(accountNameText) && !string.IsNullOrEmpty(accountPasswordText);
+            bool hasValidAccountNumber = int.TryParse(accountNumberText, out int accountNumber) && accountNumber > 0;
+            bool hasValidAccountCredentials = !string.IsNullOrEmpty(accountNameText) && !string.IsNullOrEmpty(accountPasswordText);
 
-        if (!hasValidAccountNumber && !hasValidAccountCredentials)
-        {
-            Debug.LogError("Login failed: Please enter a valid account number or both account name and password.");
-            return;
-        }
+            if (!hasValidAccountNumber && !hasValidAccountCredentials)
+            {
+                Debug.LogError("Login failed: Please enter a valid account number or both account name and password.");
+                return;
+            }
 
-        if (hasValidAccountNumber)
-        {
-            playerManager.OnStartInitialization(accountNumber, 0, "");
-            OnMainMenuPane();
-            return;
+            if (hasValidAccountNumber)
+            {
+                await playerManager.OnStartInitialization(accountNumber, 0, "");
+                OnMainMenuPane();
+            }
         }
-        else
+        catch (System.Exception ex)
         {
-            // Check if account exists
-            var accountData = await AccountManager.Instance.GetAccountByUsernameAsync(accountNameText);
-            if (accountData == null)
-            {
-                Debug.LogError($"Login failed: No account found with username '{accountNameText}'.");
-                return;
-            }
-            // Verify password
-            bool passwordValid = await AccountManager.Instance.VerifyPasswordAsync(accountNameText, accountPasswordText);
-            if (!passwordValid)
-            {
-                Debug.LogError("Login failed: Incorrect password.");
-                return;
-            }
-            // Get AccountID
-            if (!accountData.TryGetValue("AccountID", out object accountIdObj) || accountIdObj == null)
-            {
-                Debug.LogError("Login failed: Could not retrieve AccountID from account data.");
-                return;
-            }
-            int accountId = 0;
-            if (!int.TryParse(accountIdObj.ToString(), out accountId) || accountId <= 0)
-            {
-                Debug.LogError("Login failed: Invalid AccountID retrieved from account data.");
-                return;
-            }
-            playerManager.OnStartInitialization(accountId, 0, accountNameText);
-            OnMainMenuPane();
-            return;
+            Debug.LogError($"MenuManager: Error during login: {ex.Message}");
         }
     }
     public void OnCreateCharacter()
+    {
+        _ = OnCreateCharacterAsync(); // Fire and forget with error handling
+    }
+    private async Task OnCreateCharacterAsync()
     {
         if (characterCreator.GetName() == "")
         {
@@ -188,10 +165,20 @@ public class MenuManager : MonoBehaviour
             Debug.Log("No Face");
             return;
         }
-        playerManager.OnCreateCharacter(characterCreator.GetName(), characterCreator.GetRace(), characterCreator.GetGender(), characterCreator.GetFace());
+        if (characterCreator.GetFamilyName() == "")
+        {
+            Debug.Log("No Family Name");
+            return;       
+        }        
+        playerManager.OnSetFamilyName(characterCreator.GetFamilyName());
+        await playerManager.OnCreateCharacter(characterCreator.GetName(), characterCreator.GetFamilyName(), characterCreator.GetRace(), characterCreator.GetGender(), characterCreator.GetFace());
         OnEnterWorld();
     }
-    public async void OnEnterWorld()
+    public void OnEnterWorld()
+    {
+        _ = OnEnterWorldAsync(); // Fire and forget with error handling
+    }
+    private async Task OnEnterWorldAsync()
     {
         try
         {
@@ -219,18 +206,6 @@ public class MenuManager : MonoBehaviour
     public void OnOpenSettings()
     {
         //TODO open settings
-    }
-    public void OnStartClient()
-    {
-        starterPane.SetActive(false);
-        if (NetworkManager.Singleton != null)
-        {
-            NetworkManager.Singleton.StartClient();
-        }
-    }
-    public void SetFamilyName(string familyName)
-    {
-        playerManager.OnSetFamilyName(familyName);
     }
     public void OnSelectRace(int raceNumber)
     {
