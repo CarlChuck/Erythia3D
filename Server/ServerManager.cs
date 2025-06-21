@@ -26,26 +26,19 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    [Header("Master Server Configuration")]
-    [SerializeField] private ushort masterServerPort = 8888;
-    [SerializeField] private int maxConnectionsPerArea = 50;
+    [Header("Server Configuration")]
     [SerializeField] private bool enableDebugLogs = true;
 
     [Header("Area Configuration")]
     [SerializeField] private List<AreaConfiguration> areaConfigurations = new();
 
-    [Header("Load Balancing")]
-    [SerializeField] private float loadBalanceThreshold = 0.8f;
-    [SerializeField] private int healthCheckInterval = 10;
-
     // Network components
     private NetworkManager masterNetworkManager;
-    private float lastHealthCheck;
     
     // Area management
-    private readonly Dictionary<ulong, string> clientToAreaMapping = new();
-    private readonly Dictionary<string, List<ulong>> areaToClientsMapping = new();
-    private readonly Dictionary<string, bool> loadedNetworkScenes = new();
+    private readonly Dictionary<ulong, int> clientToAreaMapping = new();
+    private readonly Dictionary<int, List<ulong>> areaToClientsMapping = new();
+    private readonly Dictionary<int, bool> loadedNetworkScenes = new();
 
     #region Master Server Initialization and Shutdown
     public override void OnNetworkSpawn()
@@ -86,11 +79,11 @@ public class ServerManager : NetworkBehaviour
     #endregion
 
     #region Server Scene Management
-    private async void LoadServerNetworkScenes()
+    private async Task LoadServerNetworkScenes()
     {
         LogDebug("Loading networked scenes on server...");
         
-        foreach (var areaConfig in areaConfigurations)
+        foreach (AreaConfiguration areaConfig in areaConfigurations)
         {
             if (areaConfig.autoLoadOnServerStart && !string.IsNullOrEmpty(areaConfig.networkedScene))
             {
@@ -100,17 +93,13 @@ public class ServerManager : NetworkBehaviour
         
         LogDebug($"Server scene loading completed. Loaded {loadedNetworkScenes.Count} networked scenes.");
     }
-    
     private async Task<bool> LoadNetworkSceneOnServer(AreaConfiguration areaConfig)
     {
         try
         {
             LogDebug($"Loading networked scene for area '{areaConfig.areaId}': {areaConfig.networkedScene}");
             
-            var asyncOperation = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(
-                areaConfig.networkedScene, 
-                UnityEngine.SceneManagement.LoadSceneMode.Additive
-            );
+            AsyncOperation asyncOperation = SceneManager.LoadSceneAsync(areaConfig.networkedScene, LoadSceneMode.Additive);
             
             // Wait for scene to load
             while (!asyncOperation.isDone)
@@ -131,11 +120,9 @@ public class ServerManager : NetworkBehaviour
                 LogDebug($"✅ Successfully loaded networked scene for area '{areaConfig.areaId}'");
                 return true;
             }
-            else
-            {
-                LogError($"❌ Failed to load networked scene for area '{areaConfig.areaId}': {areaConfig.networkedScene}");
-                return false;
-            }
+
+            LogError($"❌ Failed to load networked scene for area '{areaConfig.areaId}': {areaConfig.networkedScene}");
+            return false;
         }
         catch (System.Exception ex)
         {
@@ -143,30 +130,9 @@ public class ServerManager : NetworkBehaviour
             return false;
         }
     }
-    
-    public AreaConfiguration GetAreaConfiguration(string areaId)
+    public AreaConfiguration GetAreaConfiguration(int areaId)
     {
         return areaConfigurations.FirstOrDefault(config => config.areaId == areaId);
-    }
-    
-    public List<AreaInfo> GetAvailableAreas()
-    {
-        var areas = new List<AreaInfo>();
-        
-        foreach (var config in areaConfigurations)
-        {
-            var areaInfo = new AreaInfo
-            {
-                areaId = config.areaId,
-                areaName = config.areaName,
-                currentPlayers = areaToClientsMapping.ContainsKey(config.areaId) ? areaToClientsMapping[config.areaId].Count : 0,
-                maxPlayers = config.maxPlayers
-            };
-            
-            areas.Add(areaInfo);
-        }
-        
-        return areas;
     }
     #endregion
 
@@ -182,8 +148,7 @@ public class ServerManager : NetworkBehaviour
         // Remove client from area tracking
         RemoveClientFromAllAreas(clientId);
     }
-    
-    public void AssignClientToArea(ulong clientId, string areaId)
+    public void AssignClientToArea(ulong clientId, int areaId)
     {
         // Remove from current area first
         RemoveClientFromAllAreas(clientId);
@@ -201,29 +166,28 @@ public class ServerManager : NetworkBehaviour
             LogError($"Cannot assign client {clientId} to unknown area '{areaId}'");
         }
     }
-    
-    public string GetClientCurrentArea(ulong clientId)
+    public int? GetClientCurrentArea(ulong clientId)
     {
         return clientToAreaMapping.ContainsKey(clientId) ? clientToAreaMapping[clientId] : null;
     }
-    
     private void RemoveClientFromAllAreas(ulong clientId)
     {
-        if (clientToAreaMapping.ContainsKey(clientId))
+        if (!clientToAreaMapping.ContainsKey(clientId))
         {
-            string currentArea = clientToAreaMapping[clientId];
-            
-            if (areaToClientsMapping.ContainsKey(currentArea))
-            {
-                areaToClientsMapping[currentArea].Remove(clientId);
-            }
-            
-            clientToAreaMapping.Remove(clientId);
-            LogDebug($"Removed client {clientId} from area '{currentArea}'");
+            return;
         }
+
+        int currentArea = clientToAreaMapping[clientId];
+            
+        if (areaToClientsMapping.ContainsKey(currentArea))
+        {
+            areaToClientsMapping[currentArea].Remove(clientId);
+        }
+            
+        clientToAreaMapping.Remove(clientId);
+        LogDebug($"Removed client {clientId} from area '{currentArea}'");
     }
-    
-    public List<ulong> GetClientsInArea(string areaId)
+    public List<ulong> GetClientsInArea(int areaId)
     {
         return areaToClientsMapping.ContainsKey(areaId) ? 
             new List<ulong>(areaToClientsMapping[areaId]) : 
@@ -554,33 +518,8 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-
-    #region Waypoint and Area Communication
-    private void LoadSceneToClient(string sceneName)
-    {
-
-    }
-    public async Task ProcessWaypointRequest(int characterID, string waypointName, ulong senderClientId)
-    {
-    }
-    public async Task ProcessPlayerZoneInfoRequest(int characterID, ulong senderClientId)
-    {
-    }
-    public Vector3 GetWaypointByZoneID(int zoneID)
-    {
-
-        return Vector3.zero;
-    }
-    public Vector3 GetSpawnPositionForCharacter(int characterID)
-    {
-
-        return Vector3.zero;
-    }
-    #endregion
-
-
     #region Helper Methods
-    private int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
+    private static int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
     {
         if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
         {
@@ -588,7 +527,7 @@ public class ServerManager : NetworkBehaviour
         }
         return defaultValue;
     }
-    private string GetStringValue(Dictionary<string, object> dict, string key, string defaultValue)
+    private static string GetStringValue(Dictionary<string, object> dict, string key, string defaultValue)
     {
         if (dict.TryGetValue(key, out object value) && value != DBNull.Value)
         {
@@ -620,7 +559,6 @@ public class ServerManager : NetworkBehaviour
         }
         return defaultValue;
     }
-
     private static ItemData ConvertToItemData(Item item, int slotID)
     {
         ItemData itemData = new ItemData
@@ -711,7 +649,7 @@ public class ServerManager : NetworkBehaviour
         };
         return subComponentData;
     }
-    private WorkbenchData[] ConvertToWorkbenchData(List<Dictionary<string, object>> dictionaries)
+    private static WorkbenchData[] ConvertToWorkbenchData(List<Dictionary<string, object>> dictionaries)
     {
         WorkbenchData[] items = new WorkbenchData[dictionaries.Count];
         for (int i = 0; i < dictionaries.Count; i++)
@@ -751,7 +689,7 @@ public class ServerManager : NetworkBehaviour
 public class AreaConfiguration
 {
     [Header("Area Identification")]
-    public string areaId;
+    public int areaId;
     public string areaName;
     
     [Header("Scene Configuration")]
@@ -782,155 +720,9 @@ public struct AreaSpawnPoint
 [System.Serializable]
 public struct AreaTransitionInfo
 {
-    public string fromAreaId;
-    public string toAreaId;
+    public int fromAreaId;
+    public int toAreaId;
     public string waypointName;
     public Vector3 targetPosition;
-}
-
-#endregion
-
-#region Waypoint System Data Structures
-
-[System.Serializable]
-public struct AreaWaypoint
-{
-    public string waypointName;
-    public Vector3 position;
-    public string destinationAreaId;  // Changed to string to match new areaId system
-    public string destinationWaypointName;
-    public WaypointType waypointType;
-    public WaypointRequirements requirements;
-    public bool isActive;
-    
-    [Tooltip("Description shown to players")]
-    public string description;
-    
-    [Tooltip("Minimum player level required")]
-    public int minLevel;
-    
-    [Tooltip("Maximum simultaneous transfers allowed")]
-    public int maxConcurrentTransfers;
-}
-
-[System.Serializable]
-public enum WaypointType
-{
-    Portal,
-    Teleporter,
-    ZoneBoundary,
-    Transport,
-    QuestGated
-}
-
-[System.Serializable]
-public struct WaypointRequirements: INetworkSerializable
-{
-    public bool requiresFlag;
-    public int requiredFlagId;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref requiresFlag);
-        serializer.SerializeValue(ref requiredFlagId);
-    }
-}
-
-
-[System.Serializable]
-public struct AreaInfo : INetworkSerializable
-{
-    public string areaId;
-    public string areaName;
-    public int currentPlayers;
-    public int maxPlayers;
-    public float loadPercentage
-    {
-        get
-        {
-            return maxPlayers > 0 ? (float)currentPlayers / maxPlayers : 0f;
-        }
-    }
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref areaId);
-        serializer.SerializeValue(ref areaName);
-        serializer.SerializeValue(ref currentPlayers);
-        serializer.SerializeValue(ref maxPlayers);
-    }
-}
-
-[System.Serializable]
-public struct PlayerTransferData
-{
-    public ulong clientId;
-    public int characterId;
-    public Vector3 currentPosition;
-    public Vector3 targetPosition;
-    public string sourceWaypointName;
-    public string targetWaypointName;
-    public DateTime transferInitiated;
-    public TransferState state;
-}
-
-[System.Serializable]
-public enum TransferState
-{
-    Pending,
-    ValidatingRequirements,
-    SavingPlayerState,
-    InitiatingTransfer,
-    TransferInProgress,
-    LoadingTargetArea,
-    TransferComplete,
-    TransferFailed
-}
-
-[System.Serializable]
-public struct AreaConnectivity
-{
-    public string areaId;
-    public List<string> connectedAreaIds;
-    public Dictionary<string, AreaWaypoint> outgoingWaypoints;
-    public Dictionary<string, Vector3> incomingSpawnPoints;
-    public bool allowsDirectTransfers;
-    public float transferCooldownSeconds;
-}
-
-[System.Serializable]
-public struct WaypointValidationResult
-{
-    public bool isValid;
-    public string errorMessage;
-    public bool requirementsMet;
-    public List<string> missingRequirements;
-    public bool destinationAvailable;
-    public int estimatedTransferTime;
-}
-
-[System.Serializable]
-public struct WaypointInfo : INetworkSerializable
-{
-    public string name;
-    public string description;
-    public Vector3 position;
-    public int destinationAreaId;
-    public WaypointType waypointType;
-    public bool isActive;
-    public WaypointRequirements requirements;
-    public int estimatedTransferTime;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref name);        
-        serializer.SerializeValue(ref description);       
-        serializer.SerializeValue(ref position);       
-        serializer.SerializeValue(ref destinationAreaId);       
-        serializer.SerializeValue(ref waypointType);       
-        serializer.SerializeValue(ref isActive);       
-        serializer.SerializeValue(ref requirements);       
-        serializer.SerializeValue(ref estimatedTransferTime);
-    }
 }
 #endregion

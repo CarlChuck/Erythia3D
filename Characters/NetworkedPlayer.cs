@@ -533,7 +533,7 @@ public class NetworkedPlayer : NetworkBehaviour
         }
         
         // Find the CharacterModelManager instance to get the model prefab.
-        CharacterModelManager modelManager = FindObjectOfType<CharacterModelManager>();
+        CharacterModelManager modelManager = FindFirstObjectByType<CharacterModelManager>();
         if (modelManager == null)
         {
             Debug.LogError("NetworkedPlayer: Cannot find CharacterModelManager in the scene!");
