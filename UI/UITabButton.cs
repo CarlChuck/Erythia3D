@@ -9,7 +9,8 @@ public enum TabWindowType
     Skills,
     Crafting,
     Roster,
-    Social
+    Social,
+    Chat
 }
 
 public class UITabButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler, IPointerDownHandler

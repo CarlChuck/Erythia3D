@@ -1,5 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
+using System.Collections.Generic;
 
 /// <summary>
 /// Base class for NetworkBehaviours that should be culled based on player area
@@ -118,7 +119,7 @@ public abstract class AreaNetworkBehaviour : NetworkBehaviour
     /// <summary>
     /// Get all clients that should be able to see this object
     /// </summary>
-    private System.Collections.Generic.List<ulong> GetVisibleClients()
+    private List<ulong> GetVisibleClients()
     {
         if (!IsServer || ServerManager.Instance == null)
         {

@@ -7,7 +7,6 @@ using System.Threading;
 using System;
 using Unity.Cinemachine;
 using System.Linq;
-using Object = UnityEngine.Object;
 
 public class PlayerManager : NetworkBehaviour
 {
@@ -26,6 +25,9 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region References
+    private string currentEnvironmentScene = "";
+    private int currentEnvironmentId = 0;
+    
     [Header("Player Account Info")]
     [SerializeField] private string language = "en";
     [SerializeField] private string ipAddress = "0.0.0.0";
@@ -72,6 +74,16 @@ public class PlayerManager : NetworkBehaviour
     private TaskCompletionSource<bool> workbenchesCompletionSource;
     #endregion
 
+    #region Chat Network Variables
+    // Network variables for chat system integration
+    private NetworkVariable<int> currentAreaId = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private NetworkVariable<Vector3> lastKnownPosition = new NetworkVariable<Vector3>(Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    
+    // Chat state
+    public int CurrentAreaId => currentAreaId.Value;
+    public Vector3 LastKnownPosition => lastKnownPosition.Value;
+    #endregion
+
     #region Access Properties
     private ulong SteamID { get; set; }
     public int AccountID { get; private set; }
@@ -93,14 +105,14 @@ public class PlayerManager : NetworkBehaviour
             
         }
     }
-    private PlayerStatBlock SelectedPlayerCharacter
+    public PlayerStatBlock SelectedPlayerCharacter
     {
         get
         {
             return selectedPlayerCharacter; 
             
         }
-        set
+        private set
         {
             selectedPlayerCharacter = value; 
             
@@ -379,167 +391,6 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
     
-    #region Character Spawning
-    [Rpc(SendTo.Server)] private void SpawnNetworkedPlayerRpc(int characterID, int characterRace, int characterGender)
-    {
-        //TODO
-        ulong clientId = 0;
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
-
-        // --- Server-Authoritative Spawn Position ---
-        Vector3 spawnPosition = Vector3.zero;
-        if (ServerManager.Instance != null)
-        {
-            // This is a simplified call. In a real scenario, you might need an async method.
-            //spawnPosition = ServerManager.Instance.GetSpawnPositionForCharacter(characterID);
-            Debug.Log($"SpawnNetworkedPlayerServerRpc: Determined spawn position from ServerManager: {spawnPosition}");
-        }
-        else
-        {
-            Debug.LogError("SpawnNetworkedPlayerServerRpc: ServerManager.Instance is null! Cannot determine spawn position. Defaulting to origin.");
-        }
-        // -----------------------------------------
-
-        // Instantiate the networked player prefab
-        GameObject playerObject = Instantiate(networkedPlayerPrefab, spawnPosition, Quaternion.identity);
-        if (playerObject == null)
-        {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Failed to instantiate networkedPlayerPrefab for client {clientId}.");
-            return;
-        }
-
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {spawnPosition}.");
-
-        // Get the NetworkObject component
-        NetworkObject networkObject = playerObject.GetComponent<NetworkObject>();
-        if (networkObject == null)
-        {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: networkedPlayerPrefab does not have a NetworkObject component. Cannot spawn for client {clientId}.");
-            Destroy(playerObject);
-            return;
-        }
-
-        // Spawn the object and assign ownership
-        networkObject.SpawnAsPlayerObject(clientId);
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Spawning NetworkObject for client {clientId} with ownership.");
-
-        // Get the NetworkedPlayer component and initialize it
-        NetworkedPlayer networkedPlayer = playerObject.GetComponent<NetworkedPlayer>();
-        if (networkedPlayer != null)
-        {
-            // Set the character's identity via NetworkVariables.
-            // This will trigger the model to spawn on all clients.
-            networkedPlayer.SetCharacterVisuals(characterRace, characterGender);
-            Debug.Log($"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
-        }
-        else
-        {
-            Debug.LogError($"SpawnNetworkedPlayerServerRpc: Could not find NetworkedPlayer component on the spawned object for client {clientId}.");
-        }
-        
-        NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, spawnPosition);
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
-    }
-    [Rpc(SendTo.Owner)] private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
-    {
-        Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
-        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObject))
-        {
-            if (networkObject != null)
-            {
-                currentNetworkedPlayer = networkObject.GetComponent<NetworkedPlayer>();
-                if (currentNetworkedPlayer != null)
-                {
-                    Debug.Log(
-                        $"NotifyNetworkedPlayerSpawnedClientRpc: Successfully found and assigned NetworkedPlayer (ID: {currentNetworkedPlayer.OwnerClientId}).");
-                    if (!IsOwner)
-                    {
-                        return;
-                    }
-
-                    // The async spawning method will handle setting the camera, but we can do it here as well
-                    // to ensure it's set as early as possible for the owner.
-                    Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
-                    if (cameraTarget != null)
-                    {
-                        SetCameraTarget(cameraTarget);
-                    }
-                    else
-                    {
-                        // Fallback to the movement transform if camera root isn't found
-                        SetCameraTarget(currentNetworkedPlayer.GetMovementTransform());
-                    }
-                }
-                else
-                {
-                    Debug.LogError(
-                        $"NotifyNetworkedPlayerSpawnedClientRpc: Found NetworkObject but it doesn't have a NetworkedPlayer component.");
-                }
-            }
-            else
-            {
-                Debug.LogError(
-                    $"NotifyNetworkedPlayerSpawnedClientRpc: NetworkObject with ID {networkObjectId} is null after retrieval.");
-            }
-        }
-        else
-        {
-            Debug.LogError(
-                $"NotifyNetworkedPlayerSpawnedClientRpc: Could not find spawned NetworkObject with ID {networkObjectId}.");
-        }
-    }
-    private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
-    {
-        int characterID = playerStatBlock.GetCharacterID();
-        Debug.Log(
-            $"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
-
-        // We no longer need to calculate spawn position on the client.
-        // The server will be authoritative for the spawn location.
-        SpawnNetworkedPlayerRpc(characterID, playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
-
-        // Wait for the networked player to be spawned and registered
-        float timeout = 10f; // 10 seconds timeout
-        float timer = 0f;
-        while (currentNetworkedPlayer == null && timer < timeout)
-        {
-            await Task.Delay(100);
-            timer += 0.1f;
-        }
-
-        if (currentNetworkedPlayer == null)
-        {
-            throw new System.Exception("Timeout waiting for networked player to spawn");
-        }
-        else
-        {
-            Debug.Log(
-                $"SpawnNetworkedPlayerAsync: Successfully spawned and registered networked player (ID: {currentNetworkedPlayer.OwnerClientId}).");
-
-            // Setup camera for the newly spawned player
-            Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
-            if (cameraTarget != null)
-            {
-                SetCameraTarget(cameraTarget);
-            }
-            else
-            {
-                // Fallback to the movement transform if camera root isn't found
-                SetCameraTarget(currentNetworkedPlayer.GetMovementTransform());
-            }
-        }
-    } 
-    public async Task SetupAndSpawnSelectedCharacterAsync()
-    {
-        if (selectedPlayerCharacter == null)
-        {
-            Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
-            return;
-        }
-        //RequestZoneTransitionRpc(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
-    }
-    #endregion
-    
     #region Inventory
     private async Task LoadAllInventoriesAsync()
     {
@@ -771,73 +622,168 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Player Area Management
-   
-    // Area Transition Methods
-    public void RequestAreaTransition(int targetAreaId, Vector3 currentPosition)
+    #region Character Spawning
+    public async Task SetupAndSpawnSelectedCharacterAsync()
     {
-        if (!IsServer && selectedPlayerCharacter != null)
+        if (selectedPlayerCharacter == null)
         {
-            RequestAreaTransitionRpc(selectedPlayerCharacter.GetCharacterID(), targetAreaId, currentPosition);
+            Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
+            return;
+        }
+        //RequestAreaTransition(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
+    }
+    private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
+    {
+        int characterID = playerStatBlock.GetCharacterID();
+        Debug.Log($"SpawnNetworkedPlayerAsync: Requesting server to spawn player (CharacterID: {characterID}). The server will determine the spawn position.");
+
+        // The server will be authoritative for the spawn location.
+        SpawnNetworkedPlayerRpc(characterID, playerStatBlock.GetSpecies(), playerStatBlock.GetGender());
+
+        // Wait for the networked player to be spawned and registered
+        float timeout = 10f; // 10 seconds timeout
+        float timer = 0f;
+        while (currentNetworkedPlayer == null && timer < timeout)
+        {
+            await Task.Delay(100);
+            timer += 0.1f;
+        }
+
+        if (currentNetworkedPlayer == null)
+        {
+            throw new System.Exception("Timeout waiting for networked player to spawn");
+        }
+        Debug.Log($"SpawnNetworkedPlayerAsync: Successfully spawned and registered networked player (ID: {OwnerClientId}).");
+
+        // Setup camera for the newly spawned player
+        Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
+        SetCameraTarget(cameraTarget);
+
+    } 
+    [Rpc(SendTo.Server)] private void SpawnNetworkedPlayerRpc(int characterID, int characterRace, int characterGender, string spawnPointName = "")
+    {
+        if (currentEnvironmentId == 0)
+        {
+            Debug.LogError("SpawnNetworkedPlayerServerRpc: Cannot spawn player - no environment scene loaded.");
+            return;
+        }
+        ulong clientId = OwnerClientId;
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
+
+        // --- Server-Authoritative Spawn Position ---
+        AreaConfiguration targetConfig = ServerManager.Instance.GetAreaConfiguration(currentEnvironmentId);
+        Vector3 targetSpawnPosition = targetConfig.defaultSpawnPosition;
+        Quaternion rotationValue = Quaternion.identity;
+        if (spawnPointName != "")
+        {
+            foreach (AreaSpawnPoint areaSpawnPoint in targetConfig.spawnPoints)
+            {
+                if (areaSpawnPoint.spawnPointName == spawnPointName)
+                {
+                    targetSpawnPosition = areaSpawnPoint.position;
+                    rotationValue = Quaternion.Euler(areaSpawnPoint.rotation);
+                }
+            }
+        }
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Determined spawn position from ServerManager: {targetSpawnPosition}");
+
+        // Instantiate the networked player prefab
+        GameObject playerObject = Instantiate(networkedPlayerPrefab, targetSpawnPosition, rotationValue);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {targetSpawnPosition}.");
+
+        // Get the NetworkObject component
+        NetworkObject networkObject = playerObject.GetComponent<NetworkObject>();
+
+        // Spawn the object and assign ownership
+        networkObject.SpawnAsPlayerObject(clientId);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Spawning NetworkObject for client {clientId} with ownership.");
+
+        // Get the NetworkedPlayer component and initialize it
+        NetworkedPlayer networkedPlayer = playerObject.GetComponent<NetworkedPlayer>();
+        networkedPlayer.SetCharacterVisuals(characterRace, characterGender);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
+        
+        NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, targetSpawnPosition);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
+    }
+    [Rpc(SendTo.Owner)] private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
+    {            
+        Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
+        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out NetworkObject networkObject))
+        {
+            currentNetworkedPlayer = networkObject.GetComponent<NetworkedPlayer>();
+            Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Successfully found and assigned NetworkedPlayer (ID: {currentNetworkedPlayer.OwnerClientId}).");
+
+            // The async spawning method will handle setting the camera, but we can do it here as well
+            // to ensure it's set as early as possible for the owner.
+            Transform cameraTarget = currentNetworkedPlayer.GetPlayerCameraRoot();
+            SetCameraTarget(cameraTarget);
+        }
+        else
+        {
+            Debug.LogError($"NotifyNetworkedPlayerSpawnedClientRpc: Could not find spawned NetworkObject with ID {networkObjectId}.");
         }
     }
-    [Rpc(SendTo.Server)] private void RequestAreaTransitionRpc(int characterId, int targetAreaId, Vector3 currentPosition)
-    {
-        if (ServerManager.Instance == null)
+    #endregion
+    
+    #region Player Area Management
+    // Area Transition Methods
+    public void RequestAreaTransition(int targetAreaId)
+    {        
+        if (IsServer)
         {
             return;
         }
-
+        if (selectedPlayerCharacter != null)
+        {
+            RequestAreaTransitionRpc(targetAreaId);
+        }
+    }
+    [Rpc(SendTo.Server)] private void RequestAreaTransitionRpc(int targetAreaId, string spawnPointName = "")
+    {
         AreaConfiguration targetConfig = ServerManager.Instance.GetAreaConfiguration(targetAreaId);
-        if (targetConfig != null)
+        Vector3 targetSpawnPosition = targetConfig.defaultSpawnPosition;
+        Vector3 rotationValue = Vector3.zero;
+
+        // Assign client to new area on server
+        ServerManager.Instance.AssignClientToArea(OwnerClientId, targetAreaId);
+
+        if (spawnPointName != "")
         {
-            // Assign client to new area on server
-            ServerManager.Instance.AssignClientToArea(OwnerClientId, targetAreaId);
-                
-            // Load environment scene on client
-            LoadEnvironmentSceneRpc(targetConfig.environmentScene, targetConfig.defaultSpawnPosition);
+            foreach (AreaSpawnPoint areaSpawnPoint in targetConfig.spawnPoints)
+            {
+                if (areaSpawnPoint.spawnPointName == spawnPointName)
+                {
+                    targetSpawnPosition = areaSpawnPoint.position;
+                    rotationValue = areaSpawnPoint.rotation;
+                }
+            }
         }
-        else
-        {
-            ReceiveAreaTransitionResultRpc(false, $"Area '{targetAreaId}' not found", "");
-        }
+        // Load environment scene on the client
+        LoadEnvironmentSceneRpc(targetConfig.environmentScene, targetConfig.areaId);
+        
+        //TODO Move player to targetSpawnPosition/RotationValue
     }
-    
-    [Rpc(SendTo.Owner)] private void LoadEnvironmentSceneRpc(string environmentScene, Vector3 spawnPosition)
+    [Rpc(SendTo.Owner)] private void LoadEnvironmentSceneRpc(string environmentScene, int areaId)
     {
-        _ = LoadEnvironmentSceneOnClient(environmentScene, spawnPosition);
+        _ = LoadEnvironmentSceneOnClient(environmentScene, areaId);
     }
     
-    [Rpc(SendTo.Owner)] public void ReceiveAreaTransitionResultRpc(bool success, string message, string errorMessage)
-    {
-        if (success)
-        {
-            Debug.Log($"Area transition: {message}");
-        }
-        else
-        {
-            Debug.LogWarning($"Area transition failed: {message} - {errorMessage}");
-        }
-    }
-    
-    
-    // Transfer Confirmation Methods
-    
-    private string currentEnvironmentScene = "";
-    private async Task LoadEnvironmentSceneOnClient(string environmentScene, Vector3 spawnPosition)
+    // Transition Confirmation Methods
+    private async Task LoadEnvironmentSceneOnClient(string environmentScene, int areaId)
     {
         try
         {
             Debug.Log($"Loading environment scene: {environmentScene}");
             
             // Unload current environment scene if exists
-            if (!string.IsNullOrEmpty(currentEnvironmentScene))
+            if (currentEnvironmentId != 0)
             {
                 await UnloadEnvironmentSceneOnClient(currentEnvironmentScene);
             }
             
             // Load new environment scene
-            var asyncOperation = SceneManager.LoadSceneAsync(environmentScene, LoadSceneMode.Additive);
+            AsyncOperation asyncOperation = SceneManager.LoadSceneAsync(environmentScene, LoadSceneMode.Additive);
             
             while (!asyncOperation.isDone)
             {
@@ -847,37 +793,22 @@ public class PlayerManager : NetworkBehaviour
             if (asyncOperation.isDone)
             {
                 currentEnvironmentScene = environmentScene;
-                
-                // Move player to spawn position
-                if (currentNetworkedPlayer != null)
-                {
-                    currentNetworkedPlayer.transform.position = spawnPosition;
-                }
-                
+                currentEnvironmentId = areaId;
                 Debug.Log($"✅ Successfully loaded environment scene: {environmentScene}");
                 
                 // Notify server of successful transition
-                if (IsOwner)
-                {
-                    ConfirmAreaTransitionRpc(true, $"Successfully entered area");
-                }
+                ConfirmAreaTransitionRpc(true, $"Successfully entered area");
             }
             else
             {
                 Debug.LogError($"❌ Failed to load environment scene: {environmentScene}");
-                if (IsOwner)
-                {
-                    ConfirmAreaTransitionRpc(false, $"Failed to load environment scene");
-                }
+                ConfirmAreaTransitionRpc(false, $"Failed to load environment scene");
             }
         }
         catch (Exception ex)
         {
             Debug.LogError($"❌ Exception loading environment scene {environmentScene}: {ex.Message}");
-            if (IsOwner)
-            {
-                ConfirmAreaTransitionRpc(false, $"Exception: {ex.Message}");
-            }
+            ConfirmAreaTransitionRpc(false, $"Exception: {ex.Message}");
         }
     }
     private async Task UnloadEnvironmentSceneOnClient(string environmentScene)
@@ -886,7 +817,7 @@ public class PlayerManager : NetworkBehaviour
         {
             Debug.Log($"Unloading environment scene: {environmentScene}");
             
-            var asyncOperation = SceneManager.UnloadSceneAsync(environmentScene);
+            AsyncOperation asyncOperation = SceneManager.UnloadSceneAsync(environmentScene);
             
             while (!asyncOperation.isDone)
             {
@@ -1369,6 +1300,126 @@ public class PlayerManager : NetworkBehaviour
         }
     }
     #endregion
+
+    #region Chat RPCs
+    /// <summary>
+    /// Sends a chat message from the client to the server
+    /// </summary>
+    [Rpc(SendTo.Server)]
+    public void SendChatMessageRpc(ChatMessage message)
+    {
+        if (!IsServer) return;
+
+        // Update player's position and area for chat filtering
+        UpdateChatNetworkVariables();
+
+        // Forward to ChatNetworkManager for processing
+        if (ChatNetworkManager.Instance != null)
+        {
+            ChatNetworkManager.Instance.SendChatMessageServerRpc(message, OwnerClientId);
+        }
+        else
+        {
+            Debug.LogError("ChatNetworkManager instance not found!");
+        }
+    }
+
+    /// <summary>
+    /// Receives a chat message from the server
+    /// </summary>
+    [Rpc(SendTo.Owner)]
+    public void ReceiveChatMessageRpc(ChatMessage message)
+    {
+        if (!IsOwner) return;
+
+        // Forward to ChatManager for UI display
+        if (ChatManager.Instance != null)
+        {
+            ChatManager.Instance.ReceiveMessage(message);
+        }
+        else
+        {
+            Debug.LogError("ChatManager instance not found!");
+        }
+    }
+
+    /// <summary>
+    /// Handles chat channel join requests
+    /// </summary>
+    [Rpc(SendTo.Server)]
+    public void JoinChatChannelRpc(ChatChannel channel)
+    {
+        if (!IsServer) return;
+
+        if (ChatNetworkManager.Instance != null)
+        {
+            ChatNetworkManager.Instance.JoinChannelServerRpc(channel, OwnerClientId);
+        }
+    }
+
+    /// <summary>
+    /// Handles chat channel leave requests
+    /// </summary>
+    [Rpc(SendTo.Server)]
+    public void LeaveChatChannelRpc(ChatChannel channel)
+    {
+        if (!IsServer) return;
+
+        if (ChatNetworkManager.Instance != null)
+        {
+            ChatNetworkManager.Instance.LeaveChannelServerRpc(channel, OwnerClientId);
+        }
+    }
+
+    /// <summary>
+    /// Receives channel join notification from server
+    /// </summary>
+    [Rpc(SendTo.Owner)]
+    public void NotifyChannelJoinedRpc(ChatChannel channel)
+    {
+        if (!IsOwner) return;
+
+        if (ChatManager.Instance != null)
+        {
+            ChatManager.Instance.OnChannelJoined(channel);
+        }
+    }
+
+    /// <summary>
+    /// Receives channel leave notification from server
+    /// </summary>
+    [Rpc(SendTo.Owner)]
+    public void NotifyChannelLeftRpc(ChatChannel channel)
+    {
+        if (!IsOwner) return;
+
+        if (ChatManager.Instance != null)
+        {
+            ChatManager.Instance.OnChannelLeft(channel);
+        }
+    }
+
+    /// <summary>
+    /// Updates chat-related network variables on the server
+    /// </summary>
+    private void UpdateChatNetworkVariables()
+    {
+        if (!IsServer) return;
+
+        // Update current area from ServerManager
+        if (ServerManager.Instance != null)
+        {
+            int? clientArea = ServerManager.Instance.GetClientCurrentArea(OwnerClientId);
+            if (clientArea.HasValue)
+            {
+                currentAreaId.Value = clientArea.Value;
+            }
+        }
+
+        // Update position from current transform
+        lastKnownPosition.Value = transform.position;
+    }
+    #endregion
 }
 
 [System.Serializable]
@@ -1414,4 +1465,3 @@ public struct PlayerCharacterData : INetworkSerializable
         serializer.SerializeValue(ref BaseSpirit);
     }
 }
-

@@ -136,7 +136,7 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
-    #region Player Management
+    #region Client Management
     private void OnClientConnectedToMaster(ulong clientId)
     {
         LogDebug($"Client {clientId} connected to master server");
@@ -150,13 +150,13 @@ public class ServerManager : NetworkBehaviour
     }
     public void AssignClientToArea(ulong clientId, int areaId)
     {
-        // Remove from current area first
+        // Remove from the current area first
         RemoveClientFromAllAreas(clientId);
         
-        // Add to new area
-        if (areaToClientsMapping.ContainsKey(areaId))
+        // Add to a new area
+        if (areaToClientsMapping.TryGetValue(areaId, out List<ulong> value))
         {
-            areaToClientsMapping[areaId].Add(clientId);
+            value.Add(clientId);
             clientToAreaMapping[clientId] = areaId;
             
             LogDebug($"Assigned client {clientId} to area '{areaId}'");
@@ -168,20 +168,18 @@ public class ServerManager : NetworkBehaviour
     }
     public int? GetClientCurrentArea(ulong clientId)
     {
-        return clientToAreaMapping.ContainsKey(clientId) ? clientToAreaMapping[clientId] : null;
+        return clientToAreaMapping.TryGetValue(clientId, out int value) ? value : null;
     }
     private void RemoveClientFromAllAreas(ulong clientId)
     {
-        if (!clientToAreaMapping.ContainsKey(clientId))
+        if (!clientToAreaMapping.TryGetValue(clientId, out int currentArea))
         {
             return;
         }
 
-        int currentArea = clientToAreaMapping[clientId];
-            
-        if (areaToClientsMapping.ContainsKey(currentArea))
+        if (areaToClientsMapping.TryGetValue(currentArea, out List<ulong> value))
         {
-            areaToClientsMapping[currentArea].Remove(clientId);
+            value.Remove(clientId);
         }
             
         clientToAreaMapping.Remove(clientId);
@@ -189,8 +187,8 @@ public class ServerManager : NetworkBehaviour
     }
     public List<ulong> GetClientsInArea(int areaId)
     {
-        return areaToClientsMapping.ContainsKey(areaId) ? 
-            new List<ulong>(areaToClientsMapping[areaId]) : 
+        return areaToClientsMapping.TryGetValue(areaId, out List<ulong> value) ? 
+            new List<ulong>(value) : 
             new List<ulong>();
     }
     #endregion
@@ -702,6 +700,7 @@ public class AreaConfiguration
     [Header("Spawn Configuration")]
     public Vector3 defaultSpawnPosition = Vector3.zero;
     public List<AreaSpawnPoint> spawnPoints = new();
+    public List<AreaTransitionInfo> transitions = new();
     
     [Header("Area Settings")]
     public int maxPlayers = 50;
@@ -714,15 +713,14 @@ public struct AreaSpawnPoint
     public string spawnPointName;
     public Vector3 position;
     public Vector3 rotation;
-    public bool isDefault;
 }
 
 [System.Serializable]
 public struct AreaTransitionInfo
 {
+    public string transitionName;
     public int fromAreaId;
     public int toAreaId;
-    public string waypointName;
     public Vector3 targetPosition;
 }
 #endregion
