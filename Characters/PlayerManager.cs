@@ -1300,7 +1300,7 @@ public class PlayerManager : NetworkBehaviour
         }
     }
     #endregion
-
+    
     #region Chat RPCs
     /// <summary>
     /// Sends a chat message from the client to the server

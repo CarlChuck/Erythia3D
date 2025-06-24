@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 
-public class NetworkedPlayer : NetworkBehaviour
+public class NetworkedPlayer : AreaNetworkBehaviour
 {
     #region Core Components
     [Header("Core Components")]
@@ -105,6 +105,26 @@ public class NetworkedPlayer : NetworkBehaviour
         {
             SpawnCharacterModel(networkRace.Value, networkGender.Value);
         }
+        
+        // Area assignment for NetworkedPlayer
+        if (IsServer)
+        {
+            // Assign this NetworkedPlayer to area 1 (IthoriaSouth) by default
+            // In the future, this could be based on character data or spawn location
+            int defaultAreaId = 1; // IthoriaSouth
+            SetArea(defaultAreaId);
+            
+            // Notify ServerManager that this client is in this area
+            if (ServerManager.Instance != null)
+            {
+                ServerManager.Instance.AssignClientToArea(OwnerClientId, defaultAreaId);
+                Debug.Log($"NetworkedPlayer: Assigned client {OwnerClientId} to area {defaultAreaId}");
+            }
+            else
+            {
+                Debug.LogWarning("NetworkedPlayer: ServerManager.Instance is null, cannot assign client to area");
+            }
+        }
     }
 
     private void OnVisualsChanged(int previousValue, int newValue)
@@ -158,6 +178,9 @@ public class NetworkedPlayer : NetworkBehaviour
         
         // Unsubscribe from network variable changes
         isPlayerControlled.OnValueChanged -= OnPlayerControlledChanged;
+        
+        // Area cleanup - ServerManager will handle client removal in its OnClientDisconnected callback
+        // No additional cleanup needed here as AreaNetworkBehaviour base class handles the area-specific cleanup
         
         base.OnNetworkDespawn();
     }
