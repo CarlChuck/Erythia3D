@@ -246,6 +246,11 @@ public abstract class ResourceNode : Interactable
     {
         return resourceType;
     }
+
+    public HarvestType GetHarvestType()
+    {
+        return hType;
+    }
     public ResourceSubType GetResourceSubType()
     {
         return resourceSubType;
