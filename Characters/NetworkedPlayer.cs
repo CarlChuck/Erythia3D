@@ -126,7 +126,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             }
         }
     }
-
     private void OnVisualsChanged(int previousValue, int newValue)
     {
         // If both race and gender are set, spawn the model, but only on clients.
@@ -135,7 +134,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             SpawnCharacterModel(networkRace.Value, networkGender.Value);
         }
     }
-
     private void ConfigureChildComponentsForNetworking()
     {
         // Enable/disable ThirdPersonController based on ownership
@@ -153,8 +151,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             Debug.Log($"NetworkedPlayer: PlayerInput enabled = {IsOwner} (owner: {IsOwner})");
         }
     }
-
-    
     public override void OnNetworkDespawn()
     {
         // Unsubscribe from visual changes
@@ -257,7 +253,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             animator.SetBool("IsGrounded", isGrounded);
         }
     }
-    
     private void HandleRotation(Vector2 lookInput)
     {
         if (lookInput.magnitude > 0.1f)
@@ -270,7 +265,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
         }
     }
-    
     private void HandleInteractionInput()
     {
         if (activeController != null)
@@ -297,16 +291,13 @@ public class NetworkedPlayer : AreaNetworkBehaviour
     {
         if (IsOwner)
         {
-            SetPlayerControlledServerRpc(controlled);
+            SetPlayerControlledRpc(controlled);
         }
     }
-    
-    [ServerRpc]
-    private void SetPlayerControlledServerRpc(bool controlled)
+    [Rpc(SendTo.Server)] private void SetPlayerControlledRpc(bool controlled)
     {
         isPlayerControlled.Value = controlled;
     }
-    
     private void OnPlayerControlledChanged(bool previousValue, bool newValue)
     {
         if (IsOwner)
@@ -346,7 +337,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
         
         OnPlayerControlChanged?.Invoke(this);
     }
-    
     private void SetActiveController(ICharacterController newController)
     {
         // Deactivate current controller
@@ -373,12 +363,10 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             activeController.OnControllerActivated();
         }
     }
-    
     public ICharacterController GetActiveController()
     {
         return activeController;
     }
-    
     public bool IsPlayerControlled()
     {
         return isPlayerControlled.Value;
@@ -386,8 +374,7 @@ public class NetworkedPlayer : AreaNetworkBehaviour
     #endregion
     
     #region Interaction Handling
-    [ServerRpc]
-    public void InteractWithObjectServerRpc(ulong targetNetworkObjectId)
+    [Rpc(SendTo.Server)] public void InteractWithObjectRpc(ulong targetNetworkObjectId)
     {
         // Find the target object on the server
         if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetworkObjectId, out NetworkObject targetNetworkObject))
@@ -411,11 +398,6 @@ public class NetworkedPlayer : AreaNetworkBehaviour
             }
         }
     }
-    
-    /// <summary>
-    /// Get or create a PlayerController for legacy interaction support
-    /// This maintains backwards compatibility with existing Interactable scripts
-    /// </summary>
     private PlayerController GetOrCreatePlayerControllerForInteraction()
     {
         // First, try to find an existing PlayerController in the PlayerManager
@@ -632,7 +614,7 @@ public class NetworkedPlayer : AreaNetworkBehaviour
         }
     }
     #endregion    
-
+    
     public GameObject GetSpawnedCharacterModel()
     {
         return spawnedCharacterModel;

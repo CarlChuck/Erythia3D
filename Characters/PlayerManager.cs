@@ -201,6 +201,11 @@ public class PlayerManager : NetworkBehaviour
 
         return Task.CompletedTask;
     }
+    public async Task UnloadMenuAndStart()
+    {
+        await UnloadEnvironmentSceneOnClient("MainMenu");
+        await SetupAndSpawnSelectedCharacterAsync();
+    }
     #endregion
 
     #region Login
@@ -630,7 +635,9 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
             return;
         }
-        //RequestAreaTransition(selectedPlayerCharacter.GetCharacterID(), selectedPlayerCharacter.GetSpecies(), selectedPlayerCharacter.GetGender());
+        //TODO Get starting area by race and make this server side
+        RequestAreaTransition(1);
+        await SpawnNetworkedPlayerAsync(selectedPlayerCharacter);
     }
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
     {
@@ -728,7 +735,7 @@ public class PlayerManager : NetworkBehaviour
     
     #region Player Area Management
     // Area Transition Methods
-    public void RequestAreaTransition(int targetAreaId)
+    private void RequestAreaTransition(int targetAreaId)
     {        
         if (IsServer)
         {
@@ -1302,14 +1309,8 @@ public class PlayerManager : NetworkBehaviour
     #endregion
     
     #region Chat RPCs
-    /// <summary>
-    /// Sends a chat message from the client to the server
-    /// </summary>
-    [Rpc(SendTo.Server)]
-    public void SendChatMessageRpc(ChatMessage message)
+    [Rpc(SendTo.Server)] public void SendChatMessageRpc(ChatMessage message)
     {
-        if (!IsServer) return;
-
         // Update player's position and area for chat filtering
         UpdateChatNetworkVariables();
 
@@ -1323,15 +1324,8 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("ChatNetworkManager instance not found!");
         }
     }
-
-    /// <summary>
-    /// Receives a chat message from the server
-    /// </summary>
-    [Rpc(SendTo.Owner)]
-    public void ReceiveChatMessageRpc(ChatMessage message)
+    [Rpc(SendTo.Owner)] public void ReceiveChatMessageRpc(ChatMessage message)
     {
-        if (!IsOwner) return;
-
         // Forward to ChatManager for UI display
         if (ChatManager.Instance != null)
         {
@@ -1342,69 +1336,40 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("ChatManager instance not found!");
         }
     }
-
-    /// <summary>
-    /// Handles chat channel join requests
-    /// </summary>
-    [Rpc(SendTo.Server)]
-    public void JoinChatChannelRpc(ChatChannel channel)
+    [Rpc(SendTo.Server)] public void JoinChatChannelRpc(ChatChannel channel)
     {
-        if (!IsServer) return;
-
         if (ChatNetworkManager.Instance != null)
         {
             ChatNetworkManager.Instance.JoinChannelServerRpc(channel, OwnerClientId);
         }
     }
-
-    /// <summary>
-    /// Handles chat channel leave requests
-    /// </summary>
-    [Rpc(SendTo.Server)]
-    public void LeaveChatChannelRpc(ChatChannel channel)
+    [Rpc(SendTo.Server)] public void LeaveChatChannelRpc(ChatChannel channel)
     {
-        if (!IsServer) return;
-
         if (ChatNetworkManager.Instance != null)
         {
             ChatNetworkManager.Instance.LeaveChannelServerRpc(channel, OwnerClientId);
         }
     }
-
-    /// <summary>
-    /// Receives channel join notification from server
-    /// </summary>
-    [Rpc(SendTo.Owner)]
-    public void NotifyChannelJoinedRpc(ChatChannel channel)
+    [Rpc(SendTo.Owner)] public void NotifyChannelJoinedRpc(ChatChannel channel)
     {
-        if (!IsOwner) return;
-
         if (ChatManager.Instance != null)
         {
             ChatManager.Instance.OnChannelJoined(channel);
         }
     }
-
-    /// <summary>
-    /// Receives channel leave notification from server
-    /// </summary>
-    [Rpc(SendTo.Owner)]
-    public void NotifyChannelLeftRpc(ChatChannel channel)
+    [Rpc(SendTo.Owner)] public void NotifyChannelLeftRpc(ChatChannel channel)
     {
-        if (!IsOwner) return;
-
         if (ChatManager.Instance != null)
         {
             ChatManager.Instance.OnChannelLeft(channel);
         }
     }
-
-    /// <summary>
-    /// Updates chat-related network variables on the server
-    /// </summary>
     private void UpdateChatNetworkVariables()
     {
-        if (!IsServer) return;
+        if (!IsServer)
+        {
+            return;
+        }
 
         // Update current area from ServerManager
         if (ServerManager.Instance != null)

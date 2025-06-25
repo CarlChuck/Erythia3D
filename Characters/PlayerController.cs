@@ -139,7 +139,7 @@ public class PlayerController : NetworkBehaviour
                         NetworkObject targetNetworkObject = hit.collider.gameObject.GetComponent<NetworkObject>();
                         if (targetNetworkObject != null)
                         {
-                            networkedPlayer.InteractWithObjectServerRpc(targetNetworkObject.NetworkObjectId);
+                            networkedPlayer.InteractWithObjectRpc(targetNetworkObject.NetworkObjectId);
                         }
                         else
                         {

@@ -186,7 +186,7 @@ public class MenuManager : MonoBehaviour
             playerManager.PlayerManagerControlSetActive(true);
             
             // Use the new zone loading system through PlayerManager
-            await playerManager.SetupAndSpawnSelectedCharacterAsync();
+            await playerManager.UnloadMenuAndStart();
             
             Debug.Log("MenuManager: Character zone loading completed");
         }
@@ -271,8 +271,4 @@ public class MenuManager : MonoBehaviour
             createCharButton.SetActive(true);
         }
     }
-    public void SetPlayerManager(PlayerManager newPlayerManager)
-    {
-        playerManager = newPlayerManager;
-    }   
 }
