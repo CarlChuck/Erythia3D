@@ -214,7 +214,12 @@ public class ServerManager : NetworkBehaviour
                     ErrorMessage = "",
                     AccountID = Convert.ToInt32(account["AccountID"]),
                     AccountName = account["Username"].ToString(),
-                    SteamID = account.TryGetValue("SteamID", out object steamObj) && steamObj != DBNull.Value ? Convert.ToUInt64(steamObj) : 0
+                    SteamID = account.TryGetValue("SteamID", out object steamObj) && steamObj != DBNull.Value ? Convert.ToUInt64(steamObj) : 0,
+                    LastLocation = new Vector3(
+                        account.TryGetValue("LastLocX", out object locX) && locX != DBNull.Value ? Convert.ToSingle(locX) : 0f,
+                        account.TryGetValue("LastLocY", out object locY) && locY != DBNull.Value ? Convert.ToSingle(locY) : 0f,
+                        account.TryGetValue("LastLocZ", out object locZ) && locZ != DBNull.Value ? Convert.ToSingle(locZ) : 0f
+                    )
                 };
             }
             else
@@ -516,6 +521,38 @@ public class ServerManager : NetworkBehaviour
     }
     #endregion
 
+    public async Task<Vector3> GetStartingWaypoint(int accountId, int charSpecies = 0)
+    {
+        Vector3 startingWaypoint = Vector3.zero;
+        if (charSpecies == 0)
+        {
+            startingWaypoint = await AccountManager.Instance.GetLastLocationAsync(accountId);
+        }
+        else
+        {
+            startingWaypoint = GetStartingWaypointBySpecies(charSpecies);
+        }
+
+        return startingWaypoint;
+    }
+    private Vector3 GetStartingWaypointBySpecies(int charSpecies)
+    {
+        int startingZoneID = CharactersManager.Instance.GetStartingZoneBySpecies(charSpecies);
+        AreaConfiguration startingArea = GetAreaConfiguration(startingZoneID);
+        if (startingArea == null)
+        {
+            Debug.LogError($"ServerManager: No starting area found for species {charSpecies}");
+            return Vector3.zero;
+        }
+
+        if (startingArea.defaultSpawnPosition == Vector3.zero)
+        {
+            return startingArea.spawnPoints[0].position;
+        }
+        
+        return startingArea.defaultSpawnPosition;
+    }
+    
     #region Helper Methods
     private static int GetIntValue(Dictionary<string, object> dict, string key, int defaultValue)
     {

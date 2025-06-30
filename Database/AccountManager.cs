@@ -274,7 +274,6 @@ public class AccountManager : BaseManager
             return null;
         }
     }
-
     public LoginMethod DetermineLoginMethod(ulong steamId, int accountId)
     {
         if (steamId != 0 && accountId != 0)
@@ -296,7 +295,6 @@ public class AccountManager : BaseManager
             return LoginMethod.None;
         }
     }
-
     private Dictionary<string, string> GetAccountTableDefinition()
     {
         return new Dictionary<string, string>
@@ -307,12 +305,49 @@ public class AccountManager : BaseManager
             {"Email", "VARCHAR(255)"},
             {"SteamID", "BIGINT UNIQUE"},
             {"LastCharacterID", "INT"},
+            {"LastLocX", "FLOAT"},
+            {"LastLocY", "FLOAT"},
+            {"LastLocZ", "FLOAT"},
             {"Status", "INT DEFAULT 0"},
             {"LastLogin", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
             {"LastLoginIP", "VARCHAR(45) DEFAULT '0.0.0.0'"},
             {"Language", "VARCHAR(10)"},
             {"CreationDate", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"}
         };
+    }
+    public async Task<Vector3> GetLastLocationAsync(int accountId)
+    {
+        if (accountId <= 0)
+        {
+            LogError("Invalid AccountID provided for GetLastLocationAsync.");
+            return Vector3.zero;
+        }
+
+        try
+        {
+            string query = $"SELECT LastLocX, LastLocY, LastLocZ FROM {AccountsTableName} WHERE AccountID = @AccountID";
+            var parameters = new Dictionary<string, object> { { "@AccountID", accountId } };
+            
+            var result = await DatabaseManager.Instance.ExecuteQueryAsync(query, parameters);
+            
+            if (result != null && result.Count > 0)
+            {
+                var row = result[0];
+                float x = row.TryGetValue("LastLocX", out object locX) && locX != DBNull.Value ? Convert.ToSingle(locX) : 0f;
+                float y = row.TryGetValue("LastLocY", out object locY) && locY != DBNull.Value ? Convert.ToSingle(locY) : 0f;
+                float z = row.TryGetValue("LastLocZ", out object locZ) && locZ != DBNull.Value ? Convert.ToSingle(locZ) : 0f;
+                
+                return new Vector3(x, y, z);
+            }
+            
+            LogWarning($"No account found with AccountID {accountId}");
+            return Vector3.zero;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error retrieving last location for AccountID {accountId}", ex);
+            return Vector3.zero;
+        }
     }
     #endregion
 
@@ -350,7 +385,6 @@ public class AccountManager : BaseManager
             return false;
         }
     }
-
     public async Task<bool> UpdateAccountStatusAsync(int accountId, int newStatus)
     {
         if (accountId <= 0)
@@ -389,6 +423,45 @@ public class AccountManager : BaseManager
             return false;
         }
     }
+    public async Task<bool> SetLastLocationAsync(int accountId, Vector3 location)
+    {
+        if (accountId <= 0)
+        {
+            LogError("Invalid AccountID provided for SetLastLocationAsync.");
+            return false;
+        }
+
+        try
+        {
+            string query = $"UPDATE {AccountsTableName} SET LastLocX = @LastLocX, LastLocY = @LastLocY, LastLocZ = @LastLocZ WHERE AccountID = @AccountID";
+            var parameters = new Dictionary<string, object>
+            {
+                { "@AccountID", accountId },
+                { "@LastLocX", location.x },
+                { "@LastLocY", location.y },
+                { "@LastLocZ", location.z }
+            };
+            
+            int rowsAffected = await DatabaseManager.Instance.ExecuteNonQueryAsync(query, parameters);
+            bool success = rowsAffected > 0;
+            
+            if (success)
+            {
+                Debug.Log($"Successfully updated last location for AccountID {accountId} to {location}");
+            }
+            else
+            {
+                LogError($"Failed to update last location for AccountID {accountId}");
+            }
+            
+            return success;
+        }
+        catch (Exception ex)
+        {
+            LogError($"Exception updating last location for AccountID {accountId}", ex);
+            return false;
+        }
+    }
     #endregion
 }
 
@@ -407,6 +480,7 @@ public struct LoginResult : INetworkSerializable
     public int AccountID;
     public string AccountName;
     public ulong SteamID;
+    public Vector3 LastLocation;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
     {
@@ -415,5 +489,6 @@ public struct LoginResult : INetworkSerializable
         serializer.SerializeValue(ref AccountID);
         serializer.SerializeValue(ref AccountName);
         serializer.SerializeValue(ref SteamID);
+        serializer.SerializeValue(ref LastLocation);
     }
 }

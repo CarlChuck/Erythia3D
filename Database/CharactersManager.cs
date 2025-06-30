@@ -69,7 +69,7 @@ public class CharactersManager : BaseManager
     public async Task<bool> CreateNewCharacterAsync(int accountID, string familyName, string characterName, int race = 1, int gender = 1, int face = 1)
     {
         string title = "";
-        int startingArea = GetStartingZoneByRace(race);
+        int startingArea = GetStartingZoneBySpecies(race);
         
         int xLoc = 0; 
         int yLoc = 0;
@@ -327,10 +327,10 @@ public class CharactersManager : BaseManager
     {
         return xLoc == 0 && yLoc == 0 && zLoc == 0;
     }
-    private static int GetStartingZoneByRace(int race)
+    public int GetStartingZoneBySpecies(int species)
     {
         int toReturn = 1; // Default starting zone
-        switch (race)
+        switch (species)
         {
             case 1: // Aelystian
                 toReturn = 1; // IthoriaSouth

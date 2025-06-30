@@ -59,6 +59,8 @@ public class PlayerManager : NetworkBehaviour
     [SerializeField] private Transform workbenchParent;
     [SerializeField] private Inventory homeInventory;
     [SerializeField] private WorkBench workBenchPrefab;
+    
+    [SerializeField] private Vector3 lastKnownLocation;
     #endregion
 
     #region State Management
@@ -170,6 +172,7 @@ public class PlayerManager : NetworkBehaviour
     }
     public async Task OnStartInitialization(int newAccountID = 0, ulong newSteamID = 0, string newAccountName = "")
     {
+        lastKnownLocation = Vector3.zero;
         Debug.Log($"PlayerManager.OnStartInitialization: AccountID={newAccountID}, SteamID={newSteamID}, AccountName='{newAccountName}'");
         AccountID = newAccountID;
         SteamID = newSteamID;
@@ -247,7 +250,7 @@ public class PlayerManager : NetworkBehaviour
         AccountID = result.AccountID;
         AccountName = result.AccountName;
         SteamID = result.SteamID;
-        // Complete the login task with the result
+        lastKnownLocation = result.LastLocation;
         loginCompletionSource?.SetResult(result.Success);
     }
     #endregion
@@ -293,9 +296,10 @@ public class PlayerManager : NetworkBehaviour
             }
         }
     }
-    [Rpc(SendTo.Server)] private void CreateCharacterRpc(string characterName, string familyName, int charRace, int charGender, int charFace)
+    [Rpc(SendTo.Server)] private void CreateCharacterRpc(string characterName, string familyName, int charSpecies, int charGender, int charFace)
     {
-        ServerManager.Instance.HandleCharacterCreation(this, familyName ,characterName, charRace, charGender, charFace);
+        ServerManager.Instance.HandleCharacterCreation(this, familyName ,characterName, charSpecies, charGender, charFace);
+        GetWaypointFromServer(charSpecies);
     }
     [Rpc(SendTo.Owner)] public void ReceiveCharacterCreationResultRpc(bool success, string errorMessage)
     {
@@ -381,6 +385,10 @@ public class PlayerManager : NetworkBehaviour
                 if (SelectedPlayerCharacter == null)
                 {
                     SelectedPlayerCharacter = newCharacter;
+                    if (lastKnownLocation == Vector3.zero)
+                    {
+                        GetLastKnownLocationRpc(AccountID);
+                    }
                 }
             }
             EnsureSelectedCharacterInList();
@@ -935,6 +943,31 @@ public class PlayerManager : NetworkBehaviour
     }
     #endregion
 
+    [Rpc(SendTo.Server)] private void GetLastKnownLocationRpc(int accountId)
+    {
+        GetWaypointFromServer(accountId);
+
+    }
+    private async Task GetWaypointFromServer(int accountId, int charSpecies = 0)
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+        if (lastKnownLocation != Vector3.zero)
+        {
+            return;
+        }
+        
+        Vector3 waypoint = await ServerManager.Instance.GetStartingWaypoint(accountId, charSpecies);
+        lastKnownLocation = waypoint;
+        ReceiveLastKnownWaypointRpc(waypoint);
+    }
+    [Rpc(SendTo.Owner)] private void ReceiveLastKnownWaypointRpc(Vector3 waypoint)
+    {
+        lastKnownLocation = waypoint;
+    }
+    
     #region Getters
     private PlayerStatBlock GetCharacterByID(int charId)
     {

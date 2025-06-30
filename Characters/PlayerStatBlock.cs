@@ -18,11 +18,11 @@ public class PlayerStatBlock : StatBlock
     private int veilXp;
 
     #region Setup and Initialization
-    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int species, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, int speciesStrength = 10, int speciesDexterity = 10, int speciesConstitution = 10, int speciesIntelligence = 10, int speciesSpirit = 10)
+    public void SetUpCharacter(string newCharacterName, int newCharacterID, string title, int zoneID, int incomingSpecies, int face, int gender, int combatxp, int craftingxp, int arcaneexp, int spiritxp, int veilexp, int speciesStrength = 10, int speciesDexterity = 10, int speciesConstitution = 10, int speciesIntelligence = 10, int speciesSpirit = 10)
     {
         // Create a temporary SpeciesTemplate with the provided stats
         SpeciesTemplate tempSpecies = ScriptableObject.CreateInstance<SpeciesTemplate>();
-        SetSpeciesNum(species);
+        SetSpeciesNum(incomingSpecies);
         SetGender(gender);
         tempSpecies.strength = speciesStrength;
         tempSpecies.dexterity = speciesDexterity;
