@@ -1,4 +1,5 @@
-﻿using Unity.Netcode;
+﻿using System.Collections;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -105,6 +106,9 @@ public class ThirdPersonController : NetworkBehaviour
 
     private bool _hasAnimator;
 
+    private float spawnGravityDelay = 5f;
+    private bool initialised = false;
+
     private bool IsCurrentDeviceMouse
     {
         get
@@ -125,6 +129,7 @@ public class ThirdPersonController : NetworkBehaviour
 
     private void Start()
     {
+        StartCoroutine(SpawnGravityDelay());
         _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
             
         _hasAnimator = TryGetComponent(out _animator);
@@ -139,9 +144,15 @@ public class ThirdPersonController : NetworkBehaviour
         _fallTimeoutDelta = FallTimeout;
     }
 
+    private IEnumerator SpawnGravityDelay()
+    {
+        yield return new WaitForSeconds(spawnGravityDelay);
+        initialised = true;
+    }
+
     private void Update()
     {
-        if (IsOwner)
+        if (IsOwner && initialised)
         {
             _hasAnimator = TryGetComponent(out _animator);
 

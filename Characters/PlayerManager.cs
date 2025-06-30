@@ -25,7 +25,7 @@ public class PlayerManager : NetworkBehaviour
     #endregion
 
     #region References
-    private string currentEnvironmentScene = "";
+    private string currentEnvironmentScene = ""; 
     private int currentEnvironmentId = 0;
     
     [Header("Player Account Info")]
@@ -72,6 +72,7 @@ public class PlayerManager : NetworkBehaviour
     private TaskCompletionSource<bool> charInventoryCompletionSource;
     private TaskCompletionSource<bool> accountInventoryCompletionSource;
     private TaskCompletionSource<bool> workbenchesCompletionSource;
+    private TaskCompletionSource<bool> areaTransitionCompletionSource;
     #endregion
 
     #region Chat Network Variables
@@ -635,8 +636,18 @@ public class PlayerManager : NetworkBehaviour
             Debug.LogError("PlayerManager: Cannot start zone transition - no character selected");
             return;
         }
+        
         //TODO Get starting area by race and make this server side
-        RequestAreaTransition(1);
+        Debug.Log("SetupAndSpawnSelectedCharacterAsync: Starting area transition to area 1");
+        bool areaTransitionSuccess = await RequestAreaTransition(1);
+        
+        if (!areaTransitionSuccess)
+        {
+            Debug.LogError("SetupAndSpawnSelectedCharacterAsync: Area transition failed, cannot spawn player");
+            throw new System.Exception("Area transition failed");
+        }
+        
+        Debug.Log($"SetupAndSpawnSelectedCharacterAsync: Area transition completed successfully, client currentEnvironmentId={currentEnvironmentId}, spawning player");
         await SpawnNetworkedPlayerAsync(selectedPlayerCharacter);
     }
     private async Task SpawnNetworkedPlayerAsync(PlayerStatBlock playerStatBlock)
@@ -671,11 +682,13 @@ public class PlayerManager : NetworkBehaviour
     {
         if (currentEnvironmentId == 0)
         {
-            Debug.LogError("SpawnNetworkedPlayerServerRpc: Cannot spawn player - no environment scene loaded.");
+            Debug.LogWarning($"SpawnNetworkedPlayerServerRpc: Environment not ready (currentEnvironmentId=0), retrying spawn for client {OwnerClientId}");
+            // Retry after a short delay as fallback for any remaining timing issues
+            _ = RetrySpawnAfterDelay(characterID, characterRace, characterGender, spawnPointName);
             return;
         }
         ulong clientId = OwnerClientId;
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}.");
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Received request from client {clientId} to spawn character {characterID}. Server currentEnvironmentId={currentEnvironmentId}");
 
         // --- Server-Authoritative Spawn Position ---
         AreaConfiguration targetConfig = ServerManager.Instance.GetAreaConfiguration(currentEnvironmentId);
@@ -713,6 +726,32 @@ public class PlayerManager : NetworkBehaviour
         NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, targetSpawnPosition);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
+    
+    private async Task RetrySpawnAfterDelay(int characterID, int characterRace, int characterGender, string spawnPointName, int retryCount = 0)
+    {
+        const int maxRetries = 3;
+        const int retryDelayMs = 500; // 0.5 seconds
+        
+        if (retryCount >= maxRetries)
+        {
+            Debug.LogError($"RetrySpawnAfterDelay: Max retries ({maxRetries}) exceeded for client {OwnerClientId}. Environment scene still not loaded.");
+            return;
+        }
+        
+        await Task.Delay(retryDelayMs);
+        
+        if (currentEnvironmentId != 0)
+        {
+            Debug.Log($"RetrySpawnAfterDelay: Environment now ready (currentEnvironmentId={currentEnvironmentId}), proceeding with spawn for client {OwnerClientId}");
+            SpawnNetworkedPlayerRpc(characterID, characterRace, characterGender, spawnPointName);
+        }
+        else
+        {
+            Debug.LogWarning($"RetrySpawnAfterDelay: Environment still not ready after {retryDelayMs}ms delay, retry {retryCount + 1}/{maxRetries} for client {OwnerClientId}");
+            _ = RetrySpawnAfterDelay(characterID, characterRace, characterGender, spawnPointName, retryCount + 1);
+        }
+    }
+    
     [Rpc(SendTo.Owner)] private void NotifyNetworkedPlayerSpawnedRpc(ulong networkObjectId, Vector3 spawnPosition)
     {            
         Debug.Log($"NotifyNetworkedPlayerSpawnedClientRpc: Received notification to find NetworkObject with ID {networkObjectId}.");
@@ -735,15 +774,39 @@ public class PlayerManager : NetworkBehaviour
     
     #region Player Area Management
     // Area Transition Methods
-    private void RequestAreaTransition(int targetAreaId)
+    private async Task<bool> RequestAreaTransition(int targetAreaId)
     {        
         if (IsServer)
         {
-            return;
+            return true; // Server doesn't need to transition
         }
-        if (selectedPlayerCharacter != null)
+        if (selectedPlayerCharacter == null)
         {
+            Debug.LogError("RequestAreaTransition: No character selected");
+            return false;
+        }
+        
+        try
+        {
+            areaTransitionCompletionSource = new();
             RequestAreaTransitionRpc(targetAreaId);
+            
+            // Wait for area transition response with timeout (15 seconds)
+            Task delayTask = Task.Delay(15000);
+            Task completedTask = await Task.WhenAny(areaTransitionCompletionSource.Task, delayTask);
+            
+            if (completedTask == delayTask)
+            {
+                Debug.LogError("RequestAreaTransition: Area transition timeout after 15 seconds");
+                return false;
+            }
+            
+            return areaTransitionCompletionSource.Task.Result;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"RequestAreaTransition: Exception during area transition: {ex.Message}");
+            return false;
         }
     }
     [Rpc(SendTo.Server)] private void RequestAreaTransitionRpc(int targetAreaId, string spawnPointName = "")
@@ -754,6 +817,10 @@ public class PlayerManager : NetworkBehaviour
 
         // Assign client to new area on server
         ServerManager.Instance.AssignClientToArea(OwnerClientId, targetAreaId);
+        
+        // Update server-side PlayerManager environment ID to match area assignment
+        currentEnvironmentId = targetAreaId;
+        Debug.Log($"Server PlayerManager: Updated currentEnvironmentId to {targetAreaId} for client {OwnerClientId}");
 
         if (spawnPointName != "")
         {
@@ -801,7 +868,7 @@ public class PlayerManager : NetworkBehaviour
             {
                 currentEnvironmentScene = environmentScene;
                 currentEnvironmentId = areaId;
-                Debug.Log($"✅ Successfully loaded environment scene: {environmentScene}");
+                Debug.Log($"✅ Client: Successfully loaded environment scene: {environmentScene}, currentEnvironmentId updated to {areaId}");
                 
                 // Notify server of successful transition
                 ConfirmAreaTransitionRpc(true, $"Successfully entered area");
@@ -848,6 +915,23 @@ public class PlayerManager : NetworkBehaviour
     [Rpc(SendTo.Server)] private void ConfirmAreaTransitionRpc(bool success, string message)
     {
         Debug.Log($"Area transition confirmation from client {OwnerClientId}: {(success ? "Success" : "Failed")} - {message}");
+        
+        // Send response back to the client to complete the TaskCompletionSource
+        AreaTransitionResponseRpc(success, message);
+    }
+    
+    [Rpc(SendTo.Owner)] private void AreaTransitionResponseRpc(bool success, string message)
+    {
+        Debug.Log($"Area transition response: {(success ? "Success" : "Failed")} - {message}");
+        
+        if (areaTransitionCompletionSource != null && !areaTransitionCompletionSource.Task.IsCompleted)
+        {
+            areaTransitionCompletionSource.SetResult(success);
+        }
+        else if (areaTransitionCompletionSource == null)
+        {
+            Debug.LogWarning("AreaTransitionResponseRpc: No completion source available");
+        }
     }
     #endregion
 
