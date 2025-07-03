@@ -700,6 +700,7 @@ public class PlayerManager : NetworkBehaviour
 
         // --- Server-Authoritative Spawn Position ---
         AreaConfiguration targetConfig = ServerManager.Instance.GetAreaConfiguration(currentEnvironmentId);
+        /*
         Vector3 targetSpawnPosition = targetConfig.defaultSpawnPosition;
         Quaternion rotationValue = Quaternion.identity;
         if (spawnPointName != "")
@@ -712,12 +713,12 @@ public class PlayerManager : NetworkBehaviour
                     rotationValue = Quaternion.Euler(areaSpawnPoint.rotation);
                 }
             }
-        }
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Determined spawn position from ServerManager: {targetSpawnPosition}");
+        }*/
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Determined spawn position from ServerManager: {lastKnownLocation}");
 
         // Instantiate the networked player prefab
-        GameObject playerObject = Instantiate(networkedPlayerPrefab, targetSpawnPosition, rotationValue);
-        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {targetSpawnPosition}.");
+        GameObject playerObject = Instantiate(networkedPlayerPrefab, lastKnownLocation, Quaternion.identity);
+        Debug.Log($"SpawnNetworkedPlayerServerRpc: Instantiated player prefab for client {clientId} at {lastKnownLocation}.");
 
         // Get the NetworkObject component
         NetworkObject networkObject = playerObject.GetComponent<NetworkObject>();
@@ -731,7 +732,7 @@ public class PlayerManager : NetworkBehaviour
         networkedPlayer.SetCharacterVisuals(characterRace, characterGender);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Set character visuals for race {characterRace}, gender {characterGender}.");
         
-        NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, targetSpawnPosition);
+        NotifyNetworkedPlayerSpawnedRpc(networkObject.NetworkObjectId, lastKnownLocation);
         Debug.Log($"SpawnNetworkedPlayerServerRpc: Sent NotifyNetworkedPlayerSpawnedClientRpc to client {clientId}.");
     }
     
