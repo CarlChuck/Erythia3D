@@ -84,6 +84,7 @@ public class MenuManager : MonoBehaviour
         animator.SetBool("Menu", false);
         animator.SetBool("Characters", true);
         animator.SetBool("Settings", false);
+        animator.SetBool("Account", false);
         spotLight.SetActive(true);
     }
     public void OnSettingsButtonPane()
@@ -91,6 +92,7 @@ public class MenuManager : MonoBehaviour
         animator.SetBool("Menu", false);
         animator.SetBool("Characters", false);
         animator.SetBool("Settings", true);
+        animator.SetBool("Account", false);
         OnOpenSettings();
     }
     public void OnMainMenuPane()
